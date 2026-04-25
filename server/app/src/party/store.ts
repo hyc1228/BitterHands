@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { animalLocalized } from "../i18n";
 import {
   Animals,
   ClientMessageTypes,
@@ -417,7 +418,7 @@ function handleServerEnvelope(
     const card = msg.data as RulesCard;
     set({ rulesCard: card, myAnimal: card.animal });
     const lang = get().lang;
-    const animalName = card.animal ?? "?";
+    const animalName = animalLocalized[lang][card.animal ?? ""] ?? card.animal ?? "?";
     get().pushLog({
       kind: "private",
       text:
