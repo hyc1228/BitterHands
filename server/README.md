@@ -140,4 +140,49 @@ The heavy lifting runs on **PartyKit + static host**; you develop on your own co
 
 - `GET /party/<roomId>/health`
 - `GET /party/<roomId>/state`
+- `GET /party/<roomId>/__nz_voice?id=<hash>` — cached MP3 for a Monitor line (served by `voice.js`).
+
+## Monitor PA voice (Plan A — pre-recorded)
+
+The server narrates game events ("game_started", "pickup_alarm", "violation",
+"eliminated", "winner", "game_ended" …) in a Two-Point-Hospital-style PA voice.
+
+**Default path is fully static.** 24 pre-recorded MP3s live in
+`public/voice/<kind>_<idx>.mp3` and the server just broadcasts the path. No
+runtime API calls, no API key required, identical voice quality every time.
+The full recording script + filename map is in
+[`public/voice/README.md`](public/voice/README.md).
+
+Player names are NOT in the audio — they're interpolated into the **caption**
+side at runtime, so you don't need a per-player MP3.
+
+### Optional: live ElevenLabs override
+
+Set both `ELEVENLABS_API_KEY` and `ELEVENLABS_VOICE_ID` in `server/.env` and
+the dispatcher will A/B with live synthesis (in-memory cached by hash). Useful
+during voice picking. Skipped silently when not set.
+
+```
+ELEVENLABS_API_KEY=sk_xxx
+ELEVENLABS_VOICE_ID=voiceIdFromElevenLabs
+```
+
+### Adding new event hooks
+
+The voice pipeline is wired off `_dispatchMonitorLine({ kind, params, priority })`
+inside `src/server.js`. Currently fired on game start, item pickup (heart /
+alarm), violation, elimination, and game end. To add e.g. a "monitor locked
+onto player" line, call:
+
+```js
+void this._dispatchMonitorLine({
+  kind: "monitor_lock",
+  params: { name: player.name },
+  priority: 7
+});
+```
+
+`kind` must match a key in `TEMPLATES` in `src/monitorLines.js`. Adding a new
+kind = adding `audio` + `caption` arrays there, then recording the matching
+`<kind>_<idx>.mp3` files.
 

@@ -82,6 +82,91 @@ AI 规则怪谈社交游戏（Hackathon Edition, GDD v0.7 / April 2026）。
 - 视线跟随被锁定玩家移动
 - 当监管者视线范围内同时有多名玩家时，随机选择一人进行注视
 
+## 监管者播报（AI Voice）
+
+> **状态**：MVP 已实装（英文版）。代码见 `server/src/voice.js` / `server/src/monitorLines.js` / `server/app/src/hooks/useMonitorVoice.ts`。中文版后接。
+
+**目标**：让监管者从「沉默的注视」升级为「会说话的怪园广播」。语气参考《双点医院》PA：冷静、官腔、黑色幽默——用物业 / HR / 客服的措辞讲恐怖事件，节目效果＞恐吓。Monitor 是夜班保安兼后勤主管的合体，不是吉祥物也不是魔王。
+
+### 风格定位
+
+- **Voice**：英式播音腔，中性偏冷的中年男声或女声皆可；先用 ElevenLabs 预设 voice，后续视效果换克隆。
+- **样本**（即未来 ambient / event 的目标质感）：
+  - "Welcome back, residents. The night shift has begun."
+  - "Reminder: blinking is a privilege, not a right. Please surrender your eyelids for the next three seconds."
+  - "Alice has acquired one (1) unit of joy. Productivity is up zero point three percent."
+  - "Bob has triggered an alarm clock. The Monitor would like a word."
+  - "Unfortunately, Carol has failed to comply. Please apologize to the camera."
+  - "Dave has been promoted to compost. Please congratulate Dave."
+  - "Two minutes remain. Please continue to be quietly terrified."
+
+### 播报内容（按事件分桶）
+
+| 触发                       | 优先级 | 例句模板                                                            |
+| ------------------------ | --- | --------------------------------------------------------------- |
+| 局开始                      | 高   | "Welcome back, residents. The night shift has begun."           |
+| 通用规则触发（每 15s）            | 中   | "Reminder: …" / "All residents will now …"                      |
+| Monitor 锁定某玩家            | 高   | "The Monitor has noticed {name}. {name}, please {action}."      |
+| 玩家拾取 ❤️                  | 低   | "{name} has acquired one (1) unit of joy."                      |
+| 玩家撞上 ⏰                   | 高   | "{name} has triggered an alarm. The Monitor would like a word." |
+| 违规扣血                     | 高   | "Unfortunately, {name} has failed to comply."                   |
+| 玩家出局                     | 最高  | "{name} has been promoted to compost."                          |
+| 剩余时间（2:00 / 1:00 / 0:30） | 中   | "Two minutes remain. Please continue to be quietly terrified."  |
+| 局结束 / 胜者                  | 最高  | "Congratulations, {winner}. You may now go home."               |
+| Ambient（无事件 ~30s）        | 最低  | "All systems nominal. Probably."                                |
+
+### 调度规则
+
+- **单声道队列**：同一时刻只播一条；新事件按优先级抢占低优先级（被抢占的句子直接丢弃，不补播）。
+- **冷却**：相邻两条最短间隔 ~3s，避免连珠炮。
+- **去重 / 合并**：同一类事件 10s 内最多一条；连续多人拾取/扣血时合并为「{n} residents have collectively…」。
+- **静音窗**：通用规则执行期间（如「3 秒内不能眨眼」），暂停 ambient/低优先级，避免干扰玩家执行动作。
+
+### 技术方案（ElevenLabs）
+
+- **生成**：
+  - **静态库**（开局、结束、ambient、通用规则提示，约 30 条）→ 预生成 mp3 缓存到 `server/public/voice/` 或 CDN，按 ID 直接播，零运行时成本。
+  - **动态台词**（含玩家名 / 数字）→ Claude 出词 + ElevenLabs **streaming TTS**，**服务器侧合成**后下发 URL 或 base64。
+  - **名字片段优化**：玩家进房时预合成 `voice/name/{playerId}.mp3`（每人 1 次），主体句用句库模板拼接，省字符费。
+- **传输**：在 `server/src/protocol.js` 新增事件 `monitor_voice`：`{ id, priority, url, captions, ttlMs }`。客户端单 `<audio>` 元素 + 优先级队列消费。
+  - **不**走「客户端各自请求 ElevenLabs」：会暴露 API key 且每端重复合成，浪费配额。
+- **字幕**：`captions` 字段同步显示文本，便于无障碍 / 静音观战 / OB 端展示。
+- **观战端**：OB 视图作为主声道（最适合直播喊话效果）；玩家端可单独静音。
+
+### 与 Claude 的分工
+
+- 现有「违规叙事」prompt 改写为 Two Point 腔英文版，硬约束 ≤ 18 词，禁止直说"die / dead"。
+- 新增 prompt `monitor_lines`：输入事件 JSON（事件类型、玩家名、上下文），输出 1 条 ≤ 12 词的英文台词；带温度抖动避免重复。
+- **兜底**：Claude 失败 / 超时 → 回落到本地静态模板（每类事件 3–5 句轮换）。
+
+### 当前实装（方案 A · 预录 mp3）
+
+> 受限于 hackathon 期间没有 ElevenLabs API key 直连权限，**所有音频走静态 mp3**：在 ElevenLabs 网页里手动用同一把声音录 24 条通用台词（不出现玩家名）放进 `server/public/voice/`。**玩家名在字幕里**实时插值，体验一致但运行时 0 API 调用。
+
+- **触发**：`game_started` / `pickup_heart` / `pickup_alarm` / `violation` / `eliminated` / `winner` / `game_ended` 已在 `server/src/server.js` 接好。新加事件调 `this._dispatchMonitorLine({ kind, params, priority })`，模板在 `monitorLines.js`。
+- **服务端**：`monitorLines.js` 现在每个 kind 维护 `audio[]`（通用，无姓名）+ `caption[]`（带 `{name}`）平行数组；`server.js` 默认广播 `/voice/<kind>_<idx>.mp3` 静态路径。
+- **协议**：`MONITOR_VOICE` 事件下发 `{ id, kind, priority, audioUrl, captions, ttlMs, source }`。
+- **客户端**：`useMonitorVoice` 钩子负责单 `<audio>` 播放、优先级抢占、3s 冷却、10s 同 kind 去重；字幕由 `MonitorCaption` 挂在 `Layout`。
+- **降级**：mp3 文件缺失时浏览器播放报错被静默吃掉，字幕仍然显示。
+- **可选直连 API**：若同时配置了 `ELEVENLABS_API_KEY` + `ELEVENLABS_VOICE_ID`，dispatcher 会改走实时合成（A/B 试音色用），不需要时不必设。
+
+### 录音清单 & 操作
+
+24 条台词 + 文件命名规则 + 录音建议（一把声音、稳定度参数等）见 [`server/public/voice/README.md`](server/public/voice/README.md)。在 ElevenLabs 网页（或 Scenario 的 ElevenLabs 面板）里依清单逐条生成、下载、按 `<kind>_<idx>.mp3` 命名拖进 `server/public/voice/` 即可。
+
+### 测试
+
+打开 `server/public/voice-test.html`（本地双击或 `http://127.0.0.1:1999/voice-test.html`）：
+- **Static MP3** 模式（默认）：从 `./voice/<kind>_<idx>.mp3` 读，本地试听整条管线
+- **Live ElevenLabs** 模式：临时贴 API key 直接调 API 试音色
+- **Captions only** 模式：只看字幕节奏，不放音频
+
+### 待办
+
+- 监管者锁定玩家 / 15s 通用规则提示尚未在服务端发事件，模板已就绪
+- ambient 周期播报
+- 中文版：复用调度，换一套 zh 录音 + 中文 caption 模板
+
 ## 道具
 
 游戏空间内随机散布 **1–3 个**以下两种道具：

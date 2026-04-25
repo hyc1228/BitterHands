@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Nocturne Zoo — Voice Labelling Tool</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: #0c0d11;
+    color: #f3eedb;
+    font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    min-height: 100vh;
+  }
+  main { max-width: 1200px; margin: 0 auto; padding: 20px; }
+  h1 { font-size: 20px; margin: 0 0 6px; }
+  h1 small { color: #b9b3a3; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; margin-left: 8px; }
+  .note { color: #b9b3a3; margin: 6px 0 16px; }
+  .toolbar { position: sticky; top: 0; padding: 10px 0; background: #0c0d11; border-bottom: 1px solid #2a2d36; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; z-index: 10; }
+  button { background: #1f2229; border: 1px solid #2a2d36; color: #f3eedb; padding: 8px 12px; border-radius: 6px; cursor: pointer; font: 13px system-ui; }
+  button:hover { background: #292d36; }
+  button.primary { background: #c43d2a; border-color: #db5641; color: #fff; }
+  button.primary:hover { background: #db4a35; }
+  .progress { color: #ffe49a; font: 12px ui-monospace, monospace; }
+  table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+  th, td { padding: 6px 8px; text-align: left; vertical-align: middle; border-bottom: 1px solid #1c1e25; }
+  th { color: #b9b3a3; font-size: 11px; letter-spacing: 0.18em; text-transform: uppercase; }
+  tr.assigned td { background: rgba(80, 160, 90, 0.06); }
+  tr.dup td { background: rgba(220, 80, 60, 0.10); }
+  audio { height: 32px; vertical-align: middle; }
+  select { background: #0e1014; color: #f3eedb; border: 1px solid #2a2d36; padding: 6px 8px; border-radius: 6px; min-width: 280px; font: 13px ui-monospace, monospace; }
+  .filename { font: 12px ui-monospace, monospace; color: #b9b3a3; word-break: break-all; }
+  .target-text { font: 12px ui-monospace, monospace; color: #f3eedb; opacity: 0.85; max-width: 460px; }
+  .out {
+    margin-top: 16px;
+    padding: 12px;
+    background: #0a0b0f;
+    border: 1px solid #2a2d36;
+    border-radius: 8px;
+    white-space: pre;
+    font: 12px ui-monospace, monospace;
+    overflow-x: auto;
+    max-height: 320px;
+  }
+  .pill { display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; letter-spacing: 0.08em; }
+  .pill.ok { background: rgba(120, 200, 120, 0.18); color: #b9eab2; }
+  .pill.warn { background: rgba(220, 100, 80, 0.20); color: #ff9a7a; }
+  code { color: #ffe49a; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Nocturne Zoo — Voice Labelling Tool <small>standalone</small></h1>
+  <p class="note">
+    Listen to each asset on the left, then pick the matching line from the
+    dropdown. When all needed slots are assigned, click <strong>Export rename
+    script</strong> at the bottom and run the printed commands in
+    <code>server/public/voice/</code>. Unassigned assets are ignored.
+    Persists your progress in <code>localStorage</code> automatically.
+  </p>
+
+  <div class="toolbar">
+    <button id="btnReset">Reset all</button>
+    <button class="primary" id="btnExport">Export rename script ↓</button>
+    <span class="progress" id="progress">— assigned 0 / 24</span>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width: 280px;">Asset</th>
+        <th style="width: 280px;">Preview</th>
+        <th>Assign to slot</th>
+        <th>Line text</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+
+  <div class="out" id="out" hidden></div>
+</main>
+
+<script type="module">
+const ASSETS = [
+  "asset_4tvUymbwP7qnJZVA8aVtb1sa.wav",
+  "asset_6w9Li6y2Z5QjH8ePCx4JNMDC.wav",
+  "asset_BmKam1u7jThkP456EY73u3ng.wav",
+  "asset_GDUT89FgaHMDLJM8CGtTb9tg.wav",
+  "asset_GV8yHAfGwvYQ5S3DYxQJHdFM.wav",
+  "asset_J5pWi85nyzAhRyfrB9L7zYxH.wav",
+  "asset_JV7B3bNEwAWmgs1sWTPkCVBb.wav",
+  "asset_JpW91hm7NQuwnCDPFe7MfKGm.wav",
+  "asset_RL6e4okukabXQSF3LpsSQkMS.wav",
+  "asset_Rxki2jo2vjixcHbPXZZouCUf.wav",
+  "asset_UUUx6rS9pHGwwvhjcqYVMmJg.wav",
+  "asset_UzEzWNfBHn8J439v9ft4hH1d.wav",
+  "asset_WBp3NaDv4q8Rfanr1DafFTps.wav",
+  "asset_WLsUQCGWZE4Mj7oMQT6wZ7J9.wav",
+  "asset_arizNGKx6xvExQYfwPxRyLuq.wav",
+  "asset_bQvQxnT3jiYkD5uafebuLJaE.wav",
+  "asset_d6L1p8afangvHvkHrgHkveB2.wav",
+  "asset_fWaQqmCUM7bqR7fGL1r9rHyz.wav",
+  "asset_mMhqv7AVXj4VbAnU9sPPqUyT.wav",
+  "asset_mbDpfrzhirT9AxDzWs1dpYEq.wav",
+  "asset_oh6AHAtYHeBCVxS2HZDGES62.wav",
+  "asset_pAvvd83pf83mjg99FsZJqCSy.wav",
+  "asset_pLtTZ9iYP7fv278KqVBKoKgs.wav",
+  "asset_pt9933BmDkN2HXLXGokQRnYf.wav",
+  "asset_sF4i3TZ3of6RoSMbAuEMB4To.wav",
+  "asset_v9bCoyzHPF7UCejh2bGFjJmy.wav"
+];
+
+const SLOTS = [
+  ["game_started_0",  "Welcome back, residents. The night shift has begun."],
+  ["game_started_1",  "All visitors, please proceed to the nearest existential crisis. Thank you."],
+  ["game_started_2",  "The zoo is now open. Please remain delicious."],
+  ["game_ended_0",    "The night shift has concluded. Please collect your belongings, and your soul."],
+  ["game_ended_1",    "Closing time. The Monitor has had a perfectly normal evening."],
+  ["winner_0",        "Congratulations to our survivor. You may now go home. Please leave your soul in the lobby."],
+  ["winner_1",        "We have a winner. A modest plaque has been ordered."],
+  ["pickup_heart_0",  "A resident has acquired one unit of joy. Productivity is up zero point three percent."],
+  ["pickup_heart_1",  "Heart detected. Please consume responsibly."],
+  ["pickup_heart_2",  "Someone is now thirty-three percent more alive. Please don't get used to it."],
+  ["pickup_alarm_0",  "An alarm clock has been triggered. The Monitor would like a word."],
+  ["pickup_alarm_1",  "The Monitor is on the way. Please prepare a small smile."],
+  ["pickup_alarm_2",  "Attention. Somebody has rung the dinner bell. Unfortunately, they are the dinner."],
+  ["violation_0",     "A resident has failed to comply. Please apologize to the camera."],
+  ["violation_1",     "Someone appears to have forgotten the rules. The Monitor remembers."],
+  ["violation_2",     "Compliance failure detected. Minus one life. Have a tolerable day."],
+  ["eliminated_0",    "A resident has been promoted to compost. Please congratulate the management."],
+  ["eliminated_1",    "One of you is no longer with us. Their performance review is final."],
+  ["eliminated_2",    "We thank the deceased for their service. Their locker will be cleaned."],
+  ["monitor_lock_0",  "The Monitor has noticed someone... please do the thing."],
+  ["monitor_lock_1",  "You are now the subject of the Monitor's full attention. Lucky you."],
+  ["ambient_0",       "All systems nominal. Probably."],
+  ["ambient_1",       "Reminder. Blinking is a privilege, not a right."],
+  ["ambient_2",       "If you can hear this announcement, you are statistically still alive."]
+];
+
+const STORAGE_KEY = "nz.voice.label.map.v1";
+let assignment = loadAssignment();
+
+function loadAssignment() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+    const obj = JSON.parse(raw);
+    return typeof obj === "object" && obj ? obj : {};
+  } catch { return {}; }
+}
+function saveAssignment() {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(assignment)); } catch {}
+}
+
+const SLOT_TEXT = Object.fromEntries(SLOTS);
+
+function renderRows() {
+  const tbody = document.getElementById("rows");
+  tbody.innerHTML = "";
+  for (const asset of ASSETS) {
+    const tr = document.createElement("tr");
+    tr.dataset.asset = asset;
+
+    const tdName = document.createElement("td");
+    tdName.innerHTML = `<div class="filename">${asset}</div>`;
+
+    const tdAudio = document.createElement("td");
+    tdAudio.innerHTML = `<audio controls preload="none" src="./voice/${asset}"></audio>`;
+
+    const tdSelect = document.createElement("td");
+    const sel = document.createElement("select");
+    sel.appendChild(option("", "— skip / unassigned —"));
+    for (const [key, text] of SLOTS) sel.appendChild(option(key, key));
+    sel.value = assignment[asset] || "";
+    sel.addEventListener("change", () => {
+      if (sel.value) assignment[asset] = sel.value;
+      else delete assignment[asset];
+      saveAssignment();
+      refreshState();
+    });
+    tdSelect.appendChild(sel);
+
+    const tdText = document.createElement("td");
+    const span = document.createElement("span");
+    span.className = "target-text";
+    span.textContent = sel.value ? SLOT_TEXT[sel.value] || "" : "";
+    tdText.appendChild(span);
+
+    sel.addEventListener("change", () => {
+      span.textContent = sel.value ? SLOT_TEXT[sel.value] || "" : "";
+    });
+
+    tr.append(tdName, tdAudio, tdSelect, tdText);
+    tbody.appendChild(tr);
+  }
+}
+
+function option(value, text) {
+  const o = document.createElement("option");
+  o.value = value;
+  o.textContent = text;
+  return o;
+}
+
+function refreshState() {
+  const counts = new Map();
+  for (const v of Object.values(assignment)) {
+    counts.set(v, (counts.get(v) || 0) + 1);
+  }
+
+  // Highlight duplicates
+  const tbody = document.getElementById("rows");
+  for (const tr of tbody.querySelectorAll("tr")) {
+    const asset = tr.dataset.asset;
+    const slot = assignment[asset];
+    tr.classList.toggle("assigned", Boolean(slot));
+    tr.classList.toggle("dup", Boolean(slot) && counts.get(slot) > 1);
+  }
+
+  const filled = new Set(Object.values(assignment)).size;
+  const total = SLOTS.length;
+  const dups = [...counts.entries()].filter(([_, n]) => n > 1).map(([k, n]) => `${k} ×${n}`);
+  let msg = `assigned ${filled} / ${total}`;
+  if (dups.length) msg += ` · ${dups.length} duplicate slot(s): ${dups.join(", ")}`;
+  document.getElementById("progress").textContent = msg;
+}
+
+document.getElementById("btnReset").onclick = () => {
+  if (!confirm("Clear all assignments?")) return;
+  assignment = {};
+  saveAssignment();
+  renderRows();
+  refreshState();
+  document.getElementById("out").hidden = true;
+};
+
+document.getElementById("btnExport").onclick = () => {
+  const out = document.getElementById("out");
+  out.hidden = false;
+
+  const lines = [];
+  lines.push("# --- Bash (Git Bash / WSL) ---");
+  lines.push("# cd into the voice dir, then paste these commands:");
+  lines.push("cd \"C:/Users/10466/Documents/BitterHands/server/public/voice\"");
+  lines.push("");
+  for (const [asset, slot] of Object.entries(assignment)) {
+    if (!slot) continue;
+    lines.push(`mv -f "${asset}" "${slot}.wav"`);
+  }
+  lines.push("");
+  lines.push("# --- PowerShell ---");
+  lines.push("# Set-Location \"C:/Users/10466/Documents/BitterHands/server/public/voice\"");
+  for (const [asset, slot] of Object.entries(assignment)) {
+    if (!slot) continue;
+    lines.push(`Move-Item -Force "${asset}" "${slot}.wav"`);
+  }
+  lines.push("");
+  lines.push("# Unassigned assets that will remain in the folder (delete manually if you want):");
+  for (const a of ASSETS) {
+    if (!assignment[a]) lines.push(`#   ${a}`);
+  }
+  out.textContent = lines.join("\n");
+  out.scrollIntoView({ behavior: "smooth", block: "start" });
+};
+
+renderRows();
+refreshState();
+</script>
+</body>
+</html>

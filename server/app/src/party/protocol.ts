@@ -23,7 +23,8 @@ export const ServerEventTypes = {
   PRIVATE_OWL_ROSTER: "private_owl_roster",
   MAIN_SCENE_BROADCAST: "main_scene_broadcast",
   MAIN_SCENE_ITEM_TAKEN: "main_scene_item_taken",
-  MAIN_SCENE_ITEMS_RESYNC: "main_scene_items_resync"
+  MAIN_SCENE_ITEMS_RESYNC: "main_scene_items_resync",
+  MONITOR_VOICE: "monitor_voice"
 } as const;
 
 export const ClientMessageTypes = {
@@ -154,6 +155,22 @@ export type MainSceneItemInboxEntry =
   | { kind: "taken"; data: MainSceneItemTaken }
   | { kind: "resync"; removedItemIds: string[] };
 
+export interface MonitorVoiceMessage {
+  /** Stable id (audio hash when TTS succeeded; sequence string otherwise). */
+  id: string;
+  /** Tag like "violation" / "pickup_alarm" — used for client-side dedup. */
+  kind: string;
+  /** 1–10; higher preempts lower in the audio queue. */
+  priority: number;
+  /** May be null if ElevenLabs is unconfigured — captions still display. */
+  audioUrl: string | null;
+  /** English caption text. */
+  captions: string;
+  /** Hint for caption fade timeout. */
+  ttlMs: number;
+  source?: "template" | "claude";
+}
+
 export type ServerEnvelope =
   | { type: typeof ServerEventTypes.ROOM_SNAPSHOT; data: RoomSnapshot }
   | { type: typeof ServerEventTypes.PLAYER_JOINED; data: PublicPlayer }
@@ -169,6 +186,7 @@ export type ServerEnvelope =
   | { type: typeof ServerEventTypes.MAIN_SCENE_BROADCAST; data: MainScenePeerState }
   | { type: typeof ServerEventTypes.MAIN_SCENE_ITEM_TAKEN; data: MainSceneItemTaken }
   | { type: typeof ServerEventTypes.MAIN_SCENE_ITEMS_RESYNC; data: { removedItemIds: string[] } }
+  | { type: typeof ServerEventTypes.MONITOR_VOICE; data: MonitorVoiceMessage }
   | { type: "error"; error: string; max?: number }
   | { type: string; data?: unknown };
 
