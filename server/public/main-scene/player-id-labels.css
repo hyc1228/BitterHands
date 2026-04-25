@@ -1,0 +1,21 @@
+/**
+ * Join-room display name / ID above each player avatar (SVG <text> in makeAnimalAvatar).
+ * Loaded as a separate file to keep main scene index.html lean.
+ */
+
+#othersLayer .entity.animal > .bob > text,
+#meLayer .entity.animal > .bob > text {
+  font-size: 15px !important;
+  font-weight: 700;
+  fill: #fffef8 !important;
+  paint-order: stroke fill;
+  stroke: #141418;
+  stroke-width: 2.8px;
+  stroke-linejoin: round;
+  letter-spacing: 0.06em;
+}
+
+#meLayer .entity.animal > .bob > text {
+  fill: #e8f7ff !important;
+  stroke: #0a2435;
+}

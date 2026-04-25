@@ -1,0 +1,2556 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <title>Nocturne Zoo · 主场景</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Patrick+Hand&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="player-id-labels.css" />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #161618;
+        color: #fff;
+        font-family: "Patrick Hand", "Comic Sans MS", system-ui, sans-serif;
+        overflow: hidden;
+        overscroll-behavior: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      /* ---------- Phone frame (desktop preview) ---------- */
+      body {
+        display: grid;
+        place-items: center;
+      }
+      .phone-frame {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        max-width: 100vw;
+        background: #000;
+        overflow: hidden;
+      }
+      @media (min-width: 600px) {
+        body {
+          padding: 16px;
+          background: #0d0d10;
+        }
+        .phone-frame {
+          width: min(420px, 100%);
+          aspect-ratio: 9 / 19.5;
+          height: auto;
+          max-height: calc(100vh - 32px);
+          border-radius: 42px;
+          border: 10px solid #1a1a1c;
+          box-shadow: 0 30px 80px rgba(0, 0, 0, 0.65),
+            0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+        }
+      }
+
+      .screen {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        background: #000;
+        overflow: hidden;
+      }
+
+      /* ---------- HUD top bar ---------- */
+      .hud-top {
+        position: relative;
+        z-index: 10;
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: center;
+        padding: 16px 18px 6px;
+        font-family: "Caveat", cursive;
+      }
+      .rec {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        justify-self: start;
+      }
+      .rec-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #ee3a3a;
+        box-shadow: 0 0 8px rgba(238, 58, 58, 0.7);
+        animation: blink 1.4s ease-in-out infinite;
+      }
+      @keyframes blink {
+        0%,
+        55% {
+          opacity: 1;
+        }
+        60%,
+        90% {
+          opacity: 0.15;
+        }
+        100% {
+          opacity: 1;
+        }
+      }
+      .rec-text {
+        font-weight: 700;
+        font-size: 26px;
+        letter-spacing: 4px;
+      }
+      .lives {
+        justify-self: center;
+        display: flex;
+        gap: 4px;
+        font-size: 22px;
+        line-height: 1;
+        color: #ff5e5e;
+        text-shadow: 0 0 6px rgba(255, 94, 94, 0.4);
+      }
+      .lives .heart-off {
+        color: rgba(255, 255, 255, 0.18);
+        text-shadow: none;
+      }
+      .timer {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        justify-self: end;
+        font-size: 28px;
+        font-weight: 700;
+      }
+      .clock-icon {
+        flex: 0 0 auto;
+      }
+
+      /* ---------- World viewport ---------- */
+      .world {
+        flex: 1;
+        position: relative;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .world-svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        cursor: crosshair;
+      }
+      .hint {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 8px;
+        text-align: center;
+        font-family: "Patrick Hand", cursive;
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.35);
+        pointer-events: none;
+        z-index: 5;
+        letter-spacing: 0.5px;
+      }
+
+      /* ---------- Zoo keeper log ---------- */
+      .log {
+        position: relative;
+        z-index: 10;
+        margin: 6px 14px 14px;
+        padding: 10px 16px 12px;
+        background: #f3ecdb;
+        color: #131313;
+        border: 2.5px solid #0d0d0d;
+        border-radius: 22px;
+        font-family: "Patrick Hand", cursive;
+        box-shadow: 3px 3px 0 #000;
+        transform: rotate(-0.5deg);
+        height: 142px;
+        overflow-y: auto;
+        overflow-x: hidden;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(0, 0, 0, 0.4) transparent;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+        background-image: radial-gradient(
+            rgba(0, 0, 0, 0.04) 1px,
+            transparent 1px
+          ),
+          repeating-linear-gradient(
+            to bottom,
+            transparent 0,
+            transparent 22px,
+            rgba(0, 0, 0, 0.06) 23px
+          );
+        background-size: 6px 6px, 100% 100%;
+        background-attachment: local;
+      }
+      .log::-webkit-scrollbar {
+        width: 5px;
+      }
+      .log::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .log::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.35);
+        border-radius: 3px;
+      }
+      .log h2 {
+        margin: 0 0 4px;
+        font-family: "Caveat", cursive;
+        font-weight: 700;
+        font-size: 24px;
+        letter-spacing: 2px;
+        position: sticky;
+        top: 0;
+        background: #f3ecdb;
+        padding-bottom: 2px;
+      }
+      .log ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        font-size: 16px;
+        line-height: 22px;
+      }
+      .log li {
+        display: flex;
+        gap: 6px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .log li::before {
+        content: "·";
+        font-weight: 700;
+      }
+      .log .ts {
+        font-weight: 700;
+        flex: 0 0 auto;
+      }
+      .log .msg {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .log li.rule {
+        color: #c8000f;
+        font-weight: 700;
+        text-shadow: 0 0 0.5px #c8000f;
+      }
+      .log li.rule::before {
+        content: "▸";
+      }
+      .log li.fade-in {
+        animation: logIn 0.4s ease-out;
+      }
+      @keyframes logIn {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* ---------- CRT / REC post-processing ---------- */
+      /* The shake is on the screen wrapper so the whole picture wobbles. */
+      .screen {
+        animation: screenShake 0.55s ease-in-out infinite;
+      }
+      @keyframes screenShake {
+        0%, 100% {
+          transform: translate(0, 0);
+        }
+        20% {
+          transform: translate(0.6px, -0.4px);
+        }
+        40% {
+          transform: translate(-0.5px, 0.4px);
+        }
+        60% {
+          transform: translate(0.4px, 0.5px);
+        }
+        80% {
+          transform: translate(-0.4px, -0.3px);
+        }
+      }
+
+      .rec-fx {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 50;
+        /* Vignette + slight green tint */
+        background: radial-gradient(
+            130% 95% at 50% 50%,
+            transparent 38%,
+            rgba(0, 0, 0, 0.45) 78%,
+            rgba(0, 0, 0, 0.85) 100%
+          ),
+          linear-gradient(
+            to bottom,
+            rgba(0, 30, 10, 0.05),
+            rgba(0, 30, 10, 0.02)
+          );
+      }
+      /* Scanlines layer */
+      .rec-fx::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: repeating-linear-gradient(
+          to bottom,
+          rgba(0, 0, 0, 0.42) 0,
+          rgba(0, 0, 0, 0.42) 1px,
+          transparent 1px,
+          transparent 3px
+        );
+        mix-blend-mode: multiply;
+        opacity: 0.55;
+        animation: jitter 0.12s steps(2) infinite;
+      }
+      /* RGB phosphor stripes + slow rolling band (one element with two bgs) */
+      .rec-fx::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(
+            to bottom,
+            transparent 0%,
+            transparent 38%,
+            rgba(255, 255, 255, 0.06) 45%,
+            rgba(255, 255, 255, 0.10) 50%,
+            rgba(255, 255, 255, 0.06) 55%,
+            transparent 62%,
+            transparent 100%
+          ),
+          repeating-linear-gradient(
+            to right,
+            rgba(255, 60, 60, 0.06) 0 1px,
+            rgba(60, 255, 60, 0.06) 1px 2px,
+            rgba(60, 60, 255, 0.06) 2px 3px
+          );
+        background-size: 100% 220%, auto auto;
+        animation: roll 7s linear infinite;
+      }
+      @keyframes jitter {
+        0%, 100% {
+          transform: translate(0, 0);
+        }
+        50% {
+          transform: translate(0.4px, -0.4px);
+        }
+      }
+      @keyframes roll {
+        from {
+          background-position: 0 -110%, 0 0;
+        }
+        to {
+          background-position: 0 110%, 0 0;
+        }
+      }
+
+      /* Random VHS glitch slice */
+      .glitch-band {
+        position: absolute;
+        left: -4%;
+        right: -4%;
+        height: 14px;
+        background: rgba(255, 255, 255, 0.18);
+        mix-blend-mode: screen;
+        pointer-events: none;
+        z-index: 51;
+        opacity: 0;
+      }
+      .glitch-band.on {
+        animation: glitchSlice 0.22s steps(4) forwards;
+      }
+      @keyframes glitchSlice {
+        0% {
+          opacity: 0.55;
+          top: 22%;
+          transform: translateX(-3px);
+        }
+        25% {
+          opacity: 0.35;
+          top: 64%;
+          transform: translateX(5px);
+        }
+        50% {
+          opacity: 0.5;
+          top: 41%;
+          transform: translateX(-7px);
+        }
+        75% {
+          opacity: 0.25;
+          top: 78%;
+          transform: translateX(3px);
+        }
+        100% {
+          opacity: 0;
+          top: 90%;
+          transform: translateX(0);
+        }
+      }
+
+      /* Item disappear animation (for heart pickup, alarm pickup) */
+      .item-fade {
+        animation: itemFade 0.42s ease-out forwards;
+      }
+      @keyframes itemFade {
+        0% {
+          opacity: 1;
+          transform: scale(1);
+        }
+        100% {
+          opacity: 0;
+          transform: scale(2.2);
+        }
+      }
+      .heart-gain {
+        animation: heartGain 0.6s ease-out forwards;
+      }
+      @keyframes heartGain {
+        0% {
+          transform: scale(1);
+          color: #ff5e5e;
+        }
+        50% {
+          transform: scale(1.4);
+          color: #ffffff;
+          text-shadow: 0 0 14px #ff7a7a;
+        }
+        100% {
+          transform: scale(1);
+          color: #ff5e5e;
+        }
+      }
+
+      /* SVG entity helpers */
+      .entity {
+        cursor: default;
+      }
+      .leg {
+        transform-box: fill-box;
+        transform-origin: top center;
+      }
+      .walking .leg-l {
+        animation: legL 0.36s ease-in-out infinite;
+      }
+      .walking .leg-r {
+        animation: legR 0.36s ease-in-out infinite;
+      }
+      @keyframes legL {
+        0%,
+        100% {
+          transform: rotate(-12deg);
+        }
+        50% {
+          transform: rotate(12deg);
+        }
+      }
+      @keyframes legR {
+        0%,
+        100% {
+          transform: rotate(12deg);
+        }
+        50% {
+          transform: rotate(-12deg);
+        }
+      }
+      /* Owl wing flap. Each wing pivots at the edge of its bbox that
+         touches the body, so flapping rotates the tip up/down without
+         dragging the wing across the body. */
+      .owl-wing {
+        transform-box: fill-box;
+      }
+      .wing-r {
+        transform-origin: 0% 50%; /* left edge of bbox = body side */
+      }
+      .wing-l {
+        transform-origin: 100% 50%; /* right edge of bbox = body side */
+      }
+      .walking .wing-r,
+      .walking .wing-l {
+        animation: wingFlap 0.32s ease-in-out infinite;
+      }
+      @keyframes wingFlap {
+        0%,
+        100% {
+          transform: rotate(-14deg);
+        }
+        50% {
+          transform: rotate(22deg);
+        }
+      }
+      .alarm-shake {
+        animation: shake 0.4s ease-in-out infinite;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      @keyframes shake {
+        0%,
+        100% {
+          transform: rotate(-6deg);
+        }
+        50% {
+          transform: rotate(6deg);
+        }
+      }
+      .heart-pulse {
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: heartPulse 1.4s ease-in-out infinite;
+      }
+      @keyframes heartPulse {
+        0%,
+        100% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.12);
+        }
+      }
+      /*
+       * NOTE: do NOT set `transform-box`/`transform-origin` on the cone or
+       * torch groups. The flashlight uses the SVG `transform` attribute
+       * (`translate(monX monY) rotate(angle)`), and those CSS properties
+       * would silently shift the rotation pivot to the element's bounding
+       * box corner, making the beam spin around the wrong point.
+       */
+      .me-ring {
+        animation: meRing 2.2s ease-in-out infinite;
+      }
+      @keyframes meRing {
+        0%,
+        100% {
+          opacity: 0.85;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+
+      /* ---------- Action challenge overlay ---------- */
+      #challengeOverlay {
+        display: none;
+        position: absolute;
+        left: 50%;
+        top: 40%;
+        transform: translate(-50%, -50%);
+        z-index: 25;
+        background: rgba(4, 4, 4, 0.93);
+        border: 2.5px solid #f0c040;
+        border-radius: 14px;
+        padding: 14px 22px 16px;
+        text-align: center;
+        min-width: 200px;
+        box-shadow: 0 0 30px rgba(240, 192, 64, 0.28);
+        pointer-events: none;
+      }
+      #challengeOverlay.active  { display: block; }
+      #challengeOverlay.success { border-color: #30d080; box-shadow: 0 0 30px rgba(48,208,128,0.32); }
+      #challengeOverlay.fail    { border-color: #ff4444; box-shadow: 0 0 30px rgba(255,68,68,0.32); }
+      #chal-icon  { font-size: 2.2rem; margin-bottom: 4px; }
+      #chal-label {
+        font-family: "Caveat", cursive;
+        font-size: 1.55rem;
+        font-weight: 700;
+        color: #f0c040;
+        margin-bottom: 4px;
+      }
+      #challengeOverlay.success #chal-label { color: #30d080; }
+      #challengeOverlay.fail    #chal-label { color: #ff4444; }
+      #chal-status {
+        font-size: 0.82rem;
+        color: #999;
+        margin-bottom: 10px;
+        font-family: "Patrick Hand", cursive;
+        min-height: 1.2em;
+      }
+      .chal-bar { height: 5px; background: #2a2a2a; border-radius: 3px; overflow: hidden; }
+      #chal-bar-fill {
+        height: 100%;
+        width: 100%;
+        background: #f0c040;
+        border-radius: 3px;
+        transition: width 0.1s linear;
+      }
+      #challengeOverlay.success #chal-bar-fill { background: #30d080; }
+      #challengeOverlay.fail    #chal-bar-fill { background: #ff4444; }
+
+      /* ---------- Universal rule challenge overlay ---------- */
+      #universalOverlay {
+        display: none;
+        position: absolute;
+        left: 50%;
+        bottom: 168px;
+        transform: translateX(-50%);
+        z-index: 24;
+        background: rgba(4, 4, 4, 0.93);
+        border: 2px solid #88aaff;
+        border-radius: 12px;
+        padding: 10px 18px 12px;
+        text-align: center;
+        min-width: 185px;
+        box-shadow: 0 0 20px rgba(136, 170, 255, 0.22);
+        pointer-events: none;
+      }
+      #universalOverlay.active  { display: block; }
+      #universalOverlay.success { border-color: #30d080; box-shadow: 0 0 20px rgba(48,208,128,0.28); }
+      #universalOverlay.fail    { border-color: #ff4444; box-shadow: 0 0 20px rgba(255,68,68,0.28); }
+      #uchal-icon  { font-size: 1.8rem; margin-bottom: 3px; }
+      #uchal-label {
+        font-family: "Caveat", cursive;
+        font-size: 1.35rem;
+        font-weight: 700;
+        color: #88aaff;
+        margin-bottom: 3px;
+      }
+      #universalOverlay.success #uchal-label { color: #30d080; }
+      #universalOverlay.fail    #uchal-label { color: #ff4444; }
+      #uchal-status {
+        font-size: 0.78rem;
+        color: #888;
+        margin-bottom: 8px;
+        font-family: "Patrick Hand", cursive;
+        min-height: 1.1em;
+      }
+      #uchal-bar-fill {
+        height: 100%;
+        width: 100%;
+        background: #88aaff;
+        border-radius: 3px;
+        transition: width 0.1s linear;
+      }
+      #universalOverlay.success #uchal-bar-fill { background: #30d080; }
+      #universalOverlay.fail    #uchal-bar-fill { background: #ff4444; }
+    </style>
+  </head>
+  <body>
+    <div class="phone-frame">
+      <div class="screen">
+        <header class="hud-top">
+          <div class="rec">
+            <span class="rec-dot"></span>
+            <span class="rec-text">REC</span>
+          </div>
+          <div class="lives" id="lives" aria-label="lives">
+            <span>♥</span><span>♥</span><span>♥</span>
+          </div>
+          <div class="timer">
+            <svg
+              class="clock-icon"
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="white"
+              stroke-width="2.4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="12" cy="13" r="8.2" />
+              <path d="M12 8.5v5l3 1.6" />
+              <path d="M9.5 2.5h5" />
+            </svg>
+            <span id="timer">02:43</span>
+          </div>
+        </header>
+
+        <main class="world" id="world">
+          <svg
+            class="world-svg"
+            viewBox="0 0 360 600"
+            preserveAspectRatio="xMidYMid meet"
+            id="worldSvg"
+          >
+            <defs>
+              <filter
+                id="rough"
+                x="-10%"
+                y="-10%"
+                width="120%"
+                height="120%"
+              >
+                <feTurbulence
+                  type="fractalNoise"
+                  baseFrequency="0.045"
+                  numOctaves="2"
+                  seed="5"
+                />
+                <feDisplacementMap in="SourceGraphic" scale="1.6" />
+              </filter>
+              <filter
+                id="rough2"
+                x="-10%"
+                y="-10%"
+                width="120%"
+                height="120%"
+              >
+                <feTurbulence
+                  type="fractalNoise"
+                  baseFrequency="0.07"
+                  numOctaves="2"
+                  seed="11"
+                />
+                <feDisplacementMap in="SourceGraphic" scale="2.4" />
+              </filter>
+              <filter
+                id="redGlow"
+                x="-80%"
+                y="-80%"
+                width="260%"
+                height="260%"
+              >
+                <feGaussianBlur stdDeviation="2.4" />
+              </filter>
+              <!-- Tints "me"'s body/legs/wings from white to soft blue
+                   so the local player stands out from other players. -->
+              <filter id="meTint" color-interpolation-filters="sRGB">
+                <feColorMatrix
+                  type="matrix"
+                  values="0.34 0 0 0 0
+                          0 0.78 0 0 0
+                          0 0 1 0 0
+                          0 0 0 1 0"
+                />
+              </filter>
+              <!-- Tiled grass background -->
+              <pattern
+                id="grassTile"
+                width="200"
+                height="200"
+                patternUnits="userSpaceOnUse"
+              >
+                <image
+                  href="backgroundTile.svg"
+                  x="0"
+                  y="0"
+                  width="200"
+                  height="200"
+                  preserveAspectRatio="none"
+                />
+              </pattern>
+              <!-- Tiled fence (horizontal). Original is 627x413. Scaled to ~140x92. -->
+              <pattern
+                id="fenceTileH"
+                width="140"
+                height="92"
+                patternUnits="userSpaceOnUse"
+              >
+                <image
+                  href="fenceTile.svg"
+                  x="0"
+                  y="0"
+                  width="140"
+                  height="92"
+                  preserveAspectRatio="none"
+                />
+              </pattern>
+            </defs>
+
+            <!-- Camera group: translated each frame so player stays centered -->
+            <g id="cameraGroup">
+              <!-- Background grass covers the entire map -->
+              <rect
+                id="mapBg"
+                x="0"
+                y="0"
+                width="1080"
+                height="1500"
+                fill="url(#grassTile)"
+              />
+              <!-- Fences around perimeter -->
+              <g id="fenceLayer"></g>
+              <!-- Cone (drawn behind so it doesn't cover players) -->
+              <g id="coneLayer"></g>
+              <g id="itemsLayer"></g>
+              <g id="othersLayer"></g>
+              <g id="monitorLayer"></g>
+              <!-- Torch held in hand: drawn ABOVE monitor so the body looks like
+                   it's grasping it; same rotation transform as cone. -->
+              <g id="torchLayer"></g>
+              <g id="meLayer"></g>
+            </g>
+          </svg>
+          <div class="hint">WASD 移动 · 也可点击地面走动</div>
+        </main>
+
+        <footer class="log">
+          <h2>ZOO KEEPER LOG</h2>
+          <ul id="logList"></ul>
+        </footer>
+
+        <div class="rec-fx" aria-hidden="true"></div>
+        <div class="glitch-band" id="glitchBand" aria-hidden="true"></div>
+
+        <!-- Webcam: hidden input for FaceMesh -->
+        <video id="webcamVideo" playsinline autoplay muted style="display:none"></video>
+        <!-- Action challenge overlay (monitor) -->
+        <div id="challengeOverlay">
+          <div id="chal-icon">👁️</div>
+          <div id="chal-label">守则提示</div>
+          <div id="chal-status">监管者注视着你…</div>
+          <div class="chal-bar"><div id="chal-bar-fill"></div></div>
+        </div>
+        <!-- Universal rule challenge overlay -->
+        <div id="universalOverlay">
+          <div id="uchal-icon">👁️</div>
+          <div id="uchal-label">通用规则</div>
+          <div id="uchal-status">请执行！</div>
+          <div class="chal-bar"><div id="uchal-bar-fill"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script>
+      // =================================================================
+      // Coordinates
+      //   VIEW_W / VIEW_H : the SVG viewBox (camera window the player sees)
+      //   MAP_W  / MAP_H  : the whole walkable map. Camera follows player.
+      // =================================================================
+      const VIEW_W = 360;
+      const VIEW_H = 600;
+      const MAP_W = 1080;
+      const MAP_H = 1500;
+      // Legacy aliases (kept so existing maths reads naturally inside callers)
+      const W = VIEW_W;
+      const H = VIEW_H;
+      const SVG = document.getElementById("worldSvg");
+      const cameraGroup = document.getElementById("cameraGroup");
+
+      const layers = {
+        cone: document.getElementById("coneLayer"),
+        torch: document.getElementById("torchLayer"),
+        fence: document.getElementById("fenceLayer"),
+        items: document.getElementById("itemsLayer"),
+        others: document.getElementById("othersLayer"),
+        monitor: document.getElementById("monitorLayer"),
+        me: document.getElementById("meLayer"),
+      };
+
+      // =================================================================
+      // SVG entity templates (returns DOM elements)
+      // =================================================================
+      const SVGNS = "http://www.w3.org/2000/svg";
+      function el(name, attrs = {}, children = []) {
+        const node = document.createElementNS(SVGNS, name);
+        for (const [k, v] of Object.entries(attrs)) {
+          if (v == null) continue;
+          node.setAttribute(k, v);
+        }
+        for (const c of children) if (c) node.appendChild(c);
+        return node;
+      }
+
+      // Per-animal avatar:
+      //   - body outline comes from the SVG file ("Owl body.svg" / "lion.svg" /
+      //     "giraffe.svg") embedded as <image>
+      //   - webcam viewport (white circle + scared placeholder face) sits at
+      //     the body's "head" position
+      //   - lion / giraffe get procedural stick legs that swing while walking
+      //   - owl has no legs; it has two wings on the sides that flap while
+      //     walking (wing image = "owl wing.svg")
+      //   - if isMe, the white body/legs/wings get tinted blue via #meTint
+      //     while the webcam viewport (the actual "face" area) stays white.
+      const ANIMAL_SPEC = {
+        owl: {
+          body: "Owl body.svg",
+          bodyW: 80,
+          bodyH: 80,
+          viewport: { cx: 0, cy: 0, r: 22 },
+          nameY: -52,
+          wing: { attach: 36, w: 32, h: 28 },
+        },
+        lion: {
+          body: "lion.svg",
+          bodyW: 80,
+          bodyH: 86,
+          viewport: { cx: 0, cy: 6, r: 22 },
+          nameY: -60,
+          legs: { y: 38, spread: 12 },
+        },
+        giraffe: {
+          body: "giraffe.svg",
+          bodyW: 50,
+          bodyH: 100,
+          viewport: { cx: 0, cy: -32, r: 14 },
+          nameY: -62,
+          legs: { y: 46, spread: 8 },
+        },
+      };
+
+      function makeAnimalAvatar({ animal = "lion", isMe = false, name = "" }) {
+        const spec = ANIMAL_SPEC[animal] || ANIMAL_SPEC.lion;
+        const tint = isMe ? "url(#meTint)" : null;
+        const strokeColor = "#ffffff"; // tinted to blue via filter when isMe
+
+        const root = el("g", { class: `entity animal ${animal}` });
+        const inner = el("g", { class: "bob" });
+
+        // Body outline (the SVG file). Tinted if isMe.
+        const body = el("image", {
+          href: spec.body,
+          x: -spec.bodyW / 2,
+          y: -spec.bodyH / 2,
+          width: spec.bodyW,
+          height: spec.bodyH,
+          preserveAspectRatio: "xMidYMid meet",
+          filter: tint,
+        });
+        inner.appendChild(body);
+
+        // Wings (owl) — two stub wings extending OUTWARD from the body sides.
+        //
+        //   The wing.svg has its tip in the upper-LEFT and base in the
+        //   lower-RIGHT. For the LEFT wing we keep the natural orientation
+        //   (tip already points leftward) and just position the image so
+        //   it sits to the LEFT of the body. For the RIGHT wing we flip the
+        //   image content horizontally — but on the *image element itself*
+        //   (with a counter-translate) so the image's local rect stays at
+        //   x=0..w, keeping the inner group's bbox stable for the rotation
+        //   pivot.
+        //
+        //   Pivot lives at body-side edge of each wing (CSS sets origin):
+        //     wing-l  : 100% 50% (right edge of bbox = body side)
+        //     wing-r  :   0% 50% (left  edge of bbox = body side)
+        if (animal === "owl") {
+          const w = spec.wing.w;
+          const h = spec.wing.h;
+
+          // LEFT wing — extends leftward; image positioned to the LEFT of
+          // origin so the wing visibly sits outside the body.
+          const wLG = el("g", {
+            transform: `translate(${-spec.wing.attach} 0)`,
+          });
+          const wL = el("g", { class: "owl-wing wing-l" });
+          wL.appendChild(
+            el("image", {
+              href: "owl wing.svg",
+              x: -w,
+              y: -h / 2,
+              width: w,
+              height: h,
+              preserveAspectRatio: "xMidYMid meet",
+              filter: tint,
+            })
+          );
+          wLG.appendChild(wL);
+          inner.appendChild(wLG);
+
+          // RIGHT wing — extends rightward; the image element itself has its
+          // content flipped horizontally via "translate(w 0) scale(-1 1)",
+          // which keeps the rendered rect at x=0..w (so bbox is stable) but
+          // the wing's tip now appears on the right of the image.
+          const wRG = el("g", {
+            transform: `translate(${spec.wing.attach} 0)`,
+          });
+          const wR = el("g", { class: "owl-wing wing-r" });
+          wR.appendChild(
+            el("image", {
+              href: "owl wing.svg",
+              x: 0,
+              y: -h / 2,
+              width: w,
+              height: h,
+              preserveAspectRatio: "xMidYMid meet",
+              filter: tint,
+              transform: `translate(${w} 0) scale(-1 1)`,
+            })
+          );
+          wRG.appendChild(wR);
+          inner.appendChild(wRG);
+        } else {
+          // Lion / giraffe — procedural stick legs that swing via CSS.
+          const ly = spec.legs.y;
+          const lx = spec.legs.spread;
+          const legL = el("path", {
+            d: `M${-lx} ${ly} L${-lx - 2} ${ly + 18} L${-lx - 6} ${ly + 19}`,
+            fill: "none",
+            stroke: strokeColor,
+            "stroke-width": 3.6,
+            "stroke-linecap": "round",
+            class: "leg leg-l",
+            filter: tint,
+          });
+          const legR = el("path", {
+            d: `M${lx} ${ly} L${lx + 2} ${ly + 18} L${lx + 6} ${ly + 19}`,
+            fill: "none",
+            stroke: strokeColor,
+            "stroke-width": 3.6,
+            "stroke-linecap": "round",
+            class: "leg leg-r",
+            filter: tint,
+          });
+          inner.appendChild(legL);
+          inner.appendChild(legR);
+        }
+
+        // Webcam viewport (white circle, NOT tinted so the actual webcam
+        // area stays light when wired up later).
+        const viewport = el("circle", {
+          cx: spec.viewport.cx,
+          cy: spec.viewport.cy,
+          r: spec.viewport.r,
+          fill: "#fdfdfd",
+          stroke: "#fdfdfd",
+          "stroke-width": 1,
+        });
+        inner.appendChild(viewport);
+
+        // Placeholder "scared" face inside the viewport.
+        const r = spec.viewport.r;
+        const face = el("g");
+        const eyeDx = r * 0.32;
+        const eyeDy = r * -0.18;
+        face.appendChild(
+          el("circle", {
+            cx: spec.viewport.cx - eyeDx,
+            cy: spec.viewport.cy + eyeDy,
+            r: Math.max(1.8, r * 0.1),
+            fill: "#0a0a0a",
+          })
+        );
+        face.appendChild(
+          el("circle", {
+            cx: spec.viewport.cx + eyeDx,
+            cy: spec.viewport.cy + eyeDy,
+            r: Math.max(1.8, r * 0.1),
+            fill: "#0a0a0a",
+          })
+        );
+        face.appendChild(
+          el("ellipse", {
+            cx: spec.viewport.cx,
+            cy: spec.viewport.cy + r * 0.35,
+            rx: Math.max(2.4, r * 0.14),
+            ry: Math.max(3.6, r * 0.22),
+            fill: "#0a0a0a",
+          })
+        );
+        inner.appendChild(face);
+
+        // Name tag (above body)
+        if (name) {
+          const nameEl = el("text", {
+            x: 0,
+            y: spec.nameY,
+            "text-anchor": "middle",
+            "font-family": "Patrick Hand, cursive",
+            "font-size": 13,
+            fill: "rgba(255,255,255,0.7)",
+            "letter-spacing": 1,
+          });
+          nameEl.textContent = name;
+          inner.appendChild(nameEl);
+        }
+
+        root.appendChild(inner);
+        return root;
+      }
+
+      // Monitor character (red-eyed, with flashlight in hand).
+      function makeMonitor() {
+        const root = el("g", { class: "entity monitor", filter: "url(#rough)" });
+
+        // Head (black filled, white outline)
+        const head = el("ellipse", {
+          cx: 0,
+          cy: 0,
+          rx: 38,
+          ry: 36,
+          fill: "#000",
+          stroke: "#fff",
+          "stroke-width": 3.2,
+        });
+
+        // Hat brim (small curve on top)
+        const brim = el("path", {
+          d: "M-30 -16 Q0 -28 30 -16",
+          fill: "none",
+          stroke: "#fff",
+          "stroke-width": 3.2,
+          "stroke-linecap": "round",
+        });
+
+        // Red eyes (with glow)
+        const eyeGlowL = el("circle", {
+          cx: -14,
+          cy: -2,
+          r: 8,
+          fill: "#ff2a2a",
+          filter: "url(#redGlow)",
+          opacity: 0.85,
+        });
+        const eyeGlowR = el("circle", {
+          cx: 14,
+          cy: -2,
+          r: 8,
+          fill: "#ff2a2a",
+          filter: "url(#redGlow)",
+          opacity: 0.85,
+        });
+        const eyeL = el("circle", { cx: -14, cy: -2, r: 5.2, fill: "#ff2a2a" });
+        const eyeR = el("circle", { cx: 14, cy: -2, r: 5.2, fill: "#ff2a2a" });
+
+        // White pupils — translated each frame toward target
+        const pupilL = el("circle", { cx: -14, cy: -2, r: 1.9, fill: "#fff" });
+        const pupilR = el("circle", { cx: 14, cy: -2, r: 1.9, fill: "#fff" });
+
+        // Jagged red zigzag mouth
+        const mouth = el("path", {
+          d: "M-17 14 L-12 8 L-6 15 L0 8 L6 15 L12 8 L17 14",
+          fill: "none",
+          stroke: "#ff2a2a",
+          "stroke-width": 3.2,
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round",
+        });
+
+        // Legs
+        const legL = el("path", {
+          d: "M-11 33 L-13 50",
+          fill: "none",
+          stroke: "#fff",
+          "stroke-width": 3.2,
+          "stroke-linecap": "round",
+          class: "leg leg-l",
+        });
+        const legR = el("path", {
+          d: "M11 33 L13 50",
+          fill: "none",
+          stroke: "#fff",
+          "stroke-width": 3.2,
+          "stroke-linecap": "round",
+          class: "leg leg-r",
+        });
+
+        root.append(
+          head,
+          brim,
+          eyeGlowL,
+          eyeGlowR,
+          eyeL,
+          eyeR,
+          pupilL,
+          pupilR,
+          mouth,
+          legL,
+          legR
+        );
+        // Expose pupils for per-frame tracking
+        root._pupilL = pupilL;
+        root._pupilR = pupilR;
+        return root;
+      }
+
+      // Heart pickup — uses heart.svg
+      function makeHeart() {
+        const root = el("g", { class: "entity heart" });
+        const inner = el("g", { class: "heart-pulse" });
+        const W = 38;
+        const H = 36;
+        inner.appendChild(
+          el("image", {
+            href: "heart.svg",
+            x: -W / 2,
+            y: -H / 2,
+            width: W,
+            height: H,
+            preserveAspectRatio: "xMidYMid meet",
+          })
+        );
+        root.appendChild(inner);
+        return root;
+      }
+
+      // Alarm clock pickup — uses ring.svg
+      function makeAlarm() {
+        const root = el("g", { class: "entity alarm" });
+        const inner = el("g", { class: "alarm-shake" });
+        const W = 38;
+        const H = 38;
+        inner.appendChild(
+          el("image", {
+            href: "ring.svg",
+            x: -W / 2,
+            y: -H / 2,
+            width: W,
+            height: H,
+            preserveAspectRatio: "xMidYMid meet",
+          })
+        );
+        root.appendChild(inner);
+        return root;
+      }
+
+      // The flashlight is split into TWO groups that share the same world
+      // transform (translate to monitor center + rotate to target):
+      //
+      //   - cone group  : drawn BEHIND items/monitor so it lights the scene
+      //                   without covering player avatars in front of it.
+      //   - torch group : drawn ABOVE the monitor body so the handle visibly
+      //                   extends out of the body — looks like it's holding it.
+      //
+      // Local x-axis points along the beam direction; rotation around (0,0)
+      // is applied in render().
+      // Cone narrows at x=70 (torch lens position) and fans outward along +x.
+      function makeCone() {
+        const root = el("g", { class: "flashlight-cone" });
+        const halo = el("polygon", {
+          points: "70,-22 330,-150 330,150 70,22",
+          fill: "rgba(173, 162, 70, 0.16)",
+          filter: "url(#rough)",
+        });
+        const cone = el("polygon", {
+          points: "70,-14 300,-118 300,118 70,14",
+          fill: "rgba(173, 162, 70, 0.78)",
+          filter: "url(#rough)",
+        });
+        root.append(halo, cone);
+        return root;
+      }
+
+      // Torch = arm + lamp + yellow lens, all in the rotated group.
+      // Body radius is ~38, so we keep the arm starting at x=14 (visible
+      // across the body) and the lamp clearly outside at x=46+.
+      function makeTorch() {
+        const root = el("g", { class: "flashlight-torch" });
+        // Arm: a thick white stick from inside the body out to the lamp,
+        // so it visually reads as "an arm holding the torch".
+        const arm = el("line", {
+          x1: 14,
+          y1: 0,
+          x2: 50,
+          y2: 0,
+          stroke: "#fff",
+          "stroke-width": 6,
+          "stroke-linecap": "round",
+        });
+        // Lamp head: clearly outside the body, big enough to read as a torch.
+        const lamp = el("rect", {
+          x: 46,
+          y: -10,
+          width: 22,
+          height: 20,
+          rx: 2.5,
+          fill: "#fff",
+          stroke: "#fff",
+          "stroke-width": 1.5,
+        });
+        // Yellow lens at the tip (cone starts here).
+        const lens = el("rect", {
+          x: 64,
+          y: -11,
+          width: 6,
+          height: 22,
+          fill: "#fceb6f",
+        });
+        root.append(arm, lamp, lens);
+        return root;
+      }
+
+      // =================================================================
+      // State
+      //
+      // Map size = 1500 x 2100. Player spawns near the middle. Other players,
+      // monitor and items are scattered across the map so the player has to
+      // walk to find them.
+      // =================================================================
+      const cx = MAP_W / 2;
+      const cy = MAP_H / 2;
+      const state = {
+        me: {
+          x: cx,
+          y: cy,
+          vx: 0,
+          vy: 0,
+          color: "#5cc9ff",
+          lives: 3,
+          moving: false,
+          animal: "owl",
+        },
+        lastMainSyncName: "",
+        /** OB: hide local avatar, camera follows everyone. */
+        spectator: false,
+        roomStarted: false,
+        netSelfId: "",
+        _pickupReq: typeof Set !== "undefined" ? new Set() : null,
+        others: [],
+        monitor: {
+          x: cx + 130,
+          y: cy - 170,
+          aimAngle: Math.PI,
+          mode: "sweep",    // 'sweep' | 'locked'
+          sweepDir: 1,
+          sweepTimer: 2,
+          targetId: null,
+          lockTimer: 0,     // countdown while locked on a target
+          retargetIn: 0,
+          lured: null,
+        },
+        items: [
+          { id: "h1", type: "heart", x: cx - 80, y: cy - 340 },
+          { id: "h2", type: "heart", x: cx - 320, y: cy - 60 },
+          { id: "h3", type: "heart", x: cx + 270, y: cy + 380 },
+          { id: "a1", type: "alarm", x: cx + 140, y: cy + 40 },
+          { id: "a2", type: "alarm", x: cx - 200, y: cy + 220 },
+          { id: "a3", type: "alarm", x: cx + 320, y: cy - 260 },
+        ],
+        keys: { up: false, down: false, left: false, right: false },
+        tap: null, // world coordinates
+        timer: 2 * 60 + 43,
+        cam: { x: 0, y: 0 },
+        nodes: {
+          me: null,
+          monitor: null,
+          cone: null,
+          torch: null,
+          others: new Map(),
+          items: new Map(),
+        },
+      };
+
+      function defaultItemsLayout() {
+        const cxi = MAP_W / 2;
+        const cyi = MAP_H / 2;
+        return [
+          { id: "h1", type: "heart", x: cxi - 80, y: cyi - 340 },
+          { id: "h2", type: "heart", x: cxi - 320, y: cyi - 60 },
+          { id: "h3", type: "heart", x: cxi + 270, y: cyi + 380 },
+          { id: "a1", type: "alarm", x: cxi + 140, y: cyi + 40 },
+          { id: "a2", type: "alarm", x: cxi - 200, y: cyi + 220 },
+          { id: "a3", type: "alarm", x: cxi + 320, y: cyi - 260 },
+        ];
+      }
+      function reseedMapItems() {
+        state.items = defaultItemsLayout();
+        state.nodes.items.clear();
+        if (state._pickupReq) state._pickupReq.clear();
+        while (layers.items.firstChild) {
+          layers.items.removeChild(layers.items.firstChild);
+        }
+        for (const it of state.items) {
+          const node = it.type === "heart" ? makeHeart() : makeAlarm();
+          node.dataset.id = it.id;
+          layers.items.appendChild(node);
+          state.nodes.items.set(it.id, node);
+        }
+      }
+
+      // =================================================================
+      // Build initial scene
+      // =================================================================
+      function buildScene() {
+        // ---- Fence around the perimeter --------------------------------
+        // fenceTile = 627 x 413 horizontal fence segment; we tile it via
+        // SVG patterns. For the vertical sides, we rotate the same tile.
+        const FH = 92; // fence thickness
+        // Top edge
+        layers.fence.appendChild(
+          el("rect", {
+            x: 0,
+            y: 0,
+            width: MAP_W,
+            height: FH,
+            fill: "url(#fenceTileH)",
+          })
+        );
+        // Bottom edge
+        layers.fence.appendChild(
+          el("rect", {
+            x: 0,
+            y: MAP_H - FH,
+            width: MAP_W,
+            height: FH,
+            fill: "url(#fenceTileH)",
+          })
+        );
+        // Left edge: rotated copy of the horizontal fence pattern
+        const leftG = el("g", {
+          transform: `translate(${FH} 0) rotate(90)`,
+        });
+        leftG.appendChild(
+          el("rect", {
+            x: 0,
+            y: 0,
+            width: MAP_H,
+            height: FH,
+            fill: "url(#fenceTileH)",
+          })
+        );
+        layers.fence.appendChild(leftG);
+        // Right edge
+        const rightG = el("g", {
+          transform: `translate(${MAP_W} 0) rotate(90)`,
+        });
+        rightG.appendChild(
+          el("rect", {
+            x: 0,
+            y: 0,
+            width: MAP_H,
+            height: FH,
+            fill: "url(#fenceTileH)",
+          })
+        );
+        layers.fence.appendChild(rightG);
+
+        // ---- Cone (drawn behind everything except background) ----------
+        const cone = makeCone();
+        layers.cone.appendChild(cone);
+        state.nodes.cone = cone;
+
+        // ---- Items -----------------------------------------------------
+        for (const it of state.items) {
+          const node = it.type === "heart" ? makeHeart() : makeAlarm();
+          node.dataset.id = it.id;
+          layers.items.appendChild(node);
+          state.nodes.items.set(it.id, node);
+        }
+
+        // ---- Other players --------------------------------------------
+        for (const p of state.others) {
+          const node = makeAnimalAvatar({
+            animal: p.animal,
+            isMe: false,
+            name: p.name,
+          });
+          layers.others.appendChild(node);
+          state.nodes.others.set(p.id, node);
+        }
+
+        // ---- Monitor ---------------------------------------------------
+        const mon = makeMonitor();
+        layers.monitor.appendChild(mon);
+        state.nodes.monitor = mon;
+
+        // ---- Torch (rendered ABOVE monitor body so it looks held) -----
+        const torch = makeTorch();
+        layers.torch.appendChild(torch);
+        state.nodes.torch = torch;
+
+        // ---- Me --------------------------------------------------------
+        const me = makeAnimalAvatar({
+          animal: state.me.animal,
+          isMe: true,
+        });
+        layers.me.appendChild(me);
+        state.nodes.me = me;
+      }
+
+      // =================================================================
+      // Render (set transforms each frame)
+      // =================================================================
+      function updateCamera() {
+        let camX, camY;
+        if (state.spectator) {
+          const oth = state.others;
+          if (oth.length === 0) {
+            camX = MAP_W / 2 - VIEW_W / 2;
+            camY = MAP_H / 2 - VIEW_H / 2;
+          } else {
+            let sx = 0,
+              sy = 0;
+            for (const p of oth) {
+              sx += p.x;
+              sy += p.y;
+            }
+            const cx = sx / oth.length,
+              cy = sy / oth.length;
+            camX = cx - VIEW_W / 2;
+            camY = cy - VIEW_H / 2;
+          }
+        } else {
+          camX = state.me.x - VIEW_W / 2;
+          camY = state.me.y - VIEW_H / 2;
+        }
+        camX = clamp(camX, 0, Math.max(0, MAP_W - VIEW_W));
+        camY = clamp(camY, 0, Math.max(0, MAP_H - VIEW_H));
+        state.cam.x = camX;
+        state.cam.y = camY;
+        cameraGroup.setAttribute("transform", `translate(${-camX} ${-camY})`);
+      }
+
+      function render() {
+        updateCamera();
+
+        // items
+        for (const it of state.items) {
+          const node = state.nodes.items.get(it.id);
+          if (!node) continue;
+          node.setAttribute("transform", `translate(${it.x} ${it.y})`);
+        }
+        // others
+        for (const p of state.others) {
+          const node = state.nodes.others.get(p.id);
+          if (!node) continue;
+          node.setAttribute("transform", `translate(${p.x} ${p.y})`);
+          const ak =
+            p.animKey != null && p.animKey !== ""
+              ? p.animKey
+              : p.moving
+                ? "walk"
+                : "idle";
+          node.setAttribute("data-anim", ak);
+          node.classList.toggle("walking", p.moving || ak === "walk");
+        }
+        // monitor body stays upright (no rotation) — only flashlight rotates.
+        state.nodes.monitor.setAttribute(
+          "transform",
+          `translate(${state.monitor.x} ${state.monitor.y})`
+        );
+        // me (not in pure spectator / OB)
+        if (!state.spectator && state.nodes.me) {
+          state.nodes.me.setAttribute(
+            "transform",
+            `translate(${state.me.x} ${state.me.y})`
+          );
+          const mak = state.me.moving ? "walk" : "idle";
+          state.nodes.me.setAttribute("data-anim", mak);
+          state.nodes.me.classList.toggle("walking", state.me.moving);
+        }
+
+        // Cone + torch share the same world transform: they rotate around
+        // the monitor's center and always point along the aim angle.
+        const angDeg = (state.monitor.aimAngle * 180) / Math.PI;
+        const tf = `translate(${state.monitor.x} ${state.monitor.y}) rotate(${angDeg})`;
+        if (state.nodes.cone) state.nodes.cone.setAttribute("transform", tf);
+        if (state.nodes.torch) state.nodes.torch.setAttribute("transform", tf);
+
+        // Pupils: shift the white pupil dots inside the red eyes toward target.
+        const ux = Math.cos(state.monitor.aimAngle);
+        const uy = Math.sin(state.monitor.aimAngle);
+        const PUPIL_OFFSET = 2.4;
+        const pL = state.nodes.monitor._pupilL;
+        const pR = state.nodes.monitor._pupilR;
+        if (pL) {
+          pL.setAttribute("cx", -14 + ux * PUPIL_OFFSET);
+          pL.setAttribute("cy", -2 + uy * PUPIL_OFFSET);
+        }
+        if (pR) {
+          pR.setAttribute("cx", 14 + ux * PUPIL_OFFSET);
+          pR.setAttribute("cy", -2 + uy * PUPIL_OFFSET);
+        }
+      }
+
+      // =================================================================
+      // Update (movement / monitor AI)
+      // =================================================================
+      const SPEED = 110; // units per second
+      const MON_SPEED = 46;
+      // Fence thickness — entities must stay inside this border.
+      const BORDER = 110;
+
+      function updatePlayer(dt) {
+        if (state.spectator) return;
+        const me = state.me;
+        let dx = 0,
+          dy = 0;
+        if (state.keys.up) dy -= 1;
+        if (state.keys.down) dy += 1;
+        if (state.keys.left) dx -= 1;
+        if (state.keys.right) dx += 1;
+
+        // Tap-to-move target (world coords)
+        if (!dx && !dy && state.tap) {
+          const ddx = state.tap.x - me.x;
+          const ddy = state.tap.y - me.y;
+          const d = Math.hypot(ddx, ddy);
+          if (d < 4) {
+            state.tap = null;
+          } else {
+            dx = ddx / d;
+            dy = ddy / d;
+          }
+        } else if (dx || dy) {
+          state.tap = null;
+        }
+
+        const len = Math.hypot(dx, dy) || 1;
+        dx /= len;
+        dy /= len;
+        me.moving = dx !== 0 || dy !== 0;
+        if (me.moving) {
+          me.x = clamp(me.x + dx * SPEED * dt, BORDER, MAP_W - BORDER);
+          me.y = clamp(me.y + dy * SPEED * dt, BORDER, MAP_H - BORDER);
+        }
+
+        // Pickup: solo / pre-start = local; after room started = server authority
+        for (let i = state.items.length - 1; i >= 0; i--) {
+          const it = state.items[i];
+          if (Math.hypot(it.x - me.x, it.y - me.y) < 32) {
+            if (state.roomStarted) {
+              tryRequestItemPickup(it);
+            } else {
+              pickupLocal(it, i);
+            }
+          }
+        }
+      }
+
+      function stripItemNode(it, idx) {
+        const node = state.nodes.items.get(it.id);
+        if (node) {
+          const inner = node.firstElementChild;
+          if (inner) {
+            inner.classList.remove("heart-pulse", "alarm-shake");
+            inner.classList.add("item-fade");
+          }
+          setTimeout(() => node.remove(), 460);
+        }
+        state.nodes.items.delete(it.id);
+        state.items.splice(idx, 1);
+        if (state._pickupReq) state._pickupReq.delete(it.id);
+      }
+
+      function tryRequestItemPickup(it) {
+        if (!state._pickupReq) return;
+        if (state._pickupReq.has(it.id)) return;
+        if (it.type === "heart" && state.me.lives >= 3) return;
+        state._pickupReq.add(it.id);
+        try {
+          if (window !== window.top) {
+            window.parent.postMessage(
+              {
+                type: "NZ_OUT_ITEM_PICKUP",
+                source: "nocturne-zoo",
+                payload: { itemId: it.id },
+              },
+              "*"
+            );
+          } else {
+            state._pickupReq.delete(it.id);
+          }
+        } catch (err) {
+          state._pickupReq.delete(it.id);
+        }
+      }
+
+      function pickupLocal(it, idx) {
+        if (it.type === "heart") {
+          if (state.me.lives >= 3) return;
+          state.me.lives += 1;
+          renderLives();
+          flashHeartGain();
+        } else if (it.type === "alarm") {
+          addLog("闹铃响了…它转过头来。");
+          if (challenge.active) endChallenge(false);
+          state.monitor.mode = "sweep";
+          state.monitor.targetId = null;
+          state.monitor.lured = { x: it.x, y: it.y };
+          state.monitor.retargetIn = 4;
+        }
+        stripItemNode(it, idx);
+      }
+
+      function applyItemTakenEvent(e) {
+        if (!e || !e.itemId) return;
+        const idx = state.items.findIndex((x) => x.id === e.itemId);
+        if (idx < 0) return;
+        const it = state.items[idx];
+        if (e.itemType === "heart" && e.byPlayerId === state.netSelfId) {
+          if (state.me.lives < 3) {
+            state.me.lives += 1;
+            renderLives();
+            flashHeartGain();
+          }
+        } else if (e.itemType === "alarm") {
+          addLog("闹铃响了…它转过头来。");
+          if (challenge.active) endChallenge(false);
+          state.monitor.mode = "sweep";
+          state.monitor.targetId = null;
+          if (e.alarmLured) {
+            state.monitor.lured = { x: e.alarmLured.x, y: e.alarmLured.y };
+          } else {
+            state.monitor.lured = { x: it.x, y: it.y };
+          }
+          state.monitor.retargetIn = 4;
+        }
+        stripItemNode(it, idx);
+      }
+
+      function removeItemByIdNoEffects(id) {
+        const idx = state.items.findIndex((x) => x.id === id);
+        if (idx < 0) return;
+        stripItemNode(state.items[idx], idx);
+      }
+
+      function applyItemInbox(evts) {
+        if (!Array.isArray(evts)) return;
+        for (var ii = 0; ii < evts.length; ii++) {
+          var ev = evts[ii];
+          if (!ev || !ev.kind) continue;
+          if (ev.kind === "taken") {
+            applyItemTakenEvent(ev.data);
+          } else if (ev.kind === "resync" && ev.removedItemIds) {
+            for (var j = 0; j < ev.removedItemIds.length; j++) {
+              removeItemByIdNoEffects(ev.removedItemIds[j]);
+            }
+          }
+        }
+      }
+
+      function flashHeartGain() {
+        const root = document.getElementById("lives");
+        // Flash the rightmost filled heart
+        const filled = [...root.children].filter(
+          (c) => !c.classList.contains("heart-off")
+        );
+        const target = filled[filled.length - 1];
+        if (!target) return;
+        target.classList.remove("heart-gain");
+        // force reflow to restart animation
+        void target.offsetWidth;
+        target.classList.add("heart-gain");
+      }
+
+      function updateOthers(dt) {
+        // gentle wandering for visual life (within map bounds)
+        for (const p of state.others) {
+          if (p.netRemote) continue;
+          if (Math.random() < 0.012) {
+            p.vx = (Math.random() - 0.5) * 1.6;
+            p.vy = (Math.random() - 0.5) * 1.6;
+            p.moveTimer = 0.6 + Math.random() * 1.4;
+          }
+          if (p.moveTimer && p.moveTimer > 0) {
+            p.x = clamp(p.x + p.vx * 36 * dt, BORDER, MAP_W - BORDER);
+            p.y = clamp(p.y + p.vy * 36 * dt, BORDER, MAP_H - BORDER);
+            p.moveTimer -= dt;
+            p.moving = true;
+          } else {
+            p.moving = false;
+          }
+        }
+      }
+
+      // Returns true if (playerX, playerY) falls inside the flashlight cone.
+      // Cone half-angle ~22 deg, max reach 300 map units.
+      function isInCone(monX, monY, aimAngle, playerX, playerY) {
+        const dx   = playerX - monX;
+        const dy   = playerY - monY;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 50 || dist > 300) return false;
+        return Math.abs(wrapAngle(Math.atan2(dy, dx) - aimAngle)) < 0.38;
+      }
+
+      function updateMonitor(dt) {
+        const m = state.monitor;
+
+        // --- Alarm lure: point toward lure position, then resume sweep ---
+        if (m.lured) {
+          const desired = Math.atan2(m.lured.y - m.y, m.lured.x - m.x);
+          m.aimAngle += clamp(wrapAngle(desired - m.aimAngle), -4 * dt, 4 * dt);
+          m.retargetIn -= dt;
+          if (m.retargetIn <= 0) {
+            m.lured = null;
+            m.mode  = "sweep";
+            m.sweepTimer = 1;
+          }
+          return;
+        }
+
+        if (m.mode === "sweep") {
+          // Rotate flashlight back and forth
+          m.aimAngle  += m.sweepDir * 0.5 * dt;
+          m.sweepTimer -= dt;
+          if (m.sweepTimer <= 0) {
+            m.sweepTimer = 2 + Math.random() * 3;
+            if (Math.random() < 0.6) m.sweepDir *= -1;
+          }
+          // Slow random drift
+          m.x = clamp(m.x + (Math.random() - 0.5) * 20 * dt, BORDER, MAP_W - BORDER);
+          m.y = clamp(m.y + (Math.random() - 0.5) * 20 * dt, BORDER, MAP_H - BORDER);
+
+          // Check which players are inside the cone
+          const allPlayers = [
+            { id: "me", x: state.me.x, y: state.me.y },
+            ...state.others.map((p) => ({ id: p.id, x: p.x, y: p.y })),
+          ];
+          const inCone = allPlayers.filter((p) =>
+            isInCone(m.x, m.y, m.aimAngle, p.x, p.y)
+          );
+          // Don't re-target "me" while challenge is on cooldown
+          const eligible = inCone.filter(
+            (p) => !(p.id === "me" && challenge.cooldown > 0)
+          );
+          if (eligible.length > 0) {
+            const pick = eligible[Math.floor(Math.random() * eligible.length)];
+            m.targetId  = pick.id;
+            m.mode      = "locked";
+            m.lockTimer = challenge.MAX_TIME; // lock lasts as long as the challenge window
+            if (pick.id === "me") {
+              startChallenge();
+            } else {
+              const name = state.others.find((p) => p.id === pick.id)?.name ?? pick.id;
+              addLog(`手电筒照到 ${name}…`);
+            }
+          }
+        } else if (m.mode === "locked") {
+          // Count down lock duration; release when expired
+          m.lockTimer -= dt;
+          if (m.lockTimer <= 0) {
+            if (challenge.active && m.targetId === "me") endChallenge(false);
+            m.mode       = "sweep";
+            m.targetId   = null;
+            m.sweepTimer = 1;
+            return;
+          }
+          // Track locked target until challenge resolves
+          const target =
+            m.targetId === "me"
+              ? state.me
+              : state.others.find((p) => p.id === m.targetId);
+          if (!target) { m.mode = "sweep"; m.sweepTimer = 1; return; }
+
+          const desired = Math.atan2(target.y - m.y, target.x - m.x);
+          m.aimAngle += clamp(wrapAngle(desired - m.aimAngle), -4 * dt, 4 * dt);
+
+          // Slowly close in on target
+          const dx   = target.x - m.x;
+          const dy   = target.y - m.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist > 120) {
+            m.x += (dx / dist) * MON_SPEED * dt;
+            m.y += (dy / dist) * MON_SPEED * dt;
+          }
+          m.x = clamp(m.x, BORDER, MAP_W - BORDER);
+          m.y = clamp(m.y, BORDER, MAP_H - BORDER);
+        }
+      }
+
+      function clamp(v, lo, hi) {
+        return Math.max(lo, Math.min(hi, v));
+      }
+      function wrapAngle(a) {
+        while (a > Math.PI) a -= 2 * Math.PI;
+        while (a < -Math.PI) a += 2 * Math.PI;
+        return a;
+      }
+
+      // =================================================================
+      // HUD
+      // =================================================================
+      function renderLives() {
+        const root = document.getElementById("lives");
+        root.innerHTML = "";
+        for (let i = 0; i < 3; i++) {
+          const sp = document.createElement("span");
+          sp.textContent = "♥";
+          if (i >= state.me.lives) sp.className = "heart-off";
+          root.appendChild(sp);
+        }
+      }
+
+      function renderTimer() {
+        const m = Math.floor(state.timer / 60);
+        const s = state.timer % 60;
+        document.getElementById("timer").textContent =
+          String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+      }
+
+      // =================================================================
+      // Zoo keeper log
+      // =================================================================
+      const seedLogs = [
+        { t: "00:08", m: "白狮子每分钟必须低吼。", rule: true },
+        { t: "00:23", m: "园区广播：请保持你的动物姿势。" },
+        { t: "01:02", m: "禁止在镜头里微笑。", rule: true },
+        { t: "01:30", m: "MIA 的影子比她慢了半步。" },
+        { t: "02:11", m: "它喜欢看你慌张的样子。" },
+        { t: "02:31", m: "你在镜头里站得太久了。" },
+      ];
+      const logList = document.getElementById("logList");
+      const logBox = document.querySelector(".log");
+      function fmtNow() {
+        const elapsed = 4 * 60 - state.timer;
+        const m = Math.floor(Math.max(0, elapsed) / 60);
+        const s = Math.max(0, elapsed) % 60;
+        return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+      }
+      function addLog(message, ts, opts = {}) {
+        const li = document.createElement("li");
+        li.className = "fade-in";
+        if (opts.rule) li.classList.add("rule");
+        const t = document.createElement("span");
+        t.className = "ts";
+        t.textContent = ts || fmtNow();
+        const m = document.createElement("span");
+        m.className = "msg";
+        m.textContent = message;
+        li.append(t, m);
+        logList.prepend(li);
+        // Auto-scroll to top so newest is visible
+        if (logBox) logBox.scrollTop = 0;
+      }
+      function seedLog() {
+        // Append in reverse so the freshest sits on top.
+        for (let i = seedLogs.length - 1; i >= 0; i--) {
+          const e = seedLogs[i];
+          addLog(e.m, e.t, { rule: e.rule });
+        }
+      }
+
+      // Random AI commentary (placeholder for Claude output)
+      const flavorLines = [
+        "它喜欢看你慌张的样子。",
+        "园区广播：请保持你的动物姿势。",
+        "LEO 的脚步停得太突然了。",
+        "有什么东西在你身后写下笔记。",
+        "MIA 的甩脖动作不够大。",
+        "提示：闹铃会暂时分散它的注意。",
+        "它在你的格子上画了一个圈。",
+        "镜头里多了一只手，但你不认识它。",
+        "你的影子站得比你直。",
+      ];
+      function tickFlavor() {
+        if (Math.random() < 0.55) {
+          addLog(flavorLines[Math.floor(Math.random() * flavorLines.length)]);
+        }
+      }
+      setInterval(tickFlavor, 6500);
+
+      // Periodic new-rule announcements (red, distinct from flavor)
+      const UNIVERSAL_RULES = [
+        { id: "u_blink",    icon: "👁️", label: "眨一下眼！",  log: "通用规则：请眨眼。" },
+        { id: "u_mouth",    icon: "😮", label: "张开嘴巴！",  log: "通用规则：请张嘴。" },
+        { id: "u_headmove", icon: "🙂", label: "摇头或点头！", log: "通用规则：摇头或点头。" },
+      ];
+      function triggerUniversalRule() {
+        if (universalChallenge.active) return;
+        const rule = UNIVERSAL_RULES[Math.floor(Math.random() * UNIVERSAL_RULES.length)];
+        addLog(rule.log, null, { rule: true });
+        startUniversalChallenge(rule);
+      }
+      setInterval(triggerUniversalRule, 15000);
+
+      // =================================================================
+      // Input
+      // =================================================================
+      const KEYMAP = {
+        w: "up",
+        ArrowUp: "up",
+        s: "down",
+        ArrowDown: "down",
+        a: "left",
+        ArrowLeft: "left",
+        d: "right",
+        ArrowRight: "right",
+      };
+      window.addEventListener("keydown", (e) => {
+        const k = KEYMAP[e.key];
+        if (k) {
+          state.keys[k] = true;
+          e.preventDefault();
+        }
+      });
+      window.addEventListener("keyup", (e) => {
+        const k = KEYMAP[e.key];
+        if (k) state.keys[k] = false;
+      });
+
+      // Tap-to-move: convert pointer position → SVG viewport → world coords
+      // (world = viewport + camera offset).
+      function svgPointFromEvent(ev) {
+        const rect = SVG.getBoundingClientRect();
+        const cx =
+          ev.clientX != null
+            ? ev.clientX
+            : ev.touches && ev.touches[0]
+            ? ev.touches[0].clientX
+            : 0;
+        const cy =
+          ev.clientY != null
+            ? ev.clientY
+            : ev.touches && ev.touches[0]
+            ? ev.touches[0].clientY
+            : 0;
+        // preserveAspectRatio="xMidYMid meet" — replicate that mapping.
+        const sx = rect.width / VIEW_W;
+        const sy = rect.height / VIEW_H;
+        const scale = Math.min(sx, sy);
+        const offX = (rect.width - VIEW_W * scale) / 2;
+        const offY = (rect.height - VIEW_H * scale) / 2;
+        return {
+          x: (cx - rect.left - offX) / scale,
+          y: (cy - rect.top - offY) / scale,
+        };
+      }
+      SVG.addEventListener("pointerdown", (ev) => {
+        const p = svgPointFromEvent(ev);
+        if (p.x < 0 || p.x > VIEW_W || p.y < 0 || p.y > VIEW_H) return;
+        // Translate viewport -> world by adding the current camera offset.
+        state.tap = {
+          x: p.x + state.cam.x,
+          y: p.y + state.cam.y,
+        };
+      });
+
+      // =================================================================
+      // Main loop
+      // =================================================================
+      let last = performance.now();
+      function frame(now) {
+        const dt = Math.min(0.05, (now - last) / 1000);
+        last = now;
+        updatePlayer(dt);
+        updateOthers(dt);
+        updateMonitor(dt);
+        updateChallenge(dt);
+        updateUniversalChallenge(dt);
+        render();
+        flushOutMainScene();
+        requestAnimationFrame(frame);
+      }
+      var outFrameTick = 0;
+      function flushOutMainScene() {
+        if (window === window.top) return;
+        if (state.spectator || !state.roomStarted) return;
+        outFrameTick += 1;
+        if (outFrameTick % 2) return;
+        if (!state.nodes.me) return;
+        const me = state.me;
+        try {
+          window.parent.postMessage(
+            {
+              type: "NZ_OUT_MAIN_SCENE",
+              source: "nocturne-zoo",
+              payload: {
+                x: me.x,
+                y: me.y,
+                vx: 0,
+                vy: 0,
+                moving: !!me.moving,
+                animKey: me.moving ? "walk" : "idle",
+                facing: 0,
+                fx: null
+              }
+            },
+            "*"
+          );
+        } catch (e) {}
+      }
+
+      // Timer ticking
+      setInterval(() => {
+        if (state.timer > 0) {
+          state.timer -= 1;
+          renderTimer();
+        }
+      }, 1000);
+
+      // Random VHS glitch — fires every 4–9s, briefly flashes a horizontal slice.
+      function scheduleGlitch() {
+        const next = 4000 + Math.random() * 5000;
+        setTimeout(() => {
+          const band = document.getElementById("glitchBand");
+          if (band) {
+            band.classList.remove("on");
+            void band.offsetWidth; // restart animation
+            band.classList.add("on");
+            setTimeout(() => band.classList.remove("on"), 240);
+          }
+          scheduleGlitch();
+        }, next);
+      }
+      scheduleGlitch();
+
+      // =================================================================
+      // Action Challenge System + FaceMesh Detection
+      // =================================================================
+
+      const chalOverlay  = document.getElementById("challengeOverlay");
+      const chalIcon     = document.getElementById("chal-icon");
+      const chalLabel    = document.getElementById("chal-label");
+      const chalStatus   = document.getElementById("chal-status");
+      const chalBarFill  = document.getElementById("chal-bar-fill");
+      const webcamVideo  = document.getElementById("webcamVideo");
+      const webcamCanvas = document.getElementById("webcam-canvas");
+
+      // Challenge state
+      const challenge = {
+        active: false,
+        action: null,       // 'blink' | 'mouth' | 'shake'
+        completed: false,
+        timeLeft: 0,
+        cooldown: 0,
+        MAX_TIME: 8,
+        shake: { dir: 0, changes: 0 },
+        mouth: { openFrames: 0 },
+        blink: { since: null },
+      };
+
+      const ACTION_INFO = {
+        blink: { icon: "👁️", label: "5秒不眨眼！" },
+        mouth: { icon: "😮", label: "张开嘴巴！"  },
+        shake: { icon: "🙂", label: "摇头晃脑！"  },
+      };
+
+      function animalToAction(animal) {
+        if (animal === "owl")     return "blink";
+        if (animal === "lion")    return "mouth";
+        if (animal === "giraffe") return "shake";
+        return "shake";
+      }
+
+      function startChallenge() {
+        if (challenge.cooldown > 0) return;
+        challenge.active    = true;
+        challenge.completed = false;
+        challenge.action    = animalToAction(state.me.animal);
+        challenge.timeLeft  = challenge.MAX_TIME;
+        challenge.shake     = { dir: 0, changes: 0 };
+        challenge.mouth     = { openFrames: 0 };
+        challenge.blink     = { since: null };
+        const info = ACTION_INFO[challenge.action];
+        chalIcon.textContent   = info.icon;
+        chalLabel.textContent  = info.label;
+        chalStatus.textContent = "快做出动作！";
+        chalBarFill.style.width = "100%";
+        chalOverlay.className  = "active";
+        addLog("⚠ 监管者注视你了——执行守则！", null, { rule: true });
+      }
+
+      function endChallenge(success) {
+        if (!challenge.active) return;
+        challenge.active   = false;
+        challenge.cooldown = 3;
+        // Release monitor back to sweep mode
+        if (state.monitor.targetId === "me") {
+          state.monitor.mode       = "sweep";
+          state.monitor.targetId   = null;
+          state.monitor.sweepTimer = 1;
+        }
+        if (success) {
+          chalStatus.textContent = "✓ 守则完成！";
+          chalOverlay.className  = "active success";
+          addLog("✓ 守则完成。");
+        } else {
+          chalStatus.textContent = "✗ 违规！−1♥";
+          chalOverlay.className  = "active fail";
+          state.me.lives = Math.max(0, state.me.lives - 1);
+          renderLives();
+          addLog("❌ 未执行守则，扣 1 生命值。", null, { rule: true });
+        }
+        setTimeout(() => { chalOverlay.className = ""; }, 1400);
+      }
+
+      function updateChallenge(dt) {
+        if (challenge.cooldown > 0) challenge.cooldown -= dt;
+        if (!challenge.active) return;
+        challenge.timeLeft -= dt;
+        chalBarFill.style.width =
+          Math.max(0, (challenge.timeLeft / challenge.MAX_TIME) * 100) + "%";
+        if (challenge.timeLeft <= 0) endChallenge(false);
+      }
+
+      // ---------- FaceMesh landmark helpers ----------
+      const L_EYE_IDX    = [33, 160, 158, 133, 153, 144];
+      const R_EYE_IDX    = [362, 385, 387, 263, 373, 380];
+      const EAR_CLOSED   = 0.21;
+      const MAR_OPEN     = 0.40;
+      const SHAKE_THRESH = 0.08;
+      const BLINK_MS     = 5000;
+
+      function lmDist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+      function earVal(lm, idx) {
+        const [p1, p2, p3, p4, p5, p6] = idx.map((i) => lm[i]);
+        return (lmDist(p2, p6) + lmDist(p3, p5)) / (2 * lmDist(p1, p4));
+      }
+
+      function processFace(lm, now) {
+        if (challenge.active && !challenge.completed)                   processMonitorChallenge(lm, now);
+        if (universalChallenge.active && !universalChallenge.completed) processUniversalChallenge(lm, now);
+      }
+
+      function processMonitorChallenge(lm, now) {
+        const act = challenge.action;
+
+        if (act === "blink") {
+          const ear = (earVal(lm, L_EYE_IDX) + earVal(lm, R_EYE_IDX)) / 2;
+          if (ear < EAR_CLOSED) {
+            challenge.blink.since  = null;
+            chalStatus.textContent = "眨眼了！保持睁眼…";
+          } else {
+            if (!challenge.blink.since) challenge.blink.since = now;
+            const elapsed = now - challenge.blink.since;
+            chalStatus.textContent =
+              "保持睁眼 " + Math.max(0, 5 - elapsed / 1000).toFixed(1) + "s…";
+            if (elapsed >= BLINK_MS) {
+              challenge.completed = true;
+              endChallenge(true);
+            }
+          }
+        } else if (act === "mouth") {
+          const mar =
+            lmDist(lm[13], lm[14]) / (lmDist(lm[61], lm[291]) + 1e-6);
+          if (mar > MAR_OPEN) {
+            challenge.mouth.openFrames++;
+            chalStatus.textContent = "嘴巴张开中…";
+            if (challenge.mouth.openFrames >= 8) {
+              challenge.completed = true;
+              endChallenge(true);
+            }
+          } else {
+            challenge.mouth.openFrames = Math.max(
+              0,
+              challenge.mouth.openFrames - 1
+            );
+            chalStatus.textContent = "张开嘴巴！";
+          }
+        } else if (act === "shake") {
+          const nose = lm[4], lb = lm[234], rb = lm[454];
+          const cx   = (lb.x + rb.x) / 2;
+          const fw   = Math.abs(rb.x - lb.x) + 1e-6;
+          const nx   = (nose.x - cx) / fw;
+          const cur  = nx > SHAKE_THRESH ? 1 : nx < -SHAKE_THRESH ? -1 : 0;
+          if (cur !== 0 && cur !== challenge.shake.dir) {
+            challenge.shake.dir = cur;
+            challenge.shake.changes++;
+          }
+          chalStatus.textContent =
+            "摇头 " + Math.floor(challenge.shake.changes / 2) + "/2…";
+          if (challenge.shake.changes >= 4) {
+            challenge.completed = true;
+            endChallenge(true);
+          }
+        }
+      }
+
+      // =================================================================
+      // Universal Rule Challenge System
+      // =================================================================
+
+      const uChalOverlay = document.getElementById("universalOverlay");
+      const uChalIcon    = document.getElementById("uchal-icon");
+      const uChalLabel   = document.getElementById("uchal-label");
+      const uChalStatus  = document.getElementById("uchal-status");
+      const uChalBarFill = document.getElementById("uchal-bar-fill");
+
+      const universalChallenge = {
+        active: false,
+        action: null,
+        completed: false,
+        timeLeft: 0,
+        MAX_TIME: 5,
+        blink:    { frames: 0 },
+        mouth:    { frames: 0 },
+        headmove: { hDir: 0, hChanges: 0, vDir: 0, vChanges: 0 },
+      };
+
+      function startUniversalChallenge(rule) {
+        universalChallenge.active    = true;
+        universalChallenge.completed = false;
+        universalChallenge.action    = rule.id;
+        universalChallenge.timeLeft  = universalChallenge.MAX_TIME;
+        universalChallenge.blink     = { frames: 0 };
+        universalChallenge.mouth     = { frames: 0 };
+        universalChallenge.headmove  = { hDir: 0, hChanges: 0, vDir: 0, vChanges: 0 };
+        uChalIcon.textContent    = rule.icon;
+        uChalLabel.textContent   = rule.label;
+        uChalStatus.textContent  = "请执行！";
+        uChalBarFill.style.width = "100%";
+        uChalOverlay.className   = "active";
+      }
+
+      function endUniversalChallenge(success) {
+        if (!universalChallenge.active) return;
+        universalChallenge.active = false;
+        if (success) {
+          uChalStatus.textContent = "✓ 完成！";
+          uChalOverlay.className  = "active success";
+          addLog("✓ 通用规则完成。");
+        } else {
+          uChalStatus.textContent = "✗ 违规！−1♥";
+          uChalOverlay.className  = "active fail";
+          state.me.lives = Math.max(0, state.me.lives - 1);
+          renderLives();
+          addLog("❌ 未执行通用规则，扣 1 生命值。", null, { rule: true });
+        }
+        setTimeout(() => { uChalOverlay.className = ""; }, 1200);
+      }
+
+      function updateUniversalChallenge(dt) {
+        if (!universalChallenge.active) return;
+        universalChallenge.timeLeft -= dt;
+        uChalBarFill.style.width =
+          Math.max(0, (universalChallenge.timeLeft / universalChallenge.MAX_TIME) * 100) + "%";
+        if (universalChallenge.timeLeft <= 0) endUniversalChallenge(false);
+      }
+
+      function processUniversalChallenge(lm) {
+        const act = universalChallenge.action;
+
+        if (act === "u_blink") {
+          const ear = (earVal(lm, L_EYE_IDX) + earVal(lm, R_EYE_IDX)) / 2;
+          if (ear < EAR_CLOSED) {
+            universalChallenge.blink.frames++;
+            uChalStatus.textContent = "眨眼中…";
+            if (universalChallenge.blink.frames >= 3) {
+              universalChallenge.completed = true;
+              endUniversalChallenge(true);
+            }
+          } else {
+            universalChallenge.blink.frames = 0;
+            uChalStatus.textContent = "请眨眼！";
+          }
+        } else if (act === "u_mouth") {
+          const mar = lmDist(lm[13], lm[14]) / (lmDist(lm[61], lm[291]) + 1e-6);
+          if (mar > MAR_OPEN) {
+            universalChallenge.mouth.frames++;
+            uChalStatus.textContent = "嘴巴张开中…";
+            if (universalChallenge.mouth.frames >= 8) {
+              universalChallenge.completed = true;
+              endUniversalChallenge(true);
+            }
+          } else {
+            universalChallenge.mouth.frames = Math.max(0, universalChallenge.mouth.frames - 1);
+            uChalStatus.textContent = "张开嘴！";
+          }
+        } else if (act === "u_headmove") {
+          const nose = lm[4], lb = lm[234], rb = lm[454];
+          // Lateral shake
+          const faceCX = (lb.x + rb.x) / 2;
+          const faceW  = Math.abs(rb.x - lb.x) + 1e-6;
+          const nx     = (nose.x - faceCX) / faceW;
+          const hCur   = nx > SHAKE_THRESH ? 1 : nx < -SHAKE_THRESH ? -1 : 0;
+          if (hCur !== 0 && hCur !== universalChallenge.headmove.hDir) {
+            universalChallenge.headmove.hDir = hCur;
+            universalChallenge.headmove.hChanges++;
+          }
+          // Vertical nod
+          const faceCY = (lm[10].y + lm[152].y) / 2;
+          const faceH  = Math.abs(lm[10].y - lm[152].y) + 1e-6;
+          const ny     = (nose.y - faceCY) / faceH;
+          const vCur   = ny > 0.08 ? 1 : ny < -0.08 ? -1 : 0;
+          if (vCur !== 0 && vCur !== universalChallenge.headmove.vDir) {
+            universalChallenge.headmove.vDir = vCur;
+            universalChallenge.headmove.vChanges++;
+          }
+          const total = universalChallenge.headmove.hChanges + universalChallenge.headmove.vChanges;
+          uChalStatus.textContent = total > 0 ? "继续！" : "摇头或点头！";
+          if (total >= 2) {
+            universalChallenge.completed = true;
+            endUniversalChallenge(true);
+          }
+        }
+      }
+
+      // ---------- FaceMesh + Camera setup ----------
+      try {
+        const faceMesh = new FaceMesh({
+          locateFile: (f) =>
+            "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/" + f,
+        });
+        faceMesh.setOptions({
+          maxNumFaces: 1,
+          refineLandmarks: true,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5,
+        });
+        faceMesh.onResults((results) => {
+          if (
+            results.multiFaceLandmarks &&
+            results.multiFaceLandmarks.length > 0
+          ) {
+            processFace(results.multiFaceLandmarks[0], performance.now());
+          }
+        });
+
+        const camStream = new Camera(webcamVideo, {
+          onFrame: async () => {
+            await faceMesh.send({ image: webcamVideo });
+          },
+          width: 320,
+          height: 240,
+        });
+        camStream.start().catch(() => {
+          addLog("摄像头启动失败，动作检测不可用。");
+        });
+      } catch (e) {
+        addLog("动作检测初始化失败：" + e.message);
+      }
+
+      // =================================================================
+      // Boot
+      // =================================================================
+      buildScene();
+      seedLog();
+      renderLives();
+      renderTimer();
+      requestAnimationFrame(frame);
+
+      // -----------------------------------------------------------------
+      // MainSync: parent React shell (onboarding) sends role + rules here.
+      // -----------------------------------------------------------------
+      function applyMainSync(p) {
+        if (!p || typeof p !== "object") return;
+        if (state.spectator) {
+          if (p.ruleText) addLog("「守则」" + String(p.ruleText), null, { rule: true });
+          if (p.winText) addLog("「胜利」" + String(p.winText), null, {});
+          return;
+        }
+        var a = p.sceneAnimal;
+        if (a !== "lion" && a !== "owl" && a !== "giraffe") a = "owl";
+        state.me.animal = a;
+        state.lastMainSyncName =
+          typeof p.playerName === "string" ? p.playerName : "";
+        if (typeof p.lives === "number") {
+          state.me.lives = Math.max(0, Math.min(3, Math.floor(p.lives)));
+        }
+        const nm = typeof p.playerName === "string" ? p.playerName : "";
+        if (state.nodes.me && state.nodes.me.parentNode) {
+          state.nodes.me.parentNode.removeChild(state.nodes.me);
+        }
+        const newMe = makeAnimalAvatar({ animal: a, isMe: true, name: nm });
+        layers.me.appendChild(newMe);
+        state.nodes.me = newMe;
+        renderLives();
+        if (p.ruleText) addLog("「守则」" + String(p.ruleText), null, { rule: true });
+        if (p.winText) addLog("「胜利」" + String(p.winText), null, {});
+      }
+      function hash01(s) {
+        var h = 0;
+        for (var i = 0; i < s.length; i++)
+          h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+        return (Math.abs(h) % 1000) / 1000;
+      }
+      function applyMSView(p) {
+        if (!p || typeof p !== "object") return;
+        state.spectator = Boolean(p.spectator);
+        if (state.spectator && state.nodes.me) {
+          state.nodes.me.setAttribute("visibility", "hidden");
+        } else if (state.nodes.me) {
+          state.nodes.me.setAttribute("visibility", "visible");
+        }
+      }
+      function applyNetPeers(raw) {
+        if (!raw || typeof raw !== "object") return;
+        var peers = raw.peers;
+        if (!peers || typeof peers !== "object") return;
+        var selfId = String(raw.selfId != null ? raw.selfId : state.netSelfId || "");
+        var spec = state.spectator;
+        for (var pid in peers) {
+          if (!spec && pid === selfId) continue;
+          var pr = peers[pid];
+          if (!pr || typeof pr !== "object") continue;
+          var row = state.others.find(function (o) { return o.id === pid; });
+          if (!row) continue;
+          if (pr.x != null && Number.isFinite(pr.x)) row.x = clamp(pr.x, BORDER, MAP_W - BORDER);
+          if (pr.y != null && Number.isFinite(pr.y)) row.y = clamp(pr.y, BORDER, MAP_H - BORDER);
+          if (pr.moving != null) row.moving = !!pr.moving;
+          if (pr.animKey != null) row.animKey = String(pr.animKey).slice(0, 64);
+          if (pr.facing != null) row.facing = +pr.facing;
+        }
+      }
+      function applyRoomPlayers(raw) {
+        if (!raw || typeof raw !== "object") return;
+        var pl = raw.players;
+        if (!Array.isArray(pl)) return;
+        var selfId = raw.selfId || "";
+        var selfName = String(raw.selfName || "");
+        state.netSelfId = selfId;
+        state.roomStarted = Boolean(raw.roomStarted);
+        if (raw.spectator != null) state.spectator = Boolean(raw.spectator);
+        var toRem = raw.itemsRemoved;
+        if (Array.isArray(toRem) && toRem.length) {
+          for (var rii = 0; rii < toRem.length; rii++) {
+            removeItemByIdNoEffects(toRem[rii]);
+          }
+        }
+        var others = pl.filter(function (q) {
+          if (!q || !q.id) return false;
+          if (selfId) return q.id !== selfId;
+          if (selfName && q.name === selfName) return false;
+          if (!selfId && !selfName && state.lastMainSyncName && q.name === state.lastMainSyncName)
+            return false;
+          return true;
+        });
+        for (var oi = 0; oi < state.others.length; oi++) {
+          var op = state.others[oi];
+          var onode = state.nodes.others.get(op.id);
+          if (onode && onode.parentNode) onode.parentNode.removeChild(onode);
+          state.nodes.others.delete(op.id);
+        }
+        state.others = [];
+        var n = others.length;
+        var wcx = MAP_W / 2;
+        var wcy = MAP_H / 2;
+        for (var j = 0; j < n; j++) {
+          var q = others[j];
+          var an = q.sceneAnimal;
+          if (an !== "lion" && an !== "owl" && an !== "giraffe") an = "owl";
+          var t = (2 * Math.PI * j) / Math.max(n, 1) + hash01(String(q.id)) * 0.4;
+          var r = 220 + 50 * (j % 2);
+          var x = wcx + Math.cos(t) * r;
+          var y = wcy + Math.sin(t) * r;
+          x = clamp(x, BORDER, MAP_W - BORDER);
+          y = clamp(y, BORDER, MAP_H - BORDER);
+          var row = {
+            id: q.id,
+            name: String(q.name || "…"),
+            animal: an,
+            x: x,
+            y: y,
+            vx: 0,
+            vy: 0,
+            moving: false,
+            animKey: "idle",
+            facing: 0,
+            netRemote: true,
+          };
+          state.others.push(row);
+          var g = makeAnimalAvatar({ animal: an, isMe: false, name: row.name });
+          layers.others.appendChild(g);
+          state.nodes.others.set(q.id, g);
+        }
+        if (n > 0) addLog("已同步 " + n + " 名同房间玩家", null, {});
+        if (
+          raw.roomStarted &&
+          state.items.length === 0 &&
+          (!toRem || toRem.length === 0)
+        ) {
+          reseedMapItems();
+        }
+      }
+      window.addEventListener("message", function (ev) {
+        var d = ev.data;
+        if (!d || d.source !== "nocturne-zoo" || d.payload == null) return;
+        if (d.type === "NZ_MS_VIEW") {
+          applyMSView(d.payload);
+        } else if (d.type === "NZ_PLAYER_SYNC") {
+          applyMainSync(d.payload);
+        } else if (d.type === "NZ_ROOM_PLAYERS") {
+          applyRoomPlayers(d.payload);
+        } else if (d.type === "NZ_MAIN_SCENE_NET") {
+          applyNetPeers(d.payload);
+        } else if (d.type === "NZ_MS_ITEM") {
+          if (d.payload && d.payload.events) applyItemInbox(d.payload.events);
+        }
+      });
+    </script>
+  </body>
+</html>
