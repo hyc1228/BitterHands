@@ -30,6 +30,9 @@ export const ClientMessageTypes = {
   JOIN: "join",
   SUBMIT_PHOTO: "submit_photo",
   SUBMIT_ANSWERS: "submit_answers",
+  /** Player passed Final Check; entered the lobby waiting for OB to start. */
+  READY: "ready",
+  /** OB-only on the server; player START is rejected with `start_forbidden_player`. */
   START: "start",
   VIOLATION: "violation",
   CHAT: "chat",
@@ -51,6 +54,8 @@ export interface PublicPlayer {
   violations: number;
   /** URL path to profile photo, e.g. `/avatars/...` (static) or `/party/.../__nz_avatar?...` (in-memory). */
   avatarUrl: string | null;
+  /** Player passed Final Check and is in the lobby. OB starts the game when enough are ready. */
+  ready?: boolean;
 }
 
 export interface RoomSnapshot {
@@ -58,6 +63,8 @@ export interface RoomSnapshot {
   started: boolean;
   startedAt: number | null;
   durationMs: number;
+  /** Mirror of `players.filter(p => p.ready).length` for OB UI. */
+  readyCount?: number;
   players: PublicPlayer[];
   /** Authoritative: item ids (h1, a1, …) already picked up in this run. */
   mainSceneItemsRemoved?: string[];

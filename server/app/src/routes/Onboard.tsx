@@ -242,8 +242,8 @@ export default function Onboard() {
   function goToCheck() {
     setStep("check");
   }
-  function goToGame() {
-    nav("/main-scene", { replace: true });
+  function goToLobby() {
+    nav("/lobby", { replace: true });
   }
   function backToReveal() {
     setStep("reveal");
@@ -319,7 +319,7 @@ export default function Onboard() {
       ) : null}
 
       {step === "check" && rulesCard ? (
-        <CheckStep onPassed={goToGame} onBack={backToReveal} />
+        <CheckStep onPassed={goToLobby} onBack={backToReveal} />
       ) : null}
 
       {error ? <div style={{ color: "#ff9a8a" }}>{error}</div> : null}

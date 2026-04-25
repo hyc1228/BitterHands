@@ -9,7 +9,7 @@ import {
   postToMainSceneFrame,
   type ObCameraPayload
 } from "../mainSync/postToMainSceneFrame";
-import type { CameraFrame, Lang, PublicPlayer } from "../party/protocol";
+import { ClientMessageTypes, type CameraFrame, type Lang, type PublicPlayer } from "../party/protocol";
 import { usePartyStore, type LogEntry } from "../party/store";
 import { pickObSpotlight } from "../utils/obSpotlight";
 import PlayerRowFace from "../components/PlayerRowFace";
@@ -58,6 +58,7 @@ export default function Ob() {
   const setMode = usePartyStore((s) => s.setMode);
   const connect = usePartyStore((s) => s.connect);
   const disconnect = usePartyStore((s) => s.disconnect);
+  const send = usePartyStore((s) => s.send);
   const snapshot = usePartyStore((s) => s.snapshot);
   const log = usePartyStore((s) => s.log);
   const cameraFrames = usePartyStore((s) => s.cameraFrames);
@@ -133,6 +134,10 @@ export default function Ob() {
     };
   }, [setMode]);
 
+  function handleStartGame() {
+    send(ClientMessageTypes.START);
+  }
+
   async function handleConnect() {
     setError(null);
     try {
@@ -148,6 +153,17 @@ export default function Ob() {
   }
 
   const players = snapshot?.players ?? [];
+  const realPlayers = useMemo(
+    () => players.filter((p) => p.name.toLowerCase() !== "ob"),
+    [players]
+  );
+  const readyCount = useMemo(
+    () => realPlayers.filter((p) => p.ready).length,
+    [realPlayers]
+  );
+  const totalPlayers = realPlayers.length;
+  const canStart = conn === "open" && !gameLive && readyCount > 0;
+  const allReady = totalPlayers > 0 && readyCount === totalPlayers;
   const facePlayers = useMemo(
     () => players.slice(0, OB_FACE_SLOTS),
     [players]
@@ -192,6 +208,22 @@ export default function Ob() {
           )}
         </div>
         {error ? <div style={{ color: "#ff9a8a" }}>{error}</div> : null}
+        {!gameLive ? (
+          <div className={"ob-start-row" + (allReady ? " is-all-ready" : "")}>
+            <button
+              type="button"
+              className="primary ob-start-btn"
+              onClick={handleStartGame}
+              disabled={!canStart}
+              aria-disabled={!canStart}
+            >
+              {t.obStartGame}
+            </button>
+            <span className="muted ob-start-meta">
+              {t.obReadyCount(readyCount, totalPlayers)}
+            </span>
+          </div>
+        ) : null}
         <div>
           <div className="section-title">
             {t.players} <span className="muted">({players.length})</span>

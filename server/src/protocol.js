@@ -27,6 +27,9 @@ export const ClientMessageTypes = /** @type {const} */ ({
   JOIN: "join",
   SUBMIT_PHOTO: "submit_photo",
   SUBMIT_ANSWERS: "submit_answers",
+  /** Player passed the Final Check and is in the lobby waiting for OB to start. */
+  READY: "ready",
+  /** Only OB-side connections (non-players) may send START; ignored otherwise. */
   START: "start",
   VIOLATION: "violation",
   CHAT: "chat",

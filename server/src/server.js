@@ -197,7 +197,8 @@ export default class Server {
             joinedAt: Date.now(),
             lang,
             avatarUrl: null,
-            photoSeed: undefined
+            photoSeed: undefined,
+            ready: false
           };
           this.players.set(conn.id, player);
           this._broadcast(ServerEventTypes.PLAYER_JOINED, this._publicPlayer(player));
@@ -300,8 +301,29 @@ export default class Server {
         return;
       }
 
+      case ClientMessageTypes.READY: {
+        const player = this.players.get(conn.id);
+        if (!player) return;
+        if (player.ready) return;
+        player.ready = true;
+        this._broadcast(ServerEventTypes.PLAYER_UPDATED, this._publicPlayer(player));
+        this._broadcast(ServerEventTypes.SYSTEM, {
+          code: "PLAYER_READY",
+          params: { name: player.name },
+          message: `${player.name} 已就绪，等待 OB 开局`
+        });
+        this._sendRoomSnapshot();
+        return;
+      }
+
       case ClientMessageTypes.START: {
         if (this.started) return;
+        // OB-only: connections that didn't JOIN have no player entry. This guarantees the
+        // whole room transitions together when a non-playing operator decides to begin.
+        if (this.players.has(conn.id)) {
+          conn.send(JSON.stringify({ type: "error", error: "start_forbidden_player" }));
+          return;
+        }
         this.started = true;
         this.startedAt = Date.now();
         this.mainSceneItemsRemoved = new Set();
@@ -589,17 +611,21 @@ export default class Server {
       lives: p.lives,
       alive: p.alive,
       violations: p.violations,
-      avatarUrl: p.avatarUrl ?? null
+      avatarUrl: p.avatarUrl ?? null,
+      ready: !!p.ready
     };
   }
 
   _publicSnapshot() {
+    const players = Array.from(this.players.values()).map((p) => this._publicPlayer(p));
+    const readyCount = players.reduce((n, p) => (p.ready ? n + 1 : n), 0);
     return {
       roomId: this.party.id,
       started: this.started,
       startedAt: this.startedAt,
       durationMs: this.durationMs,
-      players: Array.from(this.players.values()).map((p) => this._publicPlayer(p)),
+      readyCount,
+      players,
       mainSceneItemsRemoved: this.started
         ? Array.from(this.mainSceneItemsRemoved)
         : []

@@ -36,10 +36,8 @@ export default function Game() {
     setChat("");
   }
 
-  function handleStart() {
-    send(ClientMessageTypes.START);
-    nav("/main-scene", { replace: true });
-  }
+  // START is OB-only now (server rejects player START with `start_forbidden_player`).
+  // Players reach `/main-scene` automatically from `/lobby` once OB triggers GAME_STARTED.
 
   function handleViolation() {
     send(ClientMessageTypes.VIOLATION, { detail: "manual test" });
@@ -78,7 +76,6 @@ export default function Game() {
         )}
 
         <div className="row" style={{ marginTop: 4 }}>
-          <button onClick={handleStart}>{t.startGame}</button>
           <button className="ghost" onClick={handleViolation}>
             violation
           </button>

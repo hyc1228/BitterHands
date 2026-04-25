@@ -99,6 +99,17 @@ interface Dict {
   revealContinue: string;
   checkBack: string;
   checkBackAria: string;
+  /** Lobby (synchronized waiting room shown after Final Check passes) */
+  lobbyTitle: string;
+  lobbyHint: string;
+  lobbyReadyLabel: string;
+  lobbyReadyHead: string;
+  lobbyWaitingHead: string;
+  lobbyOpHint: string;
+  lobbySelfPrefix: string;
+  /** OB controls: start the synchronized countdown for everyone in the lobby. */
+  obStartGame: string;
+  obReadyCount: (n: number, total: number) => string;
   gateTitle: string;
   gateHint: string;
   gateEnable: string;
@@ -199,6 +210,15 @@ const en: Dict = {
   revealContinue: "Continue",
   checkBack: "Back",
   checkBackAria: "Back to reveal",
+  lobbyTitle: "Lobby",
+  lobbyHint: "You're in. The countdown starts together when OB triggers it.",
+  lobbyReadyLabel: "ready",
+  lobbyReadyHead: "Ready",
+  lobbyWaitingHead: "Still in onboarding",
+  lobbyOpHint: "Waiting for OB to start the game…",
+  lobbySelfPrefix: "Your role:",
+  obStartGame: "Start game",
+  obReadyCount: (n, t) => `${n}/${t} ready`,
   gateTitle: "Final check",
   gateHint: "Pass three quick face tests to enter the zoo.",
   gateEnable: "Start face check",
@@ -298,6 +318,15 @@ const zh: Dict = {
   revealContinue: "继续",
   checkBack: "返回",
   checkBackAria: "返回角色页",
+  lobbyTitle: "等待房间",
+  lobbyHint: "你已就绪，等 OB 启动后大家一起开始倒计时。",
+  lobbyReadyLabel: "就绪",
+  lobbyReadyHead: "已就绪",
+  lobbyWaitingHead: "还在创建角色",
+  lobbyOpHint: "等待 OB 开启游戏…",
+  lobbySelfPrefix: "你的角色：",
+  obStartGame: "开始游戏",
+  obReadyCount: (n, t) => `${n}/${t} 已就绪`,
   gateTitle: "入园前自检",
   gateHint: "通过三关面部测试，才能进入动物园。",
   gateEnable: "开启自检",

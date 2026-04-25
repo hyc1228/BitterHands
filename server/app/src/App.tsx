@@ -2,6 +2,7 @@ import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import Layout from "./components/Layout";
 import Join from "./routes/Join";
 import Onboard from "./routes/Onboard";
+import Lobby from "./routes/Lobby";
 import Game from "./routes/Game";
 import MainScene from "./routes/MainScene";
 import Ob from "./routes/Ob";
@@ -13,6 +14,7 @@ export default function App() {
         <Routes>
           <Route path="/" element={<Join />} />
           <Route path="/onboard" element={<Onboard />} />
+          <Route path="/lobby" element={<Lobby />} />
           <Route path="/game" element={<Game />} />
           <Route path="/main-scene" element={<MainScene />} />
           <Route path="/ob" element={<Ob />} />
