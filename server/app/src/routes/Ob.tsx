@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_ROOM_ID, getMainSceneFrameSrc, OB_FACE_SLOTS, OB_LOBBY_SPOTLIGHTS } from "../constants";
 import { animalLocalized, dict } from "../i18n";
 import { useMainSceneIframeBridge } from "../hooks/useMainSceneIframeBridge";
@@ -11,6 +11,22 @@ import PlayerRowFace from "../components/PlayerRowFace";
 function obAnimalLabel(lang: Lang, animal: PublicPlayer["animal"], unknown: string): string {
   if (animal == null) return unknown;
   return animalLocalized[lang][animal] ?? animal;
+}
+
+function obFrameVisualEqual(
+  a: CameraFrame | null,
+  b: CameraFrame | null
+): boolean {
+  if (a === b) return true;
+  if (a == null || b == null) return a === b;
+  return a.dataUrl === b.dataUrl;
+}
+
+/** Fields used to render face / spotlight name + animal; avoids re-renders when snapshot reuses new object refs. */
+function obPlayerTileEqual(a: PublicPlayer | null, b: PublicPlayer | null): boolean {
+  if (a === b) return true;
+  if (a == null || b == null) return a === b;
+  return a.id === b.id && a.name === b.name && a.animal === b.animal;
 }
 
 export default function Ob() {
@@ -263,80 +279,107 @@ export default function Ob() {
   );
 }
 
-function ObSpotlightTile({
-  player,
-  frame,
-  lang
-}: {
-  player: PublicPlayer;
-  frame: CameraFrame | null;
-  lang: Lang;
-}) {
-  const t = dict(lang);
-  const animal = obAnimalLabel(lang, player.animal, t.ownAnimalUnknown);
-  return (
-    <div className="ob-spotlight-tile" data-ob-spotlight={player.id}>
-      <div className="ob-spotlight-screen" title={player.name}>
-        {frame ? (
-          <img src={frame.dataUrl} alt={`${player.name} camera`} />
-        ) : (
-          <div className="ob-spotlight-placeholder" aria-hidden>
-            <span className="ob-face-initial">{player.name.charAt(0).toUpperCase()}</span>
-          </div>
-        )}
-      </div>
-      <div className="ob-spotlight-label">
-        <div className="ob-spotlight-name" title={player.name}>
-          {player.name.length > 12 ? `${player.name.slice(0, 11)}…` : player.name}
+const ObSpotlightTile = memo(
+  function ObSpotlightTile({
+    player,
+    frame,
+    lang
+  }: {
+    player: PublicPlayer;
+    frame: CameraFrame | null;
+    lang: Lang;
+  }) {
+    const t = dict(lang);
+    const animal = obAnimalLabel(lang, player.animal, t.ownAnimalUnknown);
+    return (
+      <div className="ob-spotlight-tile" data-ob-spotlight={player.id}>
+        <div className="ob-spotlight-screen" title={player.name}>
+          {frame ? (
+            <img
+              className="ob-cam-image"
+              src={frame.dataUrl}
+              alt={`${player.name} camera`}
+              width={160}
+              height={90}
+              decoding="async"
+            />
+          ) : (
+            <div className="ob-spotlight-placeholder" aria-hidden>
+              <span className="ob-face-initial">{player.name.charAt(0).toUpperCase()}</span>
+            </div>
+          )}
         </div>
-        <div className="ob-spotlight-animal" title={animal}>
-          {animal}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function ObFaceSlot({
-  index,
-  player,
-  frame,
-  lang
-}: {
-  index: number;
-  player: PublicPlayer | null;
-  frame: CameraFrame | null;
-  lang: Lang;
-}) {
-  const t = dict(lang);
-  const animal = player ? obAnimalLabel(lang, player.animal, t.ownAnimalUnknown) : null;
-  return (
-    <div className="ob-face-slot" data-ob-slot={index}>
-      <div className="ob-face-circle" title={player?.name ?? undefined}>
-        {frame ? (
-          <img src={frame.dataUrl} alt={player ? `${player.name} face` : "camera"} />
-        ) : (
-          <div className="ob-face-placeholder" aria-hidden>
-            {player ? <span className="ob-face-initial">{player.name.charAt(0).toUpperCase()}</span> : null}
-            {!player ? <span className="ob-face-empty">·</span> : null}
+        <div className="ob-spotlight-label">
+          <div className="ob-spotlight-name" title={player.name}>
+            {player.name.length > 12 ? `${player.name.slice(0, 11)}…` : player.name}
           </div>
-        )}
-      </div>
-      {player ? (
-        <div className="ob-face-label">
-          <div className="ob-face-name" title={player.name}>
-            {player.name.length > 8 ? `${player.name.slice(0, 7)}…` : player.name}
-          </div>
-          <div className="ob-face-animal" title={animal ?? undefined}>
+          <div className="ob-spotlight-animal" title={animal}>
             {animal}
           </div>
         </div>
-      ) : (
-        <div className="ob-face-name muted"> </div>
-      )}
-    </div>
-  );
-}
+      </div>
+    );
+  },
+  (prev, next) =>
+    prev.lang === next.lang &&
+    obPlayerTileEqual(prev.player, next.player) &&
+    obFrameVisualEqual(prev.frame, next.frame)
+);
+
+const ObFaceSlot = memo(
+  function ObFaceSlot({
+    index,
+    player,
+    frame,
+    lang
+  }: {
+    index: number;
+    player: PublicPlayer | null;
+    frame: CameraFrame | null;
+    lang: Lang;
+  }) {
+    const t = dict(lang);
+    const animal = player ? obAnimalLabel(lang, player.animal, t.ownAnimalUnknown) : null;
+    return (
+      <div className="ob-face-slot" data-ob-slot={index}>
+        <div className="ob-face-circle" title={player?.name ?? undefined}>
+          {frame ? (
+            <img
+              className="ob-cam-image"
+              src={frame.dataUrl}
+              alt={player ? `${player.name} face` : "camera"}
+              width={160}
+              height={90}
+              decoding="async"
+            />
+          ) : (
+            <div className="ob-face-placeholder" aria-hidden>
+              {player ? <span className="ob-face-initial">{player.name.charAt(0).toUpperCase()}</span> : null}
+              {!player ? <span className="ob-face-empty">·</span> : null}
+            </div>
+          )}
+        </div>
+        {player ? (
+          <div className="ob-face-label">
+            <div className="ob-face-name" title={player.name}>
+              {player.name.length > 8 ? `${player.name.slice(0, 7)}…` : player.name}
+            </div>
+            <div className="ob-face-animal" title={animal ?? undefined}>
+              {animal}
+            </div>
+          </div>
+        ) : (
+          <div className="ob-face-name muted"> </div>
+        )}
+      </div>
+    );
+  },
+  (prev, next) =>
+    prev.index === next.index &&
+    prev.lang === next.lang &&
+    obPlayerTileEqual(prev.player, next.player) &&
+    obFrameVisualEqual(prev.frame, next.frame)
+);
 
 function ObPlayer({ player, lang }: { player: PublicPlayer; lang: Lang }) {
   const t = dict(lang);

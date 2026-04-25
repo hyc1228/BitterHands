@@ -14,15 +14,16 @@ interface Opts {
 /**
  * Periodically grabs a low-res JPEG snapshot from the given <video> element
  * and sends it over the WebSocket as a `camera_frame` message so the OB view
- * can render a live thumbnail wall.
+ * can render a live thumbnail wall. Defaults are tuned for small OB tiles
+ * (lower resolution and quality to cut bandwidth and main-thread work).
  */
 export function useCameraFrameUpload({
   enabled,
   videoEl,
-  width = 240,
-  height = 135,
-  intervalMs = 600,
-  quality = 0.55
+  width = 160,
+  height = 90,
+  intervalMs = 800,
+  quality = 0.4
 }: Opts) {
   const send = usePartyStore((s) => s.send);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);

@@ -16,7 +16,9 @@ export const DETECTION_DEFAULTS = {
   shakeThresh: 0.08,
   /** direction changes needed (same as index.html SHAKE_NEEDED) */
   shakeChangesNeeded: 4,
-  mouthOpenFrames: 8
+  mouthOpenFrames: 8,
+  /** Onboard expression gate: hold eyes closed for this long (positive test). */
+  eyesClosedHoldMs: 1500
 } as const;
 
 function dist(
@@ -144,4 +146,40 @@ export function blinkProgress(s: BlinkHoldState, now: number): number {
 /** Average EAR (both eyes) for display / owl-style rules. */
 export function averageEar(lm: Landmarks): number {
   return (earValue(lm, LEFT_EYE_EAR) + earValue(lm, RIGHT_EYE_EAR)) / 2;
+}
+
+/**
+ * Positive eye-closed test: keep both eyes closed continuously for `eyesClosedHoldMs`.
+ * Opening eyes resets progress. Mirror image of `BlinkHoldState` (which requires *not* blinking).
+ */
+export type EyesClosedState = {
+  done: boolean;
+  since: number | null;
+};
+
+export function createEyesClosedState(): EyesClosedState {
+  return { done: false, since: null };
+}
+
+export function updateEyesClosed(
+  lm: Landmarks,
+  s: EyesClosedState,
+  now: number
+): EyesClosedState {
+  if (s.done) return s;
+  const avg = (earValue(lm, LEFT_EYE_EAR) + earValue(lm, RIGHT_EYE_EAR)) / 2;
+  if (avg >= DETECTION_DEFAULTS.earClosed) {
+    return { done: false, since: null };
+  }
+  const since = s.since ?? now;
+  if (now - since >= DETECTION_DEFAULTS.eyesClosedHoldMs) {
+    return { done: true, since };
+  }
+  return { done: false, since };
+}
+
+export function eyesClosedProgress(s: EyesClosedState, now: number): number {
+  if (s.done) return 1;
+  if (s.since == null) return 0;
+  return Math.min(1, (now - s.since) / DETECTION_DEFAULTS.eyesClosedHoldMs);
 }

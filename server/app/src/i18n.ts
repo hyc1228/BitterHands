@@ -83,6 +83,23 @@ interface Dict {
   langAria: string;
   cameras: string;
   events: string;
+  /** Reveal-screen "expression gate" before Enter the Zoo */
+  gateTitle: string;
+  gateHint: string;
+  gateEnable: string;
+  gateRetry: string;
+  gateLoading: string;
+  gatePassed: string;
+  gateLocked: string;
+  gateTaskShake: string;
+  gateTaskMouth: string;
+  gateTaskCloseEyes: string;
+  gateProgressShake: (n: number, t: number) => string;
+  gateProgressMouth: string;
+  gateProgressEyesOpen: string;
+  gateProgressEyesHold: (secondsLeft: string) => string;
+  gateOk: string;
+  gateWaiting: string;
 }
 
 const en: Dict = {
@@ -157,7 +174,23 @@ const en: Dict = {
   obLobbyAllPlayers: "All players",
   langAria: "Language",
   cameras: "CAMERAS",
-  events: "ZOO KEEPER LOG"
+  events: "ZOO KEEPER LOG",
+  gateTitle: "Final check",
+  gateHint: "Pass three quick face tests to enter the zoo.",
+  gateEnable: "Start face check",
+  gateRetry: "Try again",
+  gateLoading: "Loading face mesh…",
+  gatePassed: "All checks passed.",
+  gateLocked: "Complete the checks to unlock.",
+  gateTaskShake: "Shake your head",
+  gateTaskMouth: "Open your mouth",
+  gateTaskCloseEyes: "Close eyes for 1.5s",
+  gateProgressShake: (n, t) => `${n}/${t} shakes`,
+  gateProgressMouth: "Hold open…",
+  gateProgressEyesOpen: "Close both eyes…",
+  gateProgressEyesHold: (s) => `Hold ${s}s more…`,
+  gateOk: "Done",
+  gateWaiting: "Waiting…"
 };
 
 const zh: Dict = {
@@ -231,7 +264,23 @@ const zh: Dict = {
   obLobbyAllPlayers: "其他玩家",
   langAria: "界面语言",
   cameras: "摄像头",
-  events: "ZOO KEEPER LOG"
+  events: "ZOO KEEPER LOG",
+  gateTitle: "入园前自检",
+  gateHint: "通过三关面部测试，才能进入动物园。",
+  gateEnable: "开启自检",
+  gateRetry: "再来一次",
+  gateLoading: "正在加载面部网格…",
+  gatePassed: "全部通过！",
+  gateLocked: "完成所有测试后才能进入。",
+  gateTaskShake: "摇摇头",
+  gateTaskMouth: "张大嘴",
+  gateTaskCloseEyes: "闭眼 1.5 秒",
+  gateProgressShake: (n, t) => `${n}/${t} 次`,
+  gateProgressMouth: "保持张嘴…",
+  gateProgressEyesOpen: "请闭上双眼…",
+  gateProgressEyesHold: (s) => `再保持 ${s} 秒…`,
+  gateOk: "完成",
+  gateWaiting: "等待…"
 };
 
 export function dict(lang: Lang): Dict {

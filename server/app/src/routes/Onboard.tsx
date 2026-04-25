@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import CameraCircle, { type CameraCircleHandle } from "../components/CameraCircle";
+import ExpressionGate from "../components/ExpressionGate";
 import PermissionGate from "../components/PermissionGate";
 import { DEFAULT_ROOM_ID } from "../constants";
 import { getRandomQuestions } from "../data/quizLibrary";
@@ -409,6 +410,7 @@ function RevealStep({
 }) {
   const lang = usePartyStore((s) => s.lang);
   const t = dict(lang);
+  const [gatePassed, setGatePassed] = useState(false);
   return (
     <div className="card reveal-card">
       <div className="emoji-big" aria-hidden>
@@ -429,9 +431,18 @@ function RevealStep({
           <p className="reveal-roast">{looksRoast}</p>
         </>
       ) : null}
-      <button className="primary" onClick={onContinue}>
+      <ExpressionGate onPassed={setGatePassed} />
+      <button
+        className="primary reveal-enter"
+        onClick={onContinue}
+        disabled={!gatePassed}
+        aria-disabled={!gatePassed}
+      >
         {t.goToGame}
       </button>
+      {!gatePassed ? (
+        <div className="muted reveal-locked-hint">{t.gateLocked}</div>
+      ) : null}
     </div>
   );
 }
