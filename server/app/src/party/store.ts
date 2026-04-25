@@ -38,6 +38,8 @@ interface PartyStoreState {
   // Onboarding lifecycle helpers
   photoSubmitted: boolean;
   answersSubmitted: boolean;
+  /** Set when server sends `{ type: "error" }` (e.g. room_full). */
+  connectError: string | null;
   // Actions
   setLang: (lang: Lang) => void;
   setName: (name: string) => void;
@@ -49,6 +51,7 @@ interface PartyStoreState {
   /** Clear assignment UI state before a new onboarding / resubmit. */
   clearOnboardingAssignment: () => void;
   pushLog: (entry: Omit<LogEntry, "ts"> & { ts?: number }) => void;
+  clearConnectError: () => void;
   reset: () => void;
 }
 
@@ -104,6 +107,9 @@ export const usePartyStore = create<PartyStoreState>((set, get) => ({
   cameraFrames: new Map(),
   photoSubmitted: false,
   answersSubmitted: false,
+  connectError: null,
+
+  clearConnectError: () => set({ connectError: null }),
 
   setLang: (lang) => {
     try {
@@ -146,7 +152,8 @@ export const usePartyStore = create<PartyStoreState>((set, get) => ({
       roomId,
       myName: name,
       lang,
-      mode: mode ?? get().mode
+      mode: mode ?? get().mode,
+      connectError: null
     });
 
     return new Promise<void>((resolve, reject) => {
@@ -161,7 +168,7 @@ export const usePartyStore = create<PartyStoreState>((set, get) => ({
       });
 
       ws.addEventListener("close", () => {
-        set({ conn: "closed", ws: null });
+        set((s) => ({ conn: "closed", ws: null, connectError: s.connectError }));
       });
 
       ws.addEventListener("error", () => {
@@ -191,7 +198,7 @@ export const usePartyStore = create<PartyStoreState>((set, get) => ({
         /* ignore */
       }
     }
-    set({ ws: null, conn: "closed" });
+    set({ ws: null, conn: "closed", connectError: null });
   },
 
   reset: () =>
@@ -207,7 +214,8 @@ export const usePartyStore = create<PartyStoreState>((set, get) => ({
       log: [],
       cameraFrames: new Map(),
       photoSubmitted: false,
-      answersSubmitted: false
+      answersSubmitted: false,
+      connectError: null
     })
 }));
 
@@ -221,6 +229,11 @@ function handleServerEnvelope(
   get: () => PartyStoreState
 ) {
   const t = msg.type;
+  if (t === "error") {
+    const e = msg as { type: "error"; error: string; max?: number };
+    set({ connectError: e.error });
+    return;
+  }
   if (t === ServerEventTypes.ROOM_SNAPSHOT) {
     set({ snapshot: msg.data as RoomSnapshot });
     return;

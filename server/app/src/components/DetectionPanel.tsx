@@ -1,42 +1,28 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { dict } from "../i18n";
 import { Animals, ClientMessageTypes } from "../party/protocol";
 import { usePartyStore } from "../party/store";
 import { useCameraFrameUpload } from "../hooks/useCameraFrameUpload";
 import { useCameraStream } from "../hooks/useCameraStream";
 import { useFaceMesh } from "../hooks/useFaceMesh";
-
-const LEFT_EYE = { p1: 33, p2: 160, p3: 158, p4: 133, p5: 153, p6: 144 } as const;
-const RIGHT_EYE = { p1: 362, p2: 385, p3: 387, p4: 263, p5: 373, p6: 380 } as const;
-const NOSE_TIP = 1;
-
-interface Pt {
-  x: number;
-  y: number;
-  z?: number;
-}
-
-function dist(a: Pt, b: Pt): number {
-  return Math.hypot(a.x - b.x, a.y - b.y);
-}
-
-function eyeEAR(landmarks: Pt[], idx: typeof LEFT_EYE | typeof RIGHT_EYE): number {
-  const p1 = landmarks[idx.p1];
-  const p2 = landmarks[idx.p2];
-  const p3 = landmarks[idx.p3];
-  const p4 = landmarks[idx.p4];
-  const p5 = landmarks[idx.p5];
-  const p6 = landmarks[idx.p6];
-  if (!p1 || !p2 || !p3 || !p4 || !p5 || !p6) return 1;
-  const A = dist(p2, p6);
-  const B = dist(p3, p5);
-  const C = dist(p1, p4);
-  return (A + B) / (2 * C);
-}
+import {
+  averageEar,
+  createBlinkHoldState,
+  createMouthState,
+  createShakeState,
+  updateBlinkHold,
+  updateMouth,
+  updateShake,
+  shakeShakesCount,
+  DETECTION_DEFAULTS,
+  makeSnapshot,
+  setDeterminationResetHandler,
+  setDeterminationSnapshot
+} from "../determination";
 
 const DET = {
-  owl: { cycleMs: 40000, prepMs: 2000, windowMs: 5000, earThresh: 0.19 },
-  giraffe: { cycleMs: 45000, windowMs: 5000, ampThresh: 0.08, peaksNeeded: 2 }
+  owl: { cycleMs: 40000, prepMs: 2000, windowMs: 5000 },
+  giraffe: { cycleMs: 45000, windowMs: 5000 }
 } as const;
 
 export default function DetectionPanel() {
@@ -46,60 +32,89 @@ export default function DetectionPanel() {
   const send = usePartyStore((s) => s.send);
   const [status, setStatus] = useState<string>(t.detOff);
   const [enabled, setEnabled] = useState(false);
+  const [uiTick, setUiTick] = useState(0);
+  const lastUiMs = useRef(0);
 
   const { stream, error, start, stop } = useCameraStream({
     video: { width: { ideal: 640 }, height: { ideal: 360 } },
     audio: false
   });
-  const videoElRef = useRef<HTMLVideoElement | null>(null);
+  /** Must be state (not `ref.current`) so FaceMesh re-runs after `<video>` mounts. */
+  const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
 
-  // Attach stream to <video>.
+  /** Determination demo (same as `determination/index.html`) — 全局快照来源 */
+  const demoShake = useRef(createShakeState());
+  const demoMouth = useRef(createMouthState());
+  const demoBlink = useRef(createBlinkHoldState());
+
+  const resetDemoStates = useCallback(() => {
+    demoShake.current = createShakeState();
+    demoMouth.current = createMouthState();
+    demoBlink.current = createBlinkHoldState();
+    setUiTick((x) => x + 1);
+  }, []);
+
   useEffect(() => {
-    if (videoElRef.current) {
-      videoElRef.current.srcObject = stream;
-      if (stream) videoElRef.current.play().catch(() => undefined);
-    }
-  }, [stream]);
+    setDeterminationResetHandler(() => {
+      resetDemoStates();
+    });
+    return () => {
+      setDeterminationResetHandler(null);
+      setDeterminationSnapshot(null);
+    };
+  }, [resetDemoStates]);
 
-  // Detection state holders (use refs to keep across renders)
+  useEffect(() => {
+    if (!videoEl) return;
+    videoEl.srcObject = stream;
+    if (stream) void videoEl.play().catch(() => undefined);
+  }, [stream, videoEl]);
+
   const owlWindowActive = useRef(false);
   const blinkSeen = useRef(false);
   const giraffeWindowActive = useRef(false);
-  const noseBaseX = useRef<number | null>(null);
-  const noseMin = useRef<number | null>(null);
-  const noseMax = useRef<number | null>(null);
-  const peaks = useRef(0);
-  const lastDir = useRef(0);
+  const giraffeShake = useRef(createShakeState());
 
-  useFaceMesh({
-    enabled: enabled && !!stream,
-    videoEl: videoElRef.current,
-    onLandmarks: (landmarks) => {
-      if (myAnimal === Animals.OWL) {
-        const ear = (eyeEAR(landmarks, LEFT_EYE) + eyeEAR(landmarks, RIGHT_EYE)) / 2;
-        const blink = ear < DET.owl.earThresh;
-        if (owlWindowActive.current && blink) blinkSeen.current = true;
+  const onLandmarks = useCallback(
+    (landmarks: { x: number; y: number; z?: number }[]) => {
+      const now = performance.now();
+      demoShake.current = updateShake(landmarks, demoShake.current);
+      demoMouth.current = updateMouth(landmarks, demoMouth.current);
+      demoBlink.current = updateBlinkHold(landmarks, demoBlink.current, now);
+      setDeterminationSnapshot(
+        makeSnapshot(
+          demoShake.current,
+          demoMouth.current,
+          demoBlink.current,
+          now
+        )
+      );
+
+      if (myAnimal === Animals.OWL && owlWindowActive.current) {
+        if (averageEar(landmarks) < DETECTION_DEFAULTS.earClosed) {
+          blinkSeen.current = true;
+        }
       }
       if (myAnimal === Animals.GIRAFFE && giraffeWindowActive.current) {
-        const noseX = landmarks[NOSE_TIP]?.x;
-        if (typeof noseX !== "number") return;
-        if (noseBaseX.current == null) noseBaseX.current = noseX;
-        noseMin.current = noseMin.current == null ? noseX : Math.min(noseMin.current, noseX);
-        noseMax.current = noseMax.current == null ? noseX : Math.max(noseMax.current, noseX);
-        const dx = noseX - noseBaseX.current;
-        const dir = dx > 0.01 ? 1 : dx < -0.01 ? -1 : 0;
-        if (dir !== 0 && lastDir.current !== 0 && dir !== lastDir.current) {
-          peaks.current += 1;
-        }
-        if (dir !== 0) lastDir.current = dir;
+        giraffeShake.current = updateShake(landmarks, giraffeShake.current);
       }
-    }
+
+      if (now - lastUiMs.current > 80) {
+        lastUiMs.current = now;
+        setUiTick((x) => x + 1);
+      }
+    },
+    [myAnimal]
+  );
+
+  const { status: meshStatus, lastError: meshError } = useFaceMesh({
+    enabled: enabled && !!stream,
+    videoEl,
+    onLandmarks
   });
 
-  // Frame upload (for OB)
-  useCameraFrameUpload({ enabled: enabled && !!stream, videoEl: videoElRef.current });
+  useCameraFrameUpload({ enabled: enabled && !!stream, videoEl });
 
-  // Owl + Giraffe scheduling
   useEffect(() => {
     if (!enabled) return;
     if (myAnimal !== Animals.OWL) return;
@@ -151,27 +166,17 @@ export default function DetectionPanel() {
       timeoutId = window.setTimeout(() => {
         if (!alive) return;
         giraffeWindowActive.current = true;
-        noseBaseX.current = null;
-        noseMin.current = null;
-        noseMax.current = null;
-        peaks.current = 0;
-        lastDir.current = 0;
+        giraffeShake.current = createShakeState();
         setStatus("GIRAFFE: swing your neck (5s)");
         timeoutId = window.setTimeout(() => {
           giraffeWindowActive.current = false;
           if (!alive) return;
-          const amp =
-            noseMax.current != null && noseMin.current != null
-              ? Math.abs(noseMax.current - noseMin.current)
-              : 0;
-          const ok = amp >= DET.giraffe.ampThresh && peaks.current >= DET.giraffe.peaksNeeded;
+          const ok = giraffeShake.current.done;
           if (!ok) {
-            setStatus(
-              `GIRAFFE: not enough swing (amp=${amp.toFixed(3)}, peaks=${peaks.current}) → violation`
-            );
+            setStatus("GIRAFFE: not enough swing → violation");
             send(ClientMessageTypes.VIOLATION, { detail: "neck swing too small (giraffe rule)" });
           } else {
-            setStatus(`GIRAFFE: ok (amp=${amp.toFixed(3)}, peaks=${peaks.current})`);
+            setStatus("GIRAFFE: ok");
           }
           tick();
         }, DET.giraffe.windowMs);
@@ -192,7 +197,20 @@ export default function DetectionPanel() {
     return "Awaiting animal assignment…";
   }, [myAnimal]);
 
+  const dShake = demoShake.current;
+  const dMouth = demoMouth.current;
+  const dBlink = demoBlink.current;
+  const now = performance.now();
+  const blinkP =
+    dBlink.since == null
+      ? 0
+      : dBlink.done
+        ? 1
+        : Math.min(1, (now - dBlink.since) / DETECTION_DEFAULTS.blinkHoldMs);
+  void uiTick; // re-render
+
   async function handleStart() {
+    resetDemoStates();
     const s = await start();
     if (s) setEnabled(true);
   }
@@ -200,6 +218,7 @@ export default function DetectionPanel() {
     setEnabled(false);
     stop();
     setStatus(t.detOff);
+    setDeterminationSnapshot(null);
   }
 
   return (
@@ -207,7 +226,9 @@ export default function DetectionPanel() {
       <div className="section-title">{t.detectionTitle}</div>
       <div style={{ display: "grid", gap: 8 }}>
         <video
-          ref={videoElRef}
+          ref={(el) => {
+            setVideoEl(el);
+          }}
           autoPlay
           playsInline
           muted
@@ -221,6 +242,59 @@ export default function DetectionPanel() {
             transform: "scaleX(-1)"
           }}
         />
+        <div className="det-strip" role="group" aria-label="determination">
+          <div
+            className={
+              "det-pill" +
+              (dShake.done ? " det-pill--done" : dShake.changes > 0 ? " det-pill--active" : "")
+            }
+          >
+            <span className="det-pill__icon" aria-hidden>🙂</span>
+            <div className="det-pill__col">
+              <span className="det-pill__label">{t.detShake}</span>
+              <span className="det-pill__s">
+                {dShake.done
+                  ? t.detDone
+                  : dShake.changes > 0
+                    ? t.detShakeProgress(shakeShakesCount(dShake), 2)
+                    : t.detShakeWait}
+              </span>
+            </div>
+          </div>
+          <div
+            className={
+              "det-pill" + (dMouth.done ? " det-pill--done" : dMouth.openFrames > 0 ? " det-pill--active" : "")
+            }
+          >
+            <span className="det-pill__icon" aria-hidden>😮</span>
+            <div className="det-pill__col">
+              <span className="det-pill__label">{t.detMouth}</span>
+              <span className="det-pill__s">
+                {dMouth.done ? t.detDone : dMouth.openFrames > 0 ? t.detMouthOpen : t.detMouthWait}
+              </span>
+            </div>
+          </div>
+          <div
+            className={"det-pill" + (dBlink.done ? " det-pill--done" : dBlink.since != null ? " det-pill--active" : "")}
+          >
+            <span className="det-pill__icon" aria-hidden>👁️</span>
+            <div className="det-pill__col">
+              <span className="det-pill__label">{t.detBlink}</span>
+              <div className="det-blink-bar" aria-hidden>
+                <div className="det-blink-fill" style={{ width: `${Math.round(blinkP * 100)}%` }} />
+              </div>
+              <span className="det-pill__s">
+                {dBlink.done
+                  ? t.detDone
+                  : dBlink.since == null
+                    ? t.detBlinkReset
+                    : t.detBlinkHold(
+                        ((DETECTION_DEFAULTS.blinkHoldMs - (now - dBlink.since)) / 1000).toFixed(1)
+                      )}
+              </span>
+            </div>
+          </div>
+        </div>
         <div className="muted" style={{ fontSize: 12 }}>
           {note}
         </div>
@@ -233,7 +307,13 @@ export default function DetectionPanel() {
             </button>
           )}
           <span className="muted" style={{ fontSize: 12, alignSelf: "center" }}>
-            {error ? `err: ${error}` : status}
+            {error
+              ? `err: ${error}`
+              : enabled && stream && meshStatus === "loading"
+                ? t.detVisionLoading
+                : enabled && stream && meshStatus === "error"
+                  ? t.detVisionError(meshError || "unknown")
+                  : status}
           </span>
         </div>
       </div>

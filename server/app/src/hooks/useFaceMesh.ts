@@ -20,8 +20,23 @@ interface Opts {
  * If MediaPipe scripts fail to load, the hook silently does nothing — the
  * caller can still keep the rest of the UI working.
  */
+/**
+ * UMD 构建里 `window.FaceMesh` 多为构造函数本身（与 `determination/index.html` 一致），
+ * 少数版本为命名空间、类在 `.FaceMesh` 上。
+ */
+function resolveMediaPipeClass(mod: unknown, name: "FaceMesh" | "Camera"): new (...a: any[]) => any {
+  if (mod == null) throw new Error(`${name} global missing`);
+  if (typeof mod === "function") return mod as new (...a: any[]) => any;
+  if (typeof mod === "object" && mod !== null && name in (mod as object)) {
+    const inner = (mod as Record<string, unknown>)[name];
+    if (typeof inner === "function") return inner as new (...a: any[]) => any;
+  }
+  throw new Error(`${name} is not a constructor`);
+}
+
 export function useFaceMesh({ enabled, videoEl, onLandmarks }: Opts) {
   const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  const [lastError, setLastError] = useState<string | null>(null);
   const cbRef = useRef(onLandmarks);
   cbRef.current = onLandmarks;
 
@@ -32,6 +47,7 @@ export function useFaceMesh({ enabled, videoEl, onLandmarks }: Opts) {
     let mesh: { close?: () => void } | null = null;
 
     setStatus("loading");
+    setLastError(null);
 
     (async () => {
       try {
@@ -44,14 +60,12 @@ export function useFaceMesh({ enabled, videoEl, onLandmarks }: Opts) {
           )
         ]);
         if (cancelled) return;
-        // The CDN scripts attach FaceMesh / Camera as globals.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const FaceMeshGlobal: any = (window as any).FaceMesh;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const CameraGlobal: any = (window as any).Camera;
-        if (!FaceMeshGlobal || !CameraGlobal) throw new Error("face_mesh globals missing");
+        const w = window as any;
+        const FaceMeshCls = resolveMediaPipeClass(w.FaceMesh, "FaceMesh");
+        const CameraCls = resolveMediaPipeClass(w.Camera, "Camera");
 
-        const faceMesh = new FaceMeshGlobal.FaceMesh({
+        const faceMesh = new FaceMeshCls({
           locateFile: (file: string) =>
             `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
         });
@@ -68,7 +82,7 @@ export function useFaceMesh({ enabled, videoEl, onLandmarks }: Opts) {
         });
         mesh = faceMesh;
 
-        const camera = new CameraGlobal(videoEl, {
+        const camera = new CameraCls(videoEl, {
           onFrame: async () => {
             if (!faceMesh) return;
             await faceMesh.send({ image: videoEl });
@@ -84,7 +98,10 @@ export function useFaceMesh({ enabled, videoEl, onLandmarks }: Opts) {
         void meshMod;
         void camMod;
       } catch (err) {
-        if (!cancelled) setStatus("error");
+        if (!cancelled) {
+          setStatus("error");
+          setLastError(err instanceof Error ? err.message : String(err));
+        }
         // eslint-disable-next-line no-console
         console.warn("FaceMesh failed", err);
       }
@@ -103,10 +120,11 @@ export function useFaceMesh({ enabled, videoEl, onLandmarks }: Opts) {
         /* ignore */
       }
       setStatus("idle");
+      setLastError(null);
     };
   }, [enabled, videoEl]);
 
-  return { status };
+  return { status, lastError };
 }
 
 const loadedScripts = new Map<string, Promise<void>>();

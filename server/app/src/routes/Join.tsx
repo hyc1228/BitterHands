@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { DEFAULT_ROOM_ID, pickRandomDefaultName } from "../constants";
 import { dict } from "../i18n";
 import { usePartyStore } from "../party/store";
@@ -8,6 +8,7 @@ export default function Join() {
   const lang = usePartyStore((s) => s.lang);
   const t = dict(lang);
   const nav = useNavigate();
+  const loc = useLocation();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,6 +30,13 @@ export default function Join() {
   useEffect(() => {
     setMode("player");
   }, [setMode]);
+
+  useEffect(() => {
+    const st = loc.state as { joinError?: string } | undefined;
+    if (!st?.joinError) return;
+    setError(st.joinError);
+    nav("/", { replace: true, state: null });
+  }, [loc.state, nav]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();

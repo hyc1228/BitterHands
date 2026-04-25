@@ -1,4 +1,8 @@
 import { Animals, ClientMessageTypes, ServerEventTypes } from "./protocol.js";
+import { fnv1a32, pickLooksRoast, similarityPercentFor } from "./photoAnalysis.js";
+
+/** Max players (JOIN) per room — matches GDD 5–10; hard cap 10. */
+const MAX_ROOM_PLAYERS = 10;
 
 /**
  * @typedef {object} Player
@@ -14,6 +18,7 @@ import { Animals, ClientMessageTypes, ServerEventTypes } from "./protocol.js";
  * @property {number} joinedAt
  * @property {"en" | "zh"} lang
  * @property {string | null} avatarUrl public URL path for profile photo
+ * @property {number | undefined} photoSeed stable hash from photo sample + id (for reveal copy)
  */
 
 /**
@@ -106,6 +111,20 @@ export default class Server {
           existing.name = name;
           existing.lang = lang;
           this._broadcast(ServerEventTypes.PLAYER_UPDATED, this._publicPlayer(existing));
+        } else if (this.players.size >= MAX_ROOM_PLAYERS) {
+          conn.send(
+            JSON.stringify({
+              type: "error",
+              error: "room_full",
+              max: MAX_ROOM_PLAYERS
+            })
+          );
+          try {
+            conn.close(4000, "room_full");
+          } catch {
+            /* ignore */
+          }
+          return;
         } else {
           /** @type {Player} */
           const player = {
@@ -120,7 +139,8 @@ export default class Server {
             alive: true,
             joinedAt: Date.now(),
             lang,
-            avatarUrl: null
+            avatarUrl: null,
+            photoSeed: undefined
           };
           this.players.set(conn.id, player);
           this._broadcast(ServerEventTypes.PLAYER_JOINED, this._publicPlayer(player));
@@ -165,9 +185,12 @@ export default class Server {
           player.avatarUrl = `/party/${rid}/__nz_avatar?id=${pid}`;
         }
 
-        // GDD: client uploads base64 photo; server calls Claude Vision -> "impression"
-        // For now we store a placeholder so the rest of the flow can run.
-        player.impression = "（外貌印象：待接入 Vision）";
+        const sample = publicPath ? `av:${publicPath}` : (raw || "").slice(0, 12000);
+        player.photoSeed = fnv1a32(String(sample) + player.id + player.name);
+        player.impression = player.lang === "zh" ? "（正在建立影像档案…）" : "(Indexing portrait…)";
+
+        void this._runDeferredPhotoIndexing(player);
+
         this._broadcast(ServerEventTypes.SYSTEM, {
           code: "PLAYER_SUBMITTED_PHOTO",
           params: { name: player.name },
@@ -504,16 +527,46 @@ export default class Server {
     };
     const dict = (text[lang] && text[lang][animal]) || null;
     if (!dict) {
-      return { animal: null, emoji: "❓", verdict: null, rule: "", win: "", teammates };
+      return {
+        animal: null,
+        emoji: "❓",
+        verdict: null,
+        rule: "",
+        win: "",
+        teammates,
+        similarityPercent: 0,
+        looksRoast: ""
+      };
     }
+    const seed = player.photoSeed ?? fnv1a32(String(player.id) + (player.name || ""));
+    const similarityPercent = similarityPercentFor(seed, animal, player.id);
+    const looksRoast = pickLooksRoast(seed, lang);
     return {
       animal,
       emoji: this._animalEmoji(animal),
       verdict: player.verdict,
       rule: dict.rule,
       win: dict.win,
-      teammates: animal === Animals.OWL ? [] : teammates
+      teammates: animal === Animals.OWL ? [] : teammates,
+      similarityPercent,
+      looksRoast
     };
+  }
+
+  /**
+   * Simulates async vision/indexing; replace with real job queue later.
+   * @param {Player} player
+   */
+  _runDeferredPhotoIndexing(player) {
+    const delay = 120 + (player.photoSeed & 0x7f);
+    return new Promise((resolve) => {
+      setTimeout(() => {
+        const tag = (player.photoSeed >>> 0) % 997;
+        player.impression =
+          player.lang === "zh" ? `（影像已建档 · 特征簇 #${tag}）` : `(Image indexed · cluster #${tag})`;
+        resolve();
+      }, delay);
+    });
   }
 
   _pushOwlRosters() {

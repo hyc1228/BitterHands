@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
-import { DEFAULT_ROOM_ID } from "../constants";
+import { DEFAULT_ROOM_ID, getMainSceneFrameSrc, OB_FACE_SLOTS } from "../constants";
 import { dict } from "../i18n";
-import type { PublicPlayer } from "../party/protocol";
+import type { CameraFrame, PublicPlayer } from "../party/protocol";
 import { usePartyStore, type LogEntry } from "../party/store";
 import PlayerRowFace from "../components/PlayerRowFace";
 
@@ -28,6 +28,8 @@ export default function Ob() {
   });
   const [error, setError] = useState<string | null>(null);
 
+  const mainSceneSrc = useMemo(() => getMainSceneFrameSrc(), []);
+
   useEffect(() => {
     setMode("ob");
     return () => {
@@ -50,7 +52,13 @@ export default function Ob() {
   }
 
   const players = snapshot?.players ?? [];
+  const facePlayers = useMemo(
+    () => players.slice(0, OB_FACE_SLOTS),
+    [players]
+  );
+
   const cams = useMemo(() => Array.from(cameraFrames.values()), [cameraFrames]);
+  const liveCount = cams.length;
 
   return (
     <div className="ob-grid">
@@ -96,28 +104,84 @@ export default function Ob() {
         </div>
       </section>
 
-      <section className="card stack" aria-label="ob-right">
-        <div className="section-title">
-          {t.cameras} <span className="muted">({cams.length})</span>
+      <section className="card stack ob-scene-card" aria-label="ob-right">
+        <div className="section-title ob-scene-title">
+          <span>
+            {t.cameras} <span className="muted">({liveCount} live)</span>
+          </span>
+          <span className="muted ob-scene-hint" style={{ fontSize: 12, letterSpacing: "0.06em" }}>
+            {t.obMainSceneLabel}
+          </span>
         </div>
-        {cams.length === 0 ? (
-          <div className="empty-cams">
-            (no live camera frames yet —— ask a player to enable detection)
+
+        <div className="ob-scene-layout">
+          <div className="ob-face-column" aria-label="ob-faces-left">
+            {Array.from({ length: 5 }, (_, j) => {
+              const i = j;
+              const player = facePlayers[i] ?? null;
+              return (
+                <ObFaceSlot
+                  key={player?.id ?? `ob-slot-${i}`}
+                  index={i}
+                  player={player}
+                  frame={player ? cameraFrames.get(player.id) ?? null : null}
+                />
+              );
+            })}
           </div>
+
+          <div className="ob-scene-center">
+            <iframe className="ob-scene-iframe" title="Main scene" src={mainSceneSrc} />
+          </div>
+
+          <div className="ob-face-column" aria-label="ob-faces-right">
+            {Array.from({ length: 5 }, (_, j) => {
+              const i = j + 5;
+              const player = facePlayers[i] ?? null;
+              return (
+                <ObFaceSlot
+                  key={player?.id ?? `ob-slot-${i}`}
+                  index={i}
+                  player={player}
+                  frame={player ? cameraFrames.get(player.id) ?? null : null}
+                />
+              );
+            })}
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ObFaceSlot({
+  index,
+  player,
+  frame
+}: {
+  index: number;
+  player: PublicPlayer | null;
+  frame: CameraFrame | null;
+}) {
+  return (
+    <div className="ob-face-slot" data-ob-slot={index}>
+      <div className="ob-face-circle" title={player?.name ?? undefined}>
+        {frame ? (
+          <img src={frame.dataUrl} alt={player ? `${player.name} face` : "camera"} />
         ) : (
-          <div className="cams-grid">
-            {cams.map((c) => (
-              <div key={c.playerId} className="cam-card">
-                <div className="meta">
-                  <span>{c.playerName ?? c.playerId.slice(0, 6)}</span>
-                  <span>{new Date(c.ts).toLocaleTimeString()}</span>
-                </div>
-                <img src={c.dataUrl} alt={`camera ${c.playerName ?? c.playerId}`} />
-              </div>
-            ))}
+          <div className="ob-face-placeholder" aria-hidden>
+            {player ? <span className="ob-face-initial">{player.name.charAt(0).toUpperCase()}</span> : null}
+            {!player ? <span className="ob-face-empty">·</span> : null}
           </div>
         )}
-      </section>
+      </div>
+      {player ? (
+        <div className="ob-face-name" title={player.name}>
+          {player.name.length > 8 ? `${player.name.slice(0, 7)}…` : player.name}
+        </div>
+      ) : (
+        <div className="ob-face-name muted"> </div>
+      )}
     </div>
   );
 }

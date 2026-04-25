@@ -70,14 +70,6 @@ export default function Game() {
               <span className="label-inline">{t.winLabel}</span>
               <span>{rulesCard.win}</span>
             </div>
-            <div className="row-line">
-              <span className="label-inline">{t.teammatesLabel}</span>
-              <span>
-                {rulesCard.teammates.length
-                  ? rulesCard.teammates.map((m) => m.name).join("、 ")
-                  : t.noTeammates}
-              </span>
-            </div>
           </div>
         ) : (
           <div className="muted" style={{ fontStyle: "italic" }}>

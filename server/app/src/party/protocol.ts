@@ -90,6 +90,10 @@ export interface RulesCard {
   rule: string;
   win: string;
   teammates: { id: string; name: string }[];
+  /** 55–99; pseudo-metric from photo seed + animal + id */
+  similarityPercent: number;
+  /** Meme / playful face commentary (server-generated from photo analysis stub). */
+  looksRoast: string;
 }
 
 export interface OwlRosterEntry {
@@ -121,7 +125,7 @@ export type ServerEnvelope =
   | { type: typeof ServerEventTypes.CAMERA_FRAME; data: CameraFrame }
   | { type: typeof ServerEventTypes.PRIVATE_RULES_CARD; data: RulesCard }
   | { type: typeof ServerEventTypes.PRIVATE_OWL_ROSTER; data: OwlRosterEntry[] }
-  | { type: "error"; error: string }
+  | { type: "error"; error: string; max?: number }
   | { type: string; data?: unknown };
 
 export function animalEmoji(animal: AnimalCode | string | null | undefined): string {

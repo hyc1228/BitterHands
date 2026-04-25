@@ -5,10 +5,11 @@ import { usePartyStore } from "../party/store";
 export default function Header() {
   const loc = useLocation();
   const lang = usePartyStore((s) => s.lang);
-  const conn = usePartyStore((s) => s.conn);
   const t = dict(lang);
 
   const isOb = loc.pathname.startsWith("/ob");
+  const hideHeaderTools =
+    loc.pathname.startsWith("/onboard") || loc.pathname.startsWith("/game");
   const homeTo = isOb ? "/ob" : "/";
 
   return (
@@ -17,10 +18,17 @@ export default function Header() {
         <span className="star" aria-hidden />
         {isOb ? t.obTitle : t.appTitle}
       </Link>
-      <div className="app-header__tools">
-        <ConnPill conn={conn} />
-      </div>
+      {!hideHeaderTools ? <HeaderConnTools /> : null}
     </header>
+  );
+}
+
+function HeaderConnTools() {
+  const conn = usePartyStore((s) => s.conn);
+  return (
+    <div className="app-header__tools">
+      <ConnPill conn={conn} />
+    </div>
   );
 }
 

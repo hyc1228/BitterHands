@@ -17,6 +17,8 @@ export default function Onboard() {
   const myName = usePartyStore((s) => s.myName);
   const send = usePartyStore((s) => s.send);
   const clearOnboardingAssignment = usePartyStore((s) => s.clearOnboardingAssignment);
+  const clearConnectError = usePartyStore((s) => s.clearConnectError);
+  const connectError = usePartyStore((s) => s.connectError);
   const rulesCard = usePartyStore((s) => s.rulesCard);
 
   const [step, setStep] = useState<Step>("permission");
@@ -57,6 +59,12 @@ export default function Onboard() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (connectError !== "room_full") return;
+    clearConnectError();
+    nav("/", { replace: true, state: { joinError: t.roomFull } });
+  }, [connectError, clearConnectError, nav, t.roomFull]);
 
   // When reveal arrives, advance to reveal step.
   useEffect(() => {
@@ -288,6 +296,8 @@ export default function Onboard() {
           emoji={rulesCard.emoji}
           animalName={animalLocalized[lang][rulesCard.animal || ""] || rulesCard.animal || "?"}
           verdict={rulesCard.verdict}
+          similarityPercent={rulesCard.similarityPercent}
+          looksRoast={rulesCard.looksRoast}
           onContinue={goToGame}
         />
       ) : null}
@@ -370,11 +380,15 @@ function RevealStep({
   emoji,
   animalName,
   verdict,
+  similarityPercent,
+  looksRoast,
   onContinue
 }: {
   emoji: string;
   animalName: string;
   verdict: string | null;
+  similarityPercent: number;
+  looksRoast: string;
   onContinue: () => void;
 }) {
   const lang = usePartyStore((s) => s.lang);
@@ -388,6 +402,17 @@ function RevealStep({
         {t.revealHeader(emoji, animalName)}
       </h2>
       <div className="verdict">{verdict || t.revealVerdictDefault}</div>
+      {similarityPercent > 0 ? (
+        <p className="reveal-similarity" role="status">
+          {t.revealSimilarity(animalName, similarityPercent)}
+        </p>
+      ) : null}
+      {looksRoast ? (
+        <>
+          <div className="reveal-roast-label">{t.revealRoastLabel}</div>
+          <p className="reveal-roast">{looksRoast}</p>
+        </>
+      ) : null}
       <button className="primary" onClick={onContinue}>
         {t.goToGame}
       </button>

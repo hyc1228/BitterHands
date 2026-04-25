@@ -1,9 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { getMainSceneFrameSrc } from "../constants";
 import { usePartyStore } from "../party/store";
 
 /**
- * Full-screen main scene prototype (served from `/main-scene/*`, produced by sync from `main scene/`.
+ * Full-screen main scene: always loads the latest copy from repo `main scene/` (synced into `public/main-scene` on build). Do not hand-edit the copy — update `main scene/*` in git and run `build:client`.
  */
 export default function MainScene() {
   const nav = useNavigate();
@@ -16,8 +17,7 @@ export default function MainScene() {
     }
   }, [conn, rulesCard, nav]);
 
-  const base = import.meta.env.BASE_URL;
-  const src = base.endsWith("/") ? `${base}main-scene/index.html` : `${base}/main-scene/index.html`;
+  const src = useMemo(() => getMainSceneFrameSrc(), []);
 
   return (
     <iframe

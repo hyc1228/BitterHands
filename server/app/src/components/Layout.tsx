@@ -8,13 +8,22 @@ export default function Layout({ children }: PropsWithChildren) {
   const loc = useLocation();
   const isOb = loc.pathname.startsWith("/ob");
   const isMainScene = loc.pathname.startsWith("/main-scene");
-  const showRec =
-    !isMainScene && (isOb || loc.pathname.startsWith("/game") || loc.pathname.startsWith("/onboard"));
+  // REC/timer: OB only (not /game, not /onboard).
+  const showRec = !isMainScene && isOb;
   if (isMainScene) {
     return <div className="app-shell app-shell--main-scene">{children}</div>;
   }
+  const isOnboard = loc.pathname.startsWith("/onboard");
+  const isGame = loc.pathname.startsWith("/game");
   return (
-    <div className={"app-shell" + (isOb ? " ob-shell" : "")}>
+    <div
+      className={
+        "app-shell" +
+        (isOb ? " ob-shell" : "") +
+        (isOnboard ? " app-shell--onboard" : "") +
+        (isGame ? " app-shell--game" : "")
+      }
+    >
       <Header />
       {showRec ? <RecBadge /> : null}
       <main className="app-main">{children}</main>

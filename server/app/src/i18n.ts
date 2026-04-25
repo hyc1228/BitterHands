@@ -9,6 +9,8 @@ interface Dict {
   namePlaceholder: string;
   joinBtn: string;
   joining: string;
+  /** Shown when server rejects JOIN (room_full) */
+  roomFull: string;
   permTitle: string;
   permIntro: string;
   permCamera: string;
@@ -32,6 +34,10 @@ interface Dict {
   retrySubmit: string;
   revealHeader: (emoji: string, animal: string) => string;
   revealVerdictDefault: string;
+  /** e.g. Resemblance to «White Lion»: 85% */
+  revealSimilarity: (animal: string, pct: number) => string;
+  /** Subheading above the meme roast on reveal */
+  revealRoastLabel: string;
   goToGame: string;
   rulesCardTitle: string;
   ruleLabel: string;
@@ -44,12 +50,27 @@ interface Dict {
   log: string;
   players: string;
   detectionTitle: string;
+  /** Determination mini-detectors (from `determination/index.html` port) */
+  detShake: string;
+  detMouth: string;
+  detBlink: string;
+  detDone: string;
+  detShakeWait: string;
+  detShakeProgress: (shakes: number, target: number) => string;
+  detMouthWait: string;
+  detMouthOpen: string;
+  detBlinkReset: string;
+  detBlinkHold: (secondsLeft: string) => string;
+  detVisionLoading: string;
+  detVisionError: (detail: string) => string;
   cameraStart: string;
   cameraStop: string;
   startGame: string;
   ownAnimalUnknown: string;
   detOff: string;
   obTitle: string;
+  /** Subtitle on OB panel: main scene + face wall */
+  obMainSceneLabel: string;
   /** Accessible name for the floating language control */
   langAria: string;
   cameras: string;
@@ -65,6 +86,7 @@ const en: Dict = {
   namePlaceholder: "e.g. Alice",
   joinBtn: "Join",
   joining: "Joining…",
+  roomFull: "This room already has the maximum of 10 players. Try another room or wait.",
   permTitle: "Before you enter",
   permIntro:
     "We use your camera/microphone locally for character creation and rule detection. No video or audio is uploaded.",
@@ -88,6 +110,8 @@ const en: Dict = {
   retrySubmit: "Resend",
   revealHeader: (emoji, animal) => `${emoji} You are «${animal}»`,
   revealVerdictDefault: "(verdict: coming soon)",
+  revealSimilarity: (animal, pct) => `Resemblance to «${animal}»: ${pct}%`,
+  revealRoastLabel: "Booth notes (for fun)",
   goToGame: "Enter the zoo",
   rulesCardTitle: "Rules card",
   ruleLabel: "Rule",
@@ -100,12 +124,25 @@ const en: Dict = {
   log: "Event log",
   players: "Players",
   detectionTitle: "Detection",
+  detShake: "Head shake",
+  detMouth: "Open mouth",
+  detBlink: "5s no blink",
+  detDone: "Done",
+  detShakeWait: "Waiting…",
+  detShakeProgress: (n, t) => `Shake ${n}/${t}…`,
+  detMouthWait: "Open your mouth…",
+  detMouthOpen: "Holding open…",
+  detBlinkReset: "Blink — timer reset",
+  detBlinkHold: (s) => `Hold open ${s}s more`,
+  detVisionLoading: "Loading face mesh…",
+  detVisionError: (d) => `Vision: ${d.slice(0, 80)}`,
   cameraStart: "Enable camera",
   cameraStop: "Disable",
   startGame: "Start game",
   ownAnimalUnknown: "Unassigned",
   detOff: "Off",
   obTitle: "Nocturne Zoo · OB",
+  obMainSceneLabel: "Center = live playfield · side rings = player faces",
   langAria: "Language",
   cameras: "CAMERAS",
   events: "ZOO KEEPER LOG"
@@ -120,6 +157,7 @@ const zh: Dict = {
   namePlaceholder: "例如：Alice",
   joinBtn: "加入",
   joining: "加入中…",
+  roomFull: "本房间人数已满（最多 10 人）。请换房间或稍后再试。",
   permTitle: "进入前确认",
   permIntro: "摄像头/麦克风仅在本地用于「创建角色」和守则检测，不会上传视频或音频。",
   permCamera: "摄像头",
@@ -142,6 +180,8 @@ const zh: Dict = {
   retrySubmit: "重新提交",
   revealHeader: (emoji, animal) => `${emoji} 你被判定为「${animal}」`,
   revealVerdictDefault: "（判定语：待接入）",
+  revealSimilarity: (animal, pct) => `与「${animal}」的相似度：${pct}%`,
+  revealRoastLabel: "展柜旁白（玩梗向）",
   goToGame: "进入动物园",
   rulesCardTitle: "守则卡",
   ruleLabel: "守则",
@@ -154,12 +194,25 @@ const zh: Dict = {
   log: "事件日志",
   players: "玩家",
   detectionTitle: "检测",
+  detShake: "摇头晃脑",
+  detMouth: "张嘴",
+  detBlink: "5 秒不眨眼",
+  detDone: "完成",
+  detShakeWait: "等待…",
+  detShakeProgress: (n, t) => `摇头 ${n}/${t}…`,
+  detMouthWait: "请张嘴…",
+  detMouthOpen: "保持张嘴…",
+  detBlinkReset: "眨眼了，重新计时",
+  detBlinkHold: (s) => `再保持 ${s} 秒…`,
+  detVisionLoading: "正在加载面部网格…",
+  detVisionError: (d) => `识别引擎：${d.slice(0, 80)}`,
   cameraStart: "开启摄像头",
   cameraStop: "关闭",
   startGame: "开始",
   ownAnimalUnknown: "未分配",
   detOff: "未开启",
   obTitle: "深夜动物园 · OB",
+  obMainSceneLabel: "中间为对局主场景 · 两侧圆环为玩家面部画面",
   langAria: "界面语言",
   cameras: "摄像头",
   events: "ZOO KEEPER LOG"
