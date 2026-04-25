@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { ClientMessageTypes } from "../party/protocol";
-import { NZ_MSG_OUT, NZ_MSG_OUT_ITEM, NZ_MSG_SOURCE } from "../mainSync/protocol";
+import { NZ_MSG_OUT, NZ_MSG_OUT_ITEM, NZ_MSG_OUT_VIOLATION, NZ_MSG_SOURCE } from "../mainSync/protocol";
 import { usePartyStore } from "../party/store";
 
 const THROTTLE_MS = 70;
@@ -34,6 +34,11 @@ export function useMainSceneIframeBridge() {
     [send, started]
   );
 
+  const onViolation = useCallback(() => {
+    if (!started) return;
+    send(ClientMessageTypes.VIOLATION, {});
+  }, [send, started]);
+
   useEffect(() => {
     const onMessage = (ev: MessageEvent) => {
       const d = ev.data;
@@ -42,9 +47,11 @@ export function useMainSceneIframeBridge() {
         onOut(d.payload as Record<string, unknown>);
       } else if (d.type === NZ_MSG_OUT_ITEM) {
         onItemOut(String((d.payload as { itemId: string }).itemId || ""));
+      } else if (d.type === NZ_MSG_OUT_VIOLATION) {
+        onViolation();
       }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [onOut, onItemOut]);
+  }, [onOut, onItemOut, onViolation]);
 }

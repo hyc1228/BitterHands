@@ -9,6 +9,7 @@ export const NZ_MSG_TYPE_MS_VIEW = "NZ_MS_VIEW" as const;
 export const NZ_MSG_TYPE_NET = "NZ_MAIN_SCENE_NET" as const;
 export const NZ_MSG_OUT = "NZ_OUT_MAIN_SCENE" as const;
 export const NZ_MSG_OUT_ITEM = "NZ_OUT_ITEM_PICKUP" as const;
+export const NZ_MSG_OUT_VIOLATION = "NZ_OUT_VIOLATION" as const;
 export const NZ_MSG_TYPE_ITEM = "NZ_MS_ITEM" as const;
 /** OB: main map camera — centroid, follow a player, or free pan. */
 export const NZ_MSG_TYPE_OB_CAM = "NZ_OB_CAMERA" as const;
@@ -36,6 +37,7 @@ export function buildPlayerSyncPayload(opts: {
   myAnimal: AnimalCode | null;
   rulesCard: RulesCard | null;
   lang: Lang;
+  lives?: number;
 }): NzPlayerSyncPayload {
   const ruleText = opts.rulesCard?.rule?.trim();
   const winText = opts.rulesCard?.win?.trim();
@@ -45,7 +47,7 @@ export function buildPlayerSyncPayload(opts: {
     lang: opts.lang,
     ruleText: ruleText || undefined,
     winText: winText || undefined,
-    lives: 3
+    lives: typeof opts.lives === "number" ? Math.max(0, Math.min(3, opts.lives)) : 3
   };
 }
 
