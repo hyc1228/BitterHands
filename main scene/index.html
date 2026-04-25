@@ -3047,6 +3047,17 @@
         addLog(t("logMonitorAlert"), null, { rule: true });
       }
 
+      function reportViolation() {
+        try {
+          if (window !== window.top) {
+            window.parent.postMessage(
+              { type: "NZ_OUT_VIOLATION", source: "nocturne-zoo", payload: {} },
+              "*"
+            );
+          }
+        } catch (e) {}
+      }
+
       function endChallenge(success) {
         if (!challenge.active) return;
         challenge.active   = false;
@@ -3065,6 +3076,7 @@
         } else {
           chalStatus.textContent = t("statusFail");
           chalOverlay.className  = "action-bar action-bar-top active fail";
+          reportViolation();
           state.me.lives = Math.max(0, state.me.lives - 1);
           renderLives();
           playSound("healthLoss");
@@ -3435,6 +3447,7 @@
         } else {
           uChalStatus.textContent = t("statusFail");
           uChalOverlay.className  = "action-bar action-bar-bottom active fail";
+          reportViolation();
           state.me.lives = Math.max(0, state.me.lives - 1);
           renderLives();
           playSound("healthLoss");

@@ -47,7 +47,8 @@ export function postToMainSceneFrame(
         myName: args.myName,
         myAnimal: args.myAnimal,
         rulesCard: args.rulesCard,
-        lang: args.lang
+        lang: args.lang,
+        lives: args.snapshot?.players.find((p) => p.name === args.myName)?.lives
       })
     },
     "*"
