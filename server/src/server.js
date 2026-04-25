@@ -235,7 +235,14 @@ export default class Server {
   }
 
   onClose(conn) {
-    // Keep player record for now (reconnect-friendly); you can change to delete-on-close later.
+    const player = this.players.get(conn.id);
+    if (!player) return;
+
+    this.players.delete(conn.id);
+    this.owlGuessesByPlayerId.delete(conn.id);
+
+    this._broadcast(ServerEventTypes.SYSTEM, { message: `${player.name} 离开了房间` });
+    this._sendRoomSnapshot();
   }
 
   async onRequest(req) {
