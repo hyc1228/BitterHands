@@ -176,6 +176,7 @@
             <option value="zh">中文</option>
             <option value="en">English</option>
           </select>
+          <div class="pill" style="opacity:.8"><span id="langDebug"></span></div>
           <input id="roomId" placeholder="room" style="width: 180px" />
           <button id="btnConnect">Connect</button>
           <div class="pill">
@@ -367,6 +368,7 @@
         $("roomId").placeholder = I18N[getLang()].phRoom;
         $("playersTitle").textContent = I18N[getLang()].playersTitle;
         $("eventsTitle").textContent = I18N[getLang()].eventsTitle;
+        $("langDebug").textContent = `lang=${getLang()}`;
         setConnected(ws && ws.readyState === WebSocket.OPEN, currentRoom ? `(${currentRoom})` : "");
       });
 
@@ -379,14 +381,19 @@
       $("playersTitle").textContent = I18N[getLang()].playersTitle;
       $("eventsTitle").textContent = I18N[getLang()].eventsTitle;
       try {
+        const qs = new URLSearchParams(location.search);
+        const forced = qs.get("lang");
         const saved = localStorage.getItem("nz_lang");
-        if (saved === "en" || saved === "zh") langSel.value = saved;
+        const next =
+          forced === "en" || forced === "zh" ? forced : saved === "en" || saved === "zh" ? saved : null;
+        if (next) langSel.value = next;
       } catch {}
       langSel.addEventListener("change", () => {
         try {
           localStorage.setItem("nz_lang", langSel.value);
         } catch {}
       });
+      $("langDebug").textContent = `lang=${getLang()}`;
       const params = new URLSearchParams(location.search);
       $("roomId").value = params.get("room") || "test-room";
       setConnected(false);

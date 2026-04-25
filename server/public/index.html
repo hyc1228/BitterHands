@@ -200,9 +200,96 @@
         aspect-ratio: 16 / 9;
         object-fit: cover;
       }
+
+      .modalMask {
+        position: fixed;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.62);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+        z-index: 50;
+      }
+      .modal {
+        width: 100%;
+        max-width: 520px;
+        background: color-mix(in srgb, var(--panel) 92%, transparent);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 14px;
+        backdrop-filter: blur(10px);
+      }
+      .modal h2 {
+        margin: 0;
+        font-size: 14px;
+        letter-spacing: 0.2px;
+      }
+      .modal .desc {
+        margin-top: 8px;
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.55;
+      }
+      .toggleRow {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.03);
+        margin-top: 10px;
+      }
+      .toggleRow strong {
+        font-size: 13px;
+      }
+      .toggleRow .hint {
+        color: var(--muted);
+        font-size: 12px;
+        margin-top: 2px;
+      }
+      .toggleRow input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        accent-color: var(--accent);
+      }
     </style>
   </head>
   <body>
+    <div class="modalMask" id="permMask" aria-hidden="true">
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="permTitle">
+        <h2 id="permTitle">进入前确认</h2>
+        <div class="desc" id="permDesc">
+          我们会在本地使用你的摄像头/麦克风用于“创建角色（拍照+提问）”以及后续守则检测。不会上传视频/音频流。
+        </div>
+
+        <div class="toggleRow">
+          <div>
+            <strong id="permCamTitle">启用摄像头</strong>
+            <div class="hint" id="permCamHint">用于拍照与部分守则识别</div>
+          </div>
+          <input type="checkbox" id="permCam" checked />
+        </div>
+
+        <div class="toggleRow">
+          <div>
+            <strong id="permMicTitle">启用麦克风</strong>
+            <div class="hint" id="permMicHint">用于白狮子的“低吼”守则（后续）</div>
+          </div>
+          <input type="checkbox" id="permMic" checked />
+        </div>
+
+        <div style="height: 10px"></div>
+        <div class="btnrow">
+          <button class="primary" id="btnPermContinue">继续（进入拍照+提问）</button>
+          <button id="btnPermCancel">暂不（留在此页）</button>
+        </div>
+        <div class="desc" id="permError" style="display:none;color:#fca5a5;margin-top:10px"></div>
+      </div>
+    </div>
+
     <div class="wrap">
       <div class="top">
         <div>
@@ -220,6 +307,7 @@
               <option value="zh">中文</option>
               <option value="en">English</option>
             </select>
+            <div class="sub" id="langDebug" style="margin-top:6px; display:none"></div>
           </div>
           <div class="pill">
             <span class="dot" id="connDot"></span>
@@ -457,8 +545,9 @@
         connDot.className = "dot " + (yes ? "ok" : "bad");
         connText.textContent = yes ? `${t("connected")} ${details}` : t("disconnected");
         $("btnStart").disabled = !yes;
-        $("btnAssign").disabled = !yes;
-        $("btnViolation").disabled = !yes;
+        // legacy buttons might not exist in current HTML
+        if ($("btnAssign")) $("btnAssign").disabled = !yes;
+        if ($("btnViolation")) $("btnViolation").disabled = !yes;
         $("btnChat").disabled = !yes;
         $("btnCam").disabled = !yes;
         $("btnCamStop").disabled = !yes;
@@ -497,6 +586,9 @@
       let ws = null;
       let currentRoom = null;
       let myAnimal = null;
+
+      // Shared media stream acquired from the permission gate
+      let sharedStream = null;
 
       // Onboarding flow state
       const QUESTIONS = [
@@ -782,7 +874,14 @@
 
         const video = $("onboardVideo");
         try {
-          onboardStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          // Prefer a pre-acquired shared stream (camera permission already granted)
+          const base = sharedStream;
+          const hasVideo = !!base?.getVideoTracks?.()?.length;
+          if (base && hasVideo) {
+            onboardStream = base;
+          } else {
+            onboardStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          }
           video.srcObject = onboardStream;
           await video.play();
           log("入场：摄像头已开启（拍照）");
@@ -887,13 +986,11 @@
           setConnected(true, `(${roomId})`);
           log(`WS open → ${partyUrl(roomId)}`);
           ws.send(JSON.stringify({ type: "join", name }));
-          // Auto-start onboarding after join (best effort; may require user gesture on mobile)
+          // After join: show permission gate first, then go straight to photo+questions.
           setTimeout(() => {
             if (myAnimal) return;
-            $("onboardArea").style.display = "";
-            $("autoHint").style.display = "";
-            startOnboarding().catch(() => {
-              // keep UI visible; user can click "开始创建" to retry
+            openPermissionGate().catch(() => {
+              // user cancelled or permission failed; they can click "开始创建" to retry
             });
           }, 50);
         });
@@ -982,21 +1079,24 @@
         ws.send(JSON.stringify({ type: "start" }));
       });
 
-      $("btnAssign").addEventListener("click", () => {
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
-        // 简化：随便送 3 题答案，服务端会 fallback 分配身份
-        ws.send(
-          JSON.stringify({
-            type: "submit_answers",
-            answers: { q1: "A", q2: "B", q3: "C" }
-          })
-        );
-      });
-
-      $("btnViolation").addEventListener("click", () => {
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
-        ws.send(JSON.stringify({ type: "violation", detail: "违规（demo 按钮触发）" }));
-      });
+      // legacy demo buttons might not exist
+      if ($("btnAssign")) {
+        $("btnAssign").addEventListener("click", () => {
+          if (!ws || ws.readyState !== WebSocket.OPEN) return;
+          ws.send(
+            JSON.stringify({
+              type: "submit_answers",
+              answers: { q1: "A", q2: "B", q3: "C" }
+            })
+          );
+        });
+      }
+      if ($("btnViolation")) {
+        $("btnViolation").addEventListener("click", () => {
+          if (!ws || ws.readyState !== WebSocket.OPEN) return;
+          ws.send(JSON.stringify({ type: "violation", detail: "违规（demo 按钮触发）" }));
+        });
+      }
 
       $("btnCam").addEventListener("click", () => {
         startCamera().catch((e) => {
@@ -1011,7 +1111,8 @@
       });
 
       $("btnOnboard").addEventListener("click", () => {
-        startOnboarding()
+        // Manual retry entry: still goes through permission gate to request camera/mic with a gesture
+        openPermissionGate()
           .then(() => {
             // show snap step
             $("qArea").style.display = "none";
@@ -1050,6 +1151,7 @@
       setMyAnimal(null);
 
       function applyLocale() {
+        document.documentElement.lang = getLang() === "en" ? "en" : "zh-CN";
         document.title = t("title");
         const h1 = document.querySelector("h1");
         if (h1) h1.textContent = t("title");
@@ -1081,6 +1183,12 @@
         $("btnChat").textContent = t("send");
         $("btnClear").textContent = t("clear");
         $("detStatus").textContent = detectorEnabled ? $("detStatus").textContent : t("detOff");
+
+        const dbg = $("langDebug");
+        if (dbg) {
+          dbg.style.display = "";
+          dbg.textContent = `lang=${getLang()}`;
+        }
       }
 
       langSel.addEventListener("change", () => {
@@ -1091,8 +1199,12 @@
       });
       // persist language
       try {
+        const qs = new URLSearchParams(location.search);
+        const forced = qs.get("lang");
         const saved = localStorage.getItem("nz_lang");
-        if (saved === "en" || saved === "zh") langSel.value = saved;
+        const next =
+          forced === "en" || forced === "zh" ? forced : saved === "en" || saved === "zh" ? saved : null;
+        if (next) langSel.value = next;
       } catch {}
       langSel.addEventListener("change", () => {
         try {
@@ -1100,6 +1212,74 @@
         } catch {}
       });
       applyLocale();
+
+      // --- Permission gate (camera + mic) ---
+      function showPermError(text) {
+        const el = $("permError");
+        if (!el) return;
+        el.style.display = text ? "" : "none";
+        el.textContent = text || "";
+      }
+
+      function setPermOpen(open) {
+        const mask = $("permMask");
+        if (!mask) return;
+        mask.style.display = open ? "flex" : "none";
+        mask.setAttribute("aria-hidden", open ? "false" : "true");
+      }
+
+      async function openPermissionGate() {
+        showPermError("");
+        setPermOpen(true);
+        return new Promise((resolve, reject) => {
+          const btnGo = $("btnPermContinue");
+          const btnCancel = $("btnPermCancel");
+          const cam = $("permCam");
+          const mic = $("permMic");
+
+          const cleanup = () => {
+            btnGo?.removeEventListener("click", onGo);
+            btnCancel?.removeEventListener("click", onCancel);
+          };
+
+          const onCancel = () => {
+            cleanup();
+            setPermOpen(false);
+            reject(new Error("permission_cancelled"));
+          };
+
+          const onGo = async () => {
+            try {
+              const wantVideo = !!cam?.checked;
+              const wantAudio = !!mic?.checked;
+              if (!wantVideo) {
+                showPermError("创建角色需要摄像头拍照。请启用摄像头后继续。");
+                return;
+              }
+
+              // Request once, store the stream for later reuse.
+              const stream = await navigator.mediaDevices.getUserMedia({
+                video: wantVideo,
+                audio: wantAudio
+              });
+              sharedStream = stream;
+              cleanup();
+              setPermOpen(false);
+
+              // Immediately jump into onboarding UI (photo + questions).
+              $("onboardArea").style.display = "";
+              $("autoHint").style.display = "none";
+              await startOnboarding();
+              resolve(true);
+            } catch (e) {
+              showPermError(`权限申请失败：${String(e?.message || e)}`);
+            }
+          };
+
+          btnGo?.addEventListener("click", onGo);
+          btnCancel?.addEventListener("click", onCancel);
+        });
+      }
     </script>
   </body>
 </html>
