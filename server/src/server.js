@@ -12,6 +12,7 @@ import { Animals, ClientMessageTypes, ServerEventTypes } from "./protocol.js";
  * @property {number} violations
  * @property {boolean} alive
  * @property {number} joinedAt
+ * @property {"en" | "zh"} lang
  */
 
 /**
@@ -40,6 +41,9 @@ export default class Server {
 
     /** @type {Map<string, any>} */
     this.owlGuessesByPlayerId = new Map();
+
+    /** @type {Map<string, {dataUrl: string, ts: number}>} */
+    this.lastCameraFrameByPlayerId = new Map();
   }
 
   /**
@@ -52,6 +56,22 @@ export default class Server {
         data: this._publicSnapshot()
       })
     );
+
+    // Best-effort: send last known camera frames so OB doesn't start blank.
+    for (const [playerId, frame] of this.lastCameraFrameByPlayerId.entries()) {
+      const p = this.players.get(playerId);
+      conn.send(
+        JSON.stringify({
+          type: ServerEventTypes.CAMERA_FRAME,
+          data: {
+            playerId,
+            playerName: p?.name ?? null,
+            dataUrl: frame.dataUrl,
+            ts: frame.ts
+          }
+        })
+      );
+    }
   }
 
   /**
@@ -74,10 +94,12 @@ export default class Server {
           conn.send(JSON.stringify({ type: "error", error: "missing_name" }));
           return;
         }
+        const lang = msg?.lang === "zh" ? "zh" : "en";
 
         const existing = this.players.get(conn.id);
         if (existing) {
           existing.name = name;
+          existing.lang = lang;
           this._broadcast(ServerEventTypes.PLAYER_UPDATED, this._publicPlayer(existing));
         } else {
           /** @type {Player} */
@@ -91,7 +113,8 @@ export default class Server {
             answers: null,
             violations: 0,
             alive: true,
-            joinedAt: Date.now()
+            joinedAt: Date.now(),
+            lang
           };
           this.players.set(conn.id, player);
           this._broadcast(ServerEventTypes.PLAYER_JOINED, this._publicPlayer(player));
@@ -127,13 +150,15 @@ export default class Server {
           return;
         }
 
+        if (msg?.lang === "en" || msg?.lang === "zh") player.lang = msg.lang;
+
         player.answers = answers;
 
         // GDD: server calls Claude (text) to decide animal + verdict.
         // For now: deterministic fallback mapping by majority choice.
         const animal = this._fallbackAnimalFromAnswers(answers);
         player.animal = animal;
-        player.verdict = this._fallbackVerdict(animal);
+        player.verdict = this._fallbackVerdict(animal, player.lang);
 
         // Public: broadcast "XX 已进入 🦁 区域" (no rules content)
         this._broadcast(ServerEventTypes.SYSTEM, {
@@ -223,6 +248,26 @@ export default class Server {
         return;
       }
 
+      case ClientMessageTypes.CAMERA_FRAME: {
+        const player = this.players.get(conn.id);
+        if (!player) return;
+
+        const dataUrl = typeof msg?.dataUrl === "string" ? msg.dataUrl : "";
+        // Guardrails: small, jpeg/webp dataurl only, and cap size.
+        if (!dataUrl.startsWith("data:image/")) return;
+        if (dataUrl.length > 120_000) return; // ~<90KB payload typical
+
+        const ts = Date.now();
+        this.lastCameraFrameByPlayerId.set(conn.id, { dataUrl, ts });
+        this._broadcast(ServerEventTypes.CAMERA_FRAME, {
+          playerId: conn.id,
+          playerName: player.name,
+          dataUrl,
+          ts
+        });
+        return;
+      }
+
       case ClientMessageTypes.OWL_SUBMIT: {
         const player = this.players.get(conn.id);
         if (!player) return;
@@ -248,6 +293,7 @@ export default class Server {
 
     this.players.delete(conn.id);
     this.owlGuessesByPlayerId.delete(conn.id);
+    this.lastCameraFrameByPlayerId.delete(conn.id);
 
     this._broadcast(ServerEventTypes.SYSTEM, {
       code: "PLAYER_LEFT",
@@ -335,50 +381,72 @@ export default class Server {
     return Animals.GIRAFFE;
   }
 
-  _fallbackVerdict(animal) {
-    if (animal === Animals.LION) return "你的声音能让黑暗退开。";
-    if (animal === Animals.OWL) return "你从不放过任何细节。";
-    if (animal === Animals.GIRAFFE) return "有什么东西已经开始改变你了。";
-    return "动物园还没看清你。";
+  _fallbackVerdict(animal, lang = "en") {
+    const en = {
+      [Animals.LION]: "Your voice keeps the darkness at bay.",
+      [Animals.OWL]: "Nothing escapes your gaze.",
+      [Animals.GIRAFFE]: "Something has already started changing you.",
+      _: "The zoo hasn't quite figured you out yet."
+    };
+    const zh = {
+      [Animals.LION]: "你的声音能让黑暗退开。",
+      [Animals.OWL]: "你从不放过任何细节。",
+      [Animals.GIRAFFE]: "有什么东西已经开始改变你了。",
+      _: "动物园还没看清你。"
+    };
+    const dict = lang === "zh" ? zh : en;
+    return dict[animal] || dict._;
   }
 
   _rulesCardFor(player) {
     const animal = player.animal;
+    const lang = player.lang || "en";
     const teammates = Array.from(this.players.values())
       .filter((p) => p.id !== player.id && p.animal && p.animal === animal)
       .map((p) => ({ id: p.id, name: p.name }));
 
-    if (animal === Animals.LION) {
-      return {
-        animal,
-        emoji: "🦁",
-        verdict: player.verdict,
-        rule: "你必须每隔 60 秒发出一次持续 ≥2 秒的低吼。沉默太久，“它”会认为你已经离开。",
-        win: "让至少 1 名长颈鹿玩家违规累计 3 次（净化）。白狮子全员完成才算胜利。",
-        teammates
-      };
+    const text = {
+      en: {
+        [Animals.LION]: {
+          rule: "Every 60s you must let out a roar of ≥2s. Stay silent too long and ‘it’ will think you’re gone.",
+          win: "Drive at least one Giraffe to 3 violations (purification). All Lions must succeed."
+        },
+        [Animals.OWL]: {
+          rule: "Every 40s a detection window opens — for 5s you cannot blink. Blink and ‘it’ sees you.",
+          win: "At settlement, correctly guess every other player’s animal. All Owls must be right."
+        },
+        [Animals.GIRAFFE]: {
+          rule: "Every 45s, swing your neck (a wide lateral head shake). Stop for too long and ‘it’ erases you.",
+          win: "Cause at least one White Lion to die from violations. Any surviving Giraffe wins."
+        }
+      },
+      zh: {
+        [Animals.LION]: {
+          rule: "你必须每隔 60 秒发出一次持续 ≥2 秒的低吼。沉默太久，“它”会认为你已经离开。",
+          win: "让至少 1 名长颈鹿玩家违规累计 3 次（净化）。白狮子全员完成才算胜利。"
+        },
+        [Animals.OWL]: {
+          rule: "每 40 秒触发一次检测窗口，窗口内 5 秒不能眨眼。如果你眨了眼，“它”就看见你了。",
+          win: "结算时正确猜出所有其他玩家的动物身份。猫头鹰全员猜对才算胜利。"
+        },
+        [Animals.GIRAFFE]: {
+          rule: "你必须每隔 45 秒做一次甩脖子（头部大幅横向摆动）。停止太久，“它”会把你清除。",
+          win: "让至少 1 名白狮子玩家违规死亡。长颈鹿任意 1 人存活即算胜利。"
+        }
+      }
+    };
+    const dict = (text[lang] && text[lang][animal]) || null;
+    if (!dict) {
+      return { animal: null, emoji: "❓", verdict: null, rule: "", win: "", teammates };
     }
-    if (animal === Animals.OWL) {
-      return {
-        animal,
-        emoji: "🦉",
-        verdict: player.verdict,
-        rule: "每 40 秒触发一次检测窗口，窗口内 5 秒不能眨眼。如果你眨了眼，“它”就看见你了。",
-        win: "结算时正确猜出所有其他玩家的动物身份。猫头鹰全员猜对才算胜利。",
-        teammates: [] // per GDD: owl doesn't know other owls
-      };
-    }
-    if (animal === Animals.GIRAFFE) {
-      return {
-        animal,
-        emoji: "🦒",
-        verdict: player.verdict,
-        rule: "你必须每隔 45 秒做一次甩脖子（头部大幅横向摆动）。停止太久，“它”会把你清除。",
-        win: "让至少 1 名白狮子玩家违规死亡。长颈鹿任意 1 人存活即算胜利。",
-        teammates
-      };
-    }
-    return { animal: null, emoji: "❓", verdict: null, rule: "", win: "", teammates };
+    return {
+      animal,
+      emoji: this._animalEmoji(animal),
+      verdict: player.verdict,
+      rule: dict.rule,
+      win: dict.win,
+      teammates: animal === Animals.OWL ? [] : teammates
+    };
   }
 
   _pushOwlRosters() {

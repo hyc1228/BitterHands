@@ -1,0 +1,104 @@
+import { useEffect, useMemo, useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { dict } from "../i18n";
+import { usePartyStore } from "../party/store";
+
+export default function Join() {
+  const lang = usePartyStore((s) => s.lang);
+  const t = dict(lang);
+  const nav = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [roomId, setRoomId] = useState(() => {
+    try {
+      return localStorage.getItem("nz.roomId") || "test-room";
+    } catch {
+      return "test-room";
+    }
+  });
+  const [name, setName] = useState(() => {
+    try {
+      const saved = localStorage.getItem("nz.name");
+      if (saved) return saved;
+    } catch {
+      /* ignore */
+    }
+    return "Player-" + Math.floor(Math.random() * 900 + 100);
+  });
+
+  const setMyName = usePartyStore((s) => s.setName);
+  const setMode = usePartyStore((s) => s.setMode);
+
+  const submitDisabled = useMemo(() => !roomId.trim() || !name.trim() || busy, [roomId, name, busy]);
+
+  useEffect(() => {
+    setMode("player");
+  }, [setMode]);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (submitDisabled) return;
+    setBusy(true);
+    setError(null);
+    setMyName(name.trim());
+    try {
+      try {
+        localStorage.setItem("nz.roomId", roomId.trim());
+        localStorage.setItem("nz.name", name.trim());
+      } catch {
+        /* ignore */
+      }
+      // Hand off to onboard route, which will run the WS connect and permission gate.
+      nav("/onboard");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="join-wrap">
+      <form className="card join-card" onSubmit={handleSubmit}>
+        <h1 className="heading">{t.joinRoom}</h1>
+        <div className="underline" aria-hidden />
+        <div className="stack" style={{ textAlign: "left" }}>
+          <div>
+            <label className="label" htmlFor="roomId">
+              {t.roomLabel}
+            </label>
+            <input
+              id="roomId"
+              autoComplete="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              value={roomId}
+              onChange={(e) => setRoomId(e.target.value)}
+              placeholder={t.roomPlaceholder}
+            />
+          </div>
+          <div>
+            <label className="label" htmlFor="name">
+              {t.nameLabel}
+            </label>
+            <input
+              id="name"
+              autoComplete="nickname"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t.namePlaceholder}
+            />
+          </div>
+        </div>
+        {error ? <div style={{ color: "#ff9a8a" }}>{error}</div> : null}
+        <button className="primary" disabled={submitDisabled} type="submit">
+          {busy ? t.joining : t.joinBtn}
+        </button>
+        <div className="muted" style={{ fontSize: 12 }}>
+          <Link to="/ob">OB ↗</Link>
+        </div>
+      </form>
+    </div>
+  );
+}

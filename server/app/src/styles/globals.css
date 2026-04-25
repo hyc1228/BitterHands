@@ -1,0 +1,280 @@
+/* Nocturne Zoo — global tokens & base
+ * Mobile-portrait first, with desktop landscape upgrades.
+ * Palette: graphic-noir (black / cream / rust red) per docs/artdesign.md.
+ */
+
+:root {
+  --nz-black: #0a0a0a;
+  --nz-ink: #161616;
+  --nz-ink-2: #1d1d1d;
+  --nz-cream: #f2efe9;
+  --nz-cream-dim: rgba(242, 239, 233, 0.62);
+  --nz-cream-line: rgba(242, 239, 233, 0.18);
+  --nz-red: #d6402e;
+  --nz-red-dim: rgba(214, 64, 46, 0.22);
+  --nz-amber: rgba(170, 140, 50, 0.22);
+  /* Soft UI — rounded, friendly */
+  --nz-radius: 16px;
+  --nz-radius-sm: 12px;
+  --nz-radius-lg: 20px;
+  --nz-radius-pill: 999px;
+  /* Softer, less “stamp” — still readable on dark */
+  --nz-shadow-hard: 0 3px 0 rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
+  --nz-shadow-soft: 0 2px 0 rgba(0, 0, 0, 0.25), 0 6px 16px rgba(0, 0, 0, 0.28);
+  --nz-shadow-card: 0 2px 0 rgba(0, 0, 0, 0.22), 0 10px 28px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(242, 239, 233, 0.06);
+
+  --nz-font-display: "Permanent Marker", "Patrick Hand", system-ui, sans-serif;
+  --nz-font-hand: "Patrick Hand", "Hiragino Sans", "PingFang SC", system-ui, sans-serif;
+  --nz-font-serif: Palatino, "Palatino Linotype", "Book Antiqua", Georgia, ui-serif, serif;
+  --nz-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --nz-pad-x: clamp(14px, 4vw, 28px);
+  --nz-gap: clamp(10px, 2.4vw, 18px);
+
+  color-scheme: dark;
+  color: var(--nz-cream);
+  background: var(--nz-black);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--nz-black);
+  color: var(--nz-cream);
+  font-family: var(--nz-font-hand);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  touch-action: manipulation;
+  /* Avoid iOS rubber-banding overscroll on the body */
+  overscroll-behavior-y: none;
+}
+
+/* iOS smooth scroll for content panels */
+.log,
+.cams-grid,
+.players-list {
+  -webkit-overflow-scrolling: touch;
+}
+
+body {
+  position: relative;
+}
+
+/* Surveillance grid + scanlines + red haze (concept-art reference) */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: linear-gradient(rgba(242, 239, 233, 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(242, 239, 233, 0.07) 1px, transparent 1px),
+    radial-gradient(ellipse 110% 70% at 50% -15%, var(--nz-red-dim), transparent 55%),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0 3px,
+      rgba(0, 0, 0, 0.06) 3px 4px
+    );
+  background-size: 28px 28px, 28px 28px, auto, auto;
+  background-position: -1px -1px, -1px -1px, center, center;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(ellipse 80% 50% at 6% 28%, var(--nz-amber), transparent 62%),
+    radial-gradient(ellipse 70% 60% at 50% 120%, rgba(0, 0, 0, 0.85), transparent 60%);
+}
+
+#root {
+  position: relative;
+  z-index: 1;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Typography helpers */
+h1,
+h2,
+h3 {
+  font-family: var(--nz-font-display);
+  letter-spacing: 0.04em;
+  margin: 0;
+  line-height: 1.15;
+}
+
+a {
+  color: var(--nz-cream);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  color: var(--nz-red);
+}
+
+/* Form primitives */
+input,
+select,
+textarea,
+button {
+  font-family: inherit;
+  color: inherit;
+}
+
+input,
+select,
+textarea {
+  width: 100%;
+  min-height: 48px;
+  padding: 0 14px;
+  background: var(--nz-black);
+  color: var(--nz-cream);
+  border: 1.5px solid var(--nz-cream-line);
+  border-radius: var(--nz-radius);
+  font-family: var(--nz-font-hand);
+  /* >=16px keeps iOS Safari from auto-zooming inputs on focus */
+  font-size: 17px;
+  outline: none;
+  caret-color: var(--nz-red);
+  box-shadow: var(--nz-shadow-soft);
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+textarea {
+  min-height: 96px;
+  padding: 12px 14px;
+  resize: vertical;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: rgba(242, 239, 233, 0.4);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--nz-red);
+}
+
+button {
+  cursor: pointer;
+  min-height: 48px;
+  padding: 0 16px;
+  border-radius: var(--nz-radius);
+  border: 1.5px solid var(--nz-cream-line);
+  background: var(--nz-ink);
+  color: var(--nz-cream);
+  font-family: var(--nz-font-display);
+  font-size: 16px;
+  letter-spacing: 0.08em;
+  text-shadow: none;
+  box-shadow: var(--nz-shadow-soft);
+  transition: transform 110ms ease, box-shadow 110ms ease, border-color 180ms ease,
+    color 180ms ease, background 180ms ease;
+}
+
+button:hover:not(:disabled) {
+  border-color: rgba(214, 64, 46, 0.55);
+  color: var(--nz-cream);
+}
+
+button:active:not(:disabled) {
+  transform: scale(0.98) translate(0, 1px);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 4px 10px rgba(0, 0, 0, 0.25);
+}
+
+button:focus-visible {
+  outline: 2px solid var(--nz-cream);
+  outline-offset: 2px;
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--nz-red);
+  color: var(--nz-cream);
+  border-color: rgba(242, 239, 233, 0.55);
+  box-shadow: var(--nz-shadow-hard);
+}
+
+button.ghost {
+  background: transparent;
+  border: 1.5px dashed var(--nz-cream-line);
+  box-shadow: none;
+}
+
+button.danger {
+  background: var(--nz-black);
+  color: var(--nz-red);
+  border-color: rgba(214, 64, 46, 0.55);
+}
+
+/* Card primitive */
+.card {
+  background: var(--nz-ink);
+  border: 1px solid var(--nz-cream-line);
+  border-radius: var(--nz-radius-lg);
+  padding: 18px;
+  box-shadow: var(--nz-shadow-card);
+}
+
+.muted {
+  color: var(--nz-cream-dim);
+}
+
+.label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--nz-cream-dim);
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.stack {
+  display: grid;
+  gap: 10px;
+}
+
+@media (max-width: 420px) {
+  .row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Accessibility — reduce motion */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

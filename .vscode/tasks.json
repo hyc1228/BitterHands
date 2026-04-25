@@ -1,0 +1,22 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Open app in Simple Browser (Vite)",
+      "type": "shell",
+      "command": "echo",
+      "args": ["${input:openNocturneSimpleBrowser}"],
+      "options": { "env": { "BROWSER": "none" } },
+      "problemMatcher": [],
+      "presentation": { "reveal": "silent", "panel": "shared", "close": true }
+    }
+  ],
+  "inputs": [
+    {
+      "id": "openNocturneSimpleBrowser",
+      "type": "command",
+      "command": "simpleBrowser.api.open",
+      "args": ["http://127.0.0.1:5173/#/"]
+    }
+  ]
+}

@@ -4,6 +4,9 @@
   "type": "module",
   "scripts": {
     "dev": "partykit dev ./src/server.js --serve ./public",
+    "dev:client": "npm --prefix ./app run dev",
+    "build:client": "npm --prefix ./app run build",
+    "install:client": "npm --prefix ./app install",
     "deploy": "partykit deploy ./src/server.js --name nocturne-zoo"
   },
   "dependencies": {

@@ -13,6 +13,7 @@ export const ServerEventTypes = /** @type {const} */ ({
   VIOLATION_NARRATIVE: "violation_narrative",
   GAME_STARTED: "game_started",
   GAME_ENDED: "game_ended",
+  CAMERA_FRAME: "camera_frame",
   PRIVATE_RULES_CARD: "private_rules_card",
   PRIVATE_OWL_ROSTER: "private_owl_roster"
 });
@@ -24,6 +25,7 @@ export const ClientMessageTypes = /** @type {const} */ ({
   START: "start",
   VIOLATION: "violation",
   CHAT: "chat",
+  CAMERA_FRAME: "camera_frame",
   OWL_SUBMIT: "owl_submit",
   END: "end"
 });
