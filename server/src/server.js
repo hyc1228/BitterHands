@@ -256,8 +256,7 @@ export default class Server {
 
         this._broadcast(ServerEventTypes.SYSTEM, {
           code: "PLAYER_SUBMITTED_PHOTO",
-          params: { name: player.name },
-          message: `${player.name} 已提交照片`
+          params: { name: player.name }
         });
         this._sendRoomSnapshot();
         return;
@@ -286,8 +285,7 @@ export default class Server {
         // Public: broadcast "XX 已进入 🦁 区域" (no rules content)
         this._broadcast(ServerEventTypes.SYSTEM, {
           code: "PLAYER_ENTERED_ZONE",
-          params: { name: player.name, animal: animal },
-          message: `${player.name} 已进入 ${this._animalEmoji(animal)} 区域`
+          params: { name: player.name, animal: animal }
         });
 
         // Private: send rules card + win condition + teammates (GDD)
@@ -314,8 +312,7 @@ export default class Server {
         this._broadcast(ServerEventTypes.PLAYER_UPDATED, this._publicPlayer(player));
         this._broadcast(ServerEventTypes.SYSTEM, {
           code: "PLAYER_READY",
-          params: { name: player.name },
-          message: `${player.name} 已就绪，等待 OB 开局`
+          params: { name: player.name }
         });
         this._sendRoomSnapshot();
         return;
@@ -338,7 +335,7 @@ export default class Server {
           durationMs: this.durationMs
         });
 
-        this._broadcast(ServerEventTypes.SYSTEM, { message: "游戏开始" });
+        this._broadcast(ServerEventTypes.SYSTEM, { code: "GAME_STARTED" });
         this._sendRoomSnapshot();
         // Opening Monitor PA voice intentionally muted for now — the cold-open line
         // was too jarring on first load. Re-enable by uncommenting:
@@ -354,17 +351,17 @@ export default class Server {
         player.lives = Math.max(0, player.lives - 1);
         player.alive = player.lives > 0;
 
-        const violationText =
-          typeof msg?.detail === "string"
-            ? msg.detail.slice(0, 120)
-            : "触犯了守则";
+        // Raw, untranslated detail (e.g. "blinked (owl rule)" or "manual test"). Localized
+        // narrative is composed by the client in `renderViolationNarrative` so the wrapping
+        // sentence matches the viewer's UI language.
+        const detailRaw =
+          typeof msg?.detail === "string" ? msg.detail.slice(0, 120) : "";
 
-        // Public narrative (GDD: should be Claude generated). Stub for now.
         this._broadcast(ServerEventTypes.VIOLATION_NARRATIVE, {
           playerId: player.id,
           playerName: player.name,
           animal: player.animal,
-          text: `【${player.name}】${violationText}。动物园的黑暗似乎更近了一点。`
+          detail: detailRaw
         });
 
         // Simple "净化" counter hook for giraffe (GDD: giraffe 3 violations =>净化)
@@ -372,8 +369,7 @@ export default class Server {
         if (player.animal === Animals.GIRAFFE && player.violations >= 3) {
           this._broadcast(ServerEventTypes.SYSTEM, {
             code: "GIRAFFE_PURIFIED",
-            params: { name: player.name },
-            message: `${player.name} 的感染似乎被“净化”了（累计违规 3 次）`
+            params: { name: player.name }
           });
         }
 
@@ -530,8 +526,7 @@ export default class Server {
 
     this._broadcast(ServerEventTypes.SYSTEM, {
       code: "PLAYER_LEFT",
-      params: { name: player.name },
-      message: `${player.name} 离开了房间`
+      params: { name: player.name }
     });
     this._sendRoomSnapshot();
   }
@@ -557,8 +552,7 @@ export default class Server {
       if (p) {
         this._broadcast(ServerEventTypes.SYSTEM, {
           code: "PLAYER_LEFT",
-          params: { name: p.name },
-          message: `${p.name} 离开了房间`
+          params: { name: p.name }
         });
         changed = true;
       }

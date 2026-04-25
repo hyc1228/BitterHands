@@ -88,7 +88,10 @@ export interface ViolationNarrative {
   playerId: string;
   playerName: string;
   animal: AnimalCode | null;
-  text: string;
+  /** Raw violation cause from the client (e.g. "blinked (owl rule)"). May be empty. */
+  detail?: string;
+  /** Legacy pre-localized text — still accepted as fallback. New code uses `detail`. */
+  text?: string;
 }
 
 export interface CameraFrame {

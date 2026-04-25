@@ -375,20 +375,33 @@ function handleServerEnvelope(
     return;
   }
   if (t === ServerEventTypes.VIOLATION_NARRATIVE) {
-    const n = msg.data as { text: string };
-    get().pushLog({ kind: "narrative", text: n.text });
+    const n = msg.data as { playerName: string; detail?: string; text?: string };
+    const lang = get().lang;
+    get().pushLog({
+      kind: "narrative",
+      text: renderViolationNarrative(n, lang)
+    });
     return;
   }
   if (t === ServerEventTypes.GAME_STARTED) {
     const g = msg.data as { durationMs: number };
+    const lang = get().lang;
+    const seconds = Math.round((g.durationMs || 0) / 1000);
     get().pushLog({
       kind: "system",
-      text: `game_started: ${Math.round((g.durationMs || 0) / 1000)}s`
+      text:
+        lang === "zh"
+          ? `游戏开始 · 时长 ${seconds} 秒`
+          : `Game started · ${seconds}s`
     });
     return;
   }
   if (t === ServerEventTypes.GAME_ENDED) {
-    get().pushLog({ kind: "system", text: "game_ended" });
+    const lang = get().lang;
+    get().pushLog({
+      kind: "system",
+      text: lang === "zh" ? "游戏结束" : "Game ended"
+    });
     return;
   }
   if (t === ServerEventTypes.CAMERA_FRAME) {
@@ -403,9 +416,14 @@ function handleServerEnvelope(
   if (t === ServerEventTypes.PRIVATE_RULES_CARD) {
     const card = msg.data as RulesCard;
     set({ rulesCard: card, myAnimal: card.animal });
+    const lang = get().lang;
+    const animalName = card.animal ?? "?";
     get().pushLog({
       kind: "private",
-      text: `private rules: ${card.emoji} ${card.animal ?? ""}`
+      text:
+        lang === "zh"
+          ? `已收到守则卡：${card.emoji} ${animalName}`
+          : `Rules card received: ${card.emoji} ${animalName}`
     });
     return;
   }
@@ -424,18 +442,39 @@ function renderSystemMessage(
   const dictZh: Record<string, (p: Record<string, unknown>) => string> = {
     PLAYER_SUBMITTED_PHOTO: (p) => `${p.name} 已提交照片`,
     PLAYER_ENTERED_ZONE: (p) => `${p.name} 已进入 ${animalEmojiByCode(p.animal as string)} 区域`,
+    PLAYER_READY: (p) => `${p.name} 已就绪，等待 OB 开局`,
+    GAME_STARTED: () => "游戏开始",
+    GAME_ENDED: () => "游戏结束",
     GIRAFFE_PURIFIED: (p) => `${p.name} 的感染似乎被"净化"了（累计违规 3 次）`,
     PLAYER_LEFT: (p) => `${p.name} 离开了房间`
   };
   const dictEn: Record<string, (p: Record<string, unknown>) => string> = {
     PLAYER_SUBMITTED_PHOTO: (p) => `${p.name} submitted a photo`,
     PLAYER_ENTERED_ZONE: (p) => `${p.name} entered ${animalEmojiByCode(p.animal as string)} zone`,
+    PLAYER_READY: (p) => `${p.name} is ready — waiting for OB to start`,
+    GAME_STARTED: () => "Game started",
+    GAME_ENDED: () => "Game ended",
     GIRAFFE_PURIFIED: (p) => `${p.name} seems "purified" (3 violations)`,
     PLAYER_LEFT: (p) => `${p.name} left the room`
   };
   const dict = lang === "zh" ? dictZh : dictEn;
   if (code && dict[code]) return dict[code](params);
   return sys.message || code || "system";
+}
+
+function renderViolationNarrative(
+  n: { playerName: string; detail?: string; text?: string },
+  lang: Lang
+): string {
+  // Legacy server: pre-localized text already in `text` (always Chinese). New server: only
+  // sends the raw cause in `detail`, we wrap it in the viewer's language.
+  if (n.detail !== undefined) {
+    const reason = n.detail || (lang === "zh" ? "触犯了守则" : "broke a rule");
+    return lang === "zh"
+      ? `【${n.playerName}】${reason}。动物园的黑暗似乎更近了一点。`
+      : `[${n.playerName}] ${reason}. The zoo's darkness creeps closer.`;
+  }
+  return n.text || `${n.playerName}: violation`;
 }
 
 function animalEmojiByCode(animal: string | null | undefined): string {
