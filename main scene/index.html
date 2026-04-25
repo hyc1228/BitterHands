@@ -1361,9 +1361,12 @@
           sweepDir: 1,
           sweepTimer: 2,
           targetId: null,
-          lockTimer: 0,     // countdown while locked on a target
+          lockTimer: 0,
           retargetIn: 0,
           lured: null,
+          patrolTarget: null,
+          patrolTimer: 0,
+          moving: false,
         },
         items: [
           { id: "h1", type: "heart", x: cx - 80, y: cy - 340 },
@@ -1575,6 +1578,7 @@
           "transform",
           `translate(${state.monitor.x} ${state.monitor.y})`
         );
+        state.nodes.monitor.classList.toggle("walking", state.monitor.moving);
         // me (not in pure spectator / OB)
         if (!state.spectator && state.nodes.me) {
           state.nodes.me.setAttribute(
@@ -1833,9 +1837,24 @@
             m.sweepTimer = 2 + Math.random() * 3;
             if (Math.random() < 0.6) m.sweepDir *= -1;
           }
-          // Slow random drift
-          m.x = clamp(m.x + (Math.random() - 0.5) * 20 * dt, BORDER, MAP_W - BORDER);
-          m.y = clamp(m.y + (Math.random() - 0.5) * 20 * dt, BORDER, MAP_H - BORDER);
+          // Patrol: walk toward a random waypoint, pick a new one when close
+          if (!m.patrolTarget || m.patrolTimer <= 0 ||
+              Math.hypot(m.patrolTarget.x - m.x, m.patrolTarget.y - m.y) < 60) {
+            m.patrolTimer = 3 + Math.random() * 5;
+            m.patrolTarget = {
+              x: BORDER + Math.random() * (MAP_W - 2 * BORDER),
+              y: BORDER + Math.random() * (MAP_H - 2 * BORDER),
+            };
+          }
+          m.patrolTimer -= dt;
+          const pdx = m.patrolTarget.x - m.x;
+          const pdy = m.patrolTarget.y - m.y;
+          const pd  = Math.hypot(pdx, pdy);
+          m.moving  = pd > 10;
+          if (m.moving) {
+            m.x = clamp(m.x + (pdx / pd) * MON_SPEED * 0.55 * dt, BORDER, MAP_W - BORDER);
+            m.y = clamp(m.y + (pdy / pd) * MON_SPEED * 0.55 * dt, BORDER, MAP_H - BORDER);
+          }
 
           // Check which players are inside the cone
           const allPlayers = [
@@ -1885,7 +1904,8 @@
           const dx   = target.x - m.x;
           const dy   = target.y - m.y;
           const dist = Math.hypot(dx, dy);
-          if (dist > 40) {
+          m.moving = dist > 40;
+          if (m.moving) {
             m.x += (dx / dist) * MON_SPEED * dt;
             m.y += (dy / dist) * MON_SPEED * dt;
           }
@@ -2274,13 +2294,15 @@
         const eyeLEl  = me.querySelector(".eye-l");
         const eyeREl  = me.querySelector(".eye-r");
         const mouthEl = me.querySelector(".mouth");
+        // Webcam is mirrored: MediaPipe L_EYE = user's physical right,
+        // R_EYE = user's physical left. Swap so avatar matches the player.
         if (eyeLEl) {
           eyeLEl.style.animation = "none";
-          eyeLEl.style.transform = `scaleY(${openL})`;
+          eyeLEl.style.transform = `scaleY(${openR})`;
         }
         if (eyeREl) {
           eyeREl.style.animation = "none";
-          eyeREl.style.transform = `scaleY(${openR})`;
+          eyeREl.style.transform = `scaleY(${openL})`;
         }
         if (mouthEl) {
           mouthEl.style.animation = "none";
