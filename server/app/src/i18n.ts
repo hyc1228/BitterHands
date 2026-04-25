@@ -112,6 +112,14 @@ interface Dict {
   obReadyCount: (n: number, total: number) => string;
   obLobbyWaitingTitle: string;
   obLobbyCenterHint: string;
+  /** Operator-only auth gate for `/ob` so casual visitors can't open OB */
+  obAuthTitle: string;
+  obAuthHint: string;
+  obAuthKeyLabel: string;
+  obAuthKeyPlaceholder: string;
+  obAuthEnter: string;
+  obAuthBack: string;
+  obAuthBadKey: string;
   gateTitle: string;
   gateHint: string;
   gateEnable: string;
@@ -223,6 +231,13 @@ const en: Dict = {
   obReadyCount: (n, t) => `${n}/${t} ready`,
   obLobbyWaitingTitle: "Lobby — players in waiting room",
   obLobbyCenterHint: "Use ‘Start game’ on the left when you're ready. Everyone will enter the zoo together.",
+  obAuthTitle: "Operator only",
+  obAuthHint: "OB is the operator console. Enter your operator key to continue. The key stays on this device.",
+  obAuthKeyLabel: "Operator key",
+  obAuthKeyPlaceholder: "•••••••",
+  obAuthEnter: "Enter OB",
+  obAuthBack: "Back to join",
+  obAuthBadKey: "Wrong key.",
   gateTitle: "Final check",
   gateHint: "Pass three quick face tests to enter the zoo.",
   gateEnable: "Start face check",
@@ -333,6 +348,13 @@ const zh: Dict = {
   obReadyCount: (n, t) => `${n}/${t} 已就绪`,
   obLobbyWaitingTitle: "等待房间 · 玩家集合中",
   obLobbyCenterHint: "准备好后点左侧「开始游戏」，所有玩家会同时进入。",
+  obAuthTitle: "仅限操作员",
+  obAuthHint: "OB 是操作员控制台。输入你的密钥继续，密钥仅保存在本设备。",
+  obAuthKeyLabel: "操作员密钥",
+  obAuthKeyPlaceholder: "•••••••",
+  obAuthEnter: "进入 OB",
+  obAuthBack: "返回首页",
+  obAuthBadKey: "密钥不对。",
   gateTitle: "入园前自检",
   gateHint: "通过三关面部测试，才能进入动物园。",
   gateEnable: "开启自检",

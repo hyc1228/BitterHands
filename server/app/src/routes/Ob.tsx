@@ -1,5 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { DEFAULT_ROOM_ID, getMainSceneFrameSrc, OB_FACE_SLOTS } from "../constants";
+import { expectedObKey, isObAuthorized, writeStoredObKey } from "../lib/obAuth";
 import { animalLocalized, dict } from "../i18n";
 import { useMainSceneIframeBridge } from "../hooks/useMainSceneIframeBridge";
 import {
@@ -48,6 +50,71 @@ function obCameraPayloadFromState(cam: ObCamState): ObCameraPayload {
 }
 
 export default function Ob() {
+  const [authorized, setAuthorized] = useState(() => isObAuthorized());
+  if (!authorized) {
+    return <ObAuthGate onUnlock={() => setAuthorized(true)} />;
+  }
+  return <ObInner />;
+}
+
+function ObAuthGate({ onUnlock }: { onUnlock: () => void }) {
+  const lang = usePartyStore((s) => s.lang);
+  const t = dict(lang);
+  const nav = useNavigate();
+  const [key, setKey] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmed = key.trim();
+    if (!trimmed) return;
+    if (trimmed === expectedObKey()) {
+      writeStoredObKey(trimmed);
+      onUnlock();
+    } else {
+      setError(t.obAuthBadKey);
+    }
+  }
+
+  return (
+    <div className="join-wrap">
+      <form className="card join-card" onSubmit={handleSubmit}>
+        <h1 className="heading">{t.obAuthTitle}</h1>
+        <div className="underline" aria-hidden />
+        <div className="stack" style={{ textAlign: "left" }}>
+          <p className="muted" style={{ margin: 0, fontSize: 13, lineHeight: 1.45 }}>
+            {t.obAuthHint}
+          </p>
+          <div>
+            <label className="label" htmlFor="obKey">
+              {t.obAuthKeyLabel}
+            </label>
+            <input
+              id="obKey"
+              type="password"
+              autoComplete="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              value={key}
+              onChange={(e) => setKey(e.target.value)}
+              placeholder={t.obAuthKeyPlaceholder}
+              autoFocus
+            />
+          </div>
+        </div>
+        {error ? <div style={{ color: "#ff9a8a" }}>{error}</div> : null}
+        <button className="primary" disabled={!key.trim()} type="submit">
+          {t.obAuthEnter}
+        </button>
+        <button type="button" className="ghost" onClick={() => nav("/", { replace: true })}>
+          ← {t.obAuthBack}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function ObInner() {
   const lang = usePartyStore((s) => s.lang);
   const t = dict(lang);
   const conn = usePartyStore((s) => s.conn);

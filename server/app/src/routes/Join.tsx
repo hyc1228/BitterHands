@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { DEFAULT_ROOM_ID, pickRandomDefaultName } from "../constants";
 import { dict } from "../i18n";
 import { usePartyStore } from "../party/store";
@@ -97,9 +97,8 @@ export default function Join() {
         <button className="primary" disabled={submitDisabled} type="submit">
           {busy ? t.joining : t.joinBtn}
         </button>
-        <div className="muted" style={{ fontSize: 12 }}>
-          <Link to="/ob">OB ↗</Link>
-        </div>
+        {/* OB link intentionally hidden — only the operator should reach `/ob`, and even
+            then they need the key gate (see ObAuthGate in Ob.tsx). */}
       </form>
     </div>
   );
