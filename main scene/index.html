@@ -696,6 +696,57 @@
       }
       #universalOverlay.success #uchal-bar-fill { background: #30d080; }
       #universalOverlay.fail    #uchal-bar-fill { background: #ff4444; }
+
+      /* ---------- Death / spectator overlay ---------- */
+      /* Full-screen flash shown briefly on death, then shrinks to badge */
+      #deathOverlay {
+        display: none;
+        position: absolute;
+        inset: 0;
+        z-index: 40;
+        background: rgba(0, 0, 0, 0.82);
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        pointer-events: none;
+        transition: opacity 0.6s ease;
+      }
+      #deathOverlay.active { display: flex; opacity: 1; }
+      #deathOverlay.fading { opacity: 0; }
+      #deathOverlay .death-icon { font-size: 3rem; }
+      #deathOverlay .death-title {
+        font-family: "Caveat", cursive;
+        font-size: 2rem;
+        font-weight: 700;
+        color: #ff4444;
+        letter-spacing: 2px;
+      }
+      #deathOverlay .death-sub {
+        font-size: 0.82rem;
+        color: #888;
+        font-family: "Patrick Hand", cursive;
+        letter-spacing: 1px;
+      }
+      /* Small corner badge that persists after the overlay fades */
+      #spectatorBadge {
+        display: none;
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 38;
+        background: rgba(0,0,0,0.72);
+        border: 1.5px solid #ff4444;
+        border-radius: 20px;
+        padding: 3px 12px;
+        font-size: 0.72rem;
+        color: #ff6666;
+        font-family: "Patrick Hand", cursive;
+        letter-spacing: 1px;
+        pointer-events: none;
+      }
+      #spectatorBadge.active { display: block; }
     </style>
   </head>
   <body>
@@ -890,6 +941,14 @@
           <div id="uchal-status">请执行！</div>
           <div class="chal-bar"><div id="uchal-bar-fill"></div></div>
         </div>
+        <!-- Death flash overlay (auto-dismisses) -->
+        <div id="deathOverlay">
+          <div class="death-icon">💀</div>
+          <div class="death-title">你已出局</div>
+          <div class="death-sub">观战模式</div>
+        </div>
+        <!-- Persistent spectator badge -->
+        <div id="spectatorBadge">💀 观战中</div>
       </div>
     </div>
 
@@ -1362,6 +1421,7 @@
           vy: 0,
           color: "#5cc9ff",
           lives: 3,
+          dead: false,
           moving: false,
           animal: "owl",
         },
@@ -1956,6 +2016,31 @@
         }
       }
 
+      function handleDeath() {
+        if (state.me.dead) return;
+        state.me.dead = true;
+        state.spectator = true;
+        if (state.nodes.me) state.nodes.me.setAttribute("visibility", "hidden");
+        challenge.active = false;
+        challenge.completed = false;
+        chalOverlay.className = "";
+        universalChallenge.active = false;
+        universalChallenge.completed = false;
+        uChalOverlay.className = "";
+        addLog("💀 生命值归零，进入观战模式。");
+        // Flash the full overlay for 2.5s, then fade out and show small badge
+        const overlay = document.getElementById("deathOverlay");
+        const badge   = document.getElementById("spectatorBadge");
+        overlay.className = "active";
+        setTimeout(() => {
+          overlay.classList.add("fading");
+          overlay.addEventListener("transitionend", () => {
+            overlay.className = "";
+            badge.className   = "active";
+          }, { once: true });
+        }, 2500);
+      }
+
       function renderTimer() {
         const m = Math.floor(state.timer / 60);
         const s = state.timer % 60;
@@ -2031,7 +2116,7 @@
         { id: "u_headmove", icon: "🙂", label: "摇头或点头！", log: "通用规则：摇头或点头。" },
       ];
       function triggerUniversalRule() {
-        if (universalChallenge.active) return;
+        if (universalChallenge.active || state.me.dead) return;
         const rule = UNIVERSAL_RULES[Math.floor(Math.random() * UNIVERSAL_RULES.length)];
         addLog(rule.log, null, { rule: true });
         startUniversalChallenge(rule);
@@ -2208,7 +2293,7 @@
       }
 
       function startChallenge() {
-        if (challenge.cooldown > 0) return;
+        if (challenge.cooldown > 0 || state.me.dead) return;
         challenge.active    = true;
         challenge.completed = false;
         challenge.action    = animalToAction(state.me.animal);
@@ -2245,6 +2330,7 @@
           state.me.lives = Math.max(0, state.me.lives - 1);
           renderLives();
           addLog("❌ 未执行守则，扣 1 生命值。", null, { rule: true });
+          if (state.me.lives <= 0) { setTimeout(handleDeath, 1400); }
         }
         setTimeout(() => { chalOverlay.className = ""; }, 1400);
       }
@@ -2261,7 +2347,7 @@
       // ---------- FaceMesh landmark helpers ----------
       const L_EYE_IDX    = [33, 160, 158, 133, 153, 144];
       const R_EYE_IDX    = [362, 385, 387, 263, 373, 380];
-      const EAR_CLOSED   = 0.21;
+      const EAR_CLOSED   = 0.25;
       const MAR_OPEN     = 0.40;
       const SHAKE_THRESH = 0.08;
       const BLINK_MS     = 5000;
@@ -2438,6 +2524,7 @@
           state.me.lives = Math.max(0, state.me.lives - 1);
           renderLives();
           addLog("❌ 未执行通用规则，扣 1 生命值。", null, { rule: true });
+          if (state.me.lives <= 0) { setTimeout(handleDeath, 1200); }
         }
         setTimeout(() => { uChalOverlay.className = ""; }, 1200);
       }
