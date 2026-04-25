@@ -1,0 +1,895 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nocturne Zoo (LAN)</title>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0b0b12;
+        --panel: #131324;
+        --text: #eaeaf6;
+        --muted: #a7a7c4;
+        --border: rgba(255, 255, 255, 0.12);
+        --accent: #8b5cf6;
+      }
+      body {
+        margin: 0;
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial,
+          "Apple Color Emoji", "Segoe UI Emoji";
+        background: radial-gradient(1200px 600px at 20% 0%, rgba(139, 92, 246, 0.25), transparent),
+          radial-gradient(900px 500px at 90% 10%, rgba(20, 184, 166, 0.2), transparent), var(--bg);
+        color: var(--text);
+      }
+      .wrap {
+        max-width: 980px;
+        margin: 24px auto;
+        padding: 0 16px 24px;
+      }
+      .top {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+        align-items: end;
+        justify-content: space-between;
+        margin-bottom: 14px;
+      }
+      h1 {
+        font-size: 18px;
+        margin: 0;
+        letter-spacing: 0.2px;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 13px;
+        margin-top: 6px;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: 360px 1fr;
+        gap: 12px;
+      }
+      @media (max-width: 860px) {
+        .grid {
+          grid-template-columns: 1fr;
+        }
+      }
+      .card {
+        background: color-mix(in srgb, var(--panel) 86%, transparent);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 14px;
+        backdrop-filter: blur(8px);
+      }
+      label {
+        display: block;
+        font-size: 12px;
+        color: var(--muted);
+        margin-bottom: 6px;
+      }
+      input,
+      select,
+      button,
+      textarea {
+        width: 100%;
+        box-sizing: border-box;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text);
+        padding: 10px 10px;
+        outline: none;
+      }
+      textarea {
+        min-height: 90px;
+        resize: vertical;
+      }
+      .row {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      .btnrow {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+      }
+      button {
+        cursor: pointer;
+        border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+      }
+      button.primary {
+        background: color-mix(in srgb, var(--accent) 30%, rgba(255, 255, 255, 0.04));
+      }
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+      .pill {
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: #6b7280;
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04);
+      }
+      .dot.ok {
+        background: #22c55e;
+      }
+      .dot.bad {
+        background: #ef4444;
+      }
+      .log {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+        font-size: 12px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        word-break: break-word;
+      }
+      .muted {
+        color: var(--muted);
+      }
+      .players {
+        display: grid;
+        gap: 8px;
+        margin-top: 10px;
+      }
+      .player {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .player .name {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .badge {
+        font-size: 12px;
+        padding: 2px 8px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        color: var(--muted);
+      }
+
+      .miniVideo {
+        width: 100%;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.03);
+        aspect-ratio: 16 / 9;
+        object-fit: cover;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top">
+        <div>
+          <h1>Nocturne Zoo · LAN Demo</h1>
+          <div class="sub">最小前端：加入房间、聊天、触发违规、看广播/私信。</div>
+        </div>
+        <div class="pill">
+          <span class="dot" id="connDot"></span>
+          <span id="connText">未连接</span>
+        </div>
+      </div>
+
+      <div class="grid">
+        <div class="card">
+          <div class="row">
+            <div>
+              <label>房间号</label>
+              <input id="roomId" placeholder="例如：my-room" />
+            </div>
+            <div>
+              <label>名字</label>
+              <input id="name" placeholder="例如：Alice" />
+            </div>
+          </div>
+
+          <div style="height: 10px"></div>
+
+          <div class="btnrow">
+            <button class="primary" id="btnConnect">连接 / 加入</button>
+            <button id="btnStart" disabled>start（开局）</button>
+          </div>
+
+          <div style="height: 12px"></div>
+
+          <label>创建形象（拍照 + 3 个问题 → 分配角色）</label>
+          <div class="btnrow">
+            <button id="btnOnboard" disabled>开始创建</button>
+            <button id="btnResetOnboard" disabled>重置/重来</button>
+          </div>
+
+          <div style="height: 10px"></div>
+
+          <div id="onboardArea" style="display: none">
+            <video id="onboardVideo" class="miniVideo" autoplay playsinline muted></video>
+            <canvas id="shotCanvas" style="display:none"></canvas>
+
+            <div style="height: 10px"></div>
+
+            <div class="btnrow">
+              <button id="btnSnap">拍照</button>
+              <button id="btnUseShot" disabled>使用这张</button>
+            </div>
+
+            <div style="height: 10px"></div>
+
+            <div id="qArea" style="display:none">
+              <div class="muted" style="font-size:12px;margin-bottom:6px">
+                <span id="qStep">Q1/3</span>
+              </div>
+              <div id="qText" style="font-weight:600;margin-bottom:10px"></div>
+              <div style="display:grid; gap:8px">
+                <button class="primary" id="optA">A</button>
+                <button class="primary" id="optB">B</button>
+                <button class="primary" id="optC">C</button>
+              </div>
+            </div>
+
+            <div id="analyzing" style="display:none; margin-top:12px" class="muted">
+              正在分析你…
+            </div>
+
+            <div id="reveal" style="display:none; margin-top:12px">
+              <div style="font-weight:700; font-size:14px" id="revealTitle"></div>
+              <div class="muted" style="font-size:12px; margin-top:6px" id="revealVerdict"></div>
+            </div>
+          </div>
+
+          <div style="height: 12px"></div>
+
+          <label>摄像头识别（猫头鹰眨眼 / 长颈鹿甩脖子）</label>
+          <div class="btnrow">
+            <button id="btnCam" disabled>开启摄像头检测</button>
+            <button id="btnCamStop" disabled>关闭检测</button>
+          </div>
+          <div style="height: 10px"></div>
+          <video id="video" class="miniVideo" autoplay playsinline muted></video>
+          <div style="height: 8px"></div>
+          <div class="muted" style="font-size: 12px">
+            当前身份：<span id="myAnimal">未分配</span> · 检测状态：<span id="detStatus">未开启</span>
+          </div>
+
+          <div style="height: 12px"></div>
+
+          <label>聊天</label>
+          <div class="row">
+            <input id="chatText" placeholder="说点什么…" />
+            <button id="btnChat" disabled>发送</button>
+          </div>
+
+          <div style="height: 16px"></div>
+
+          <div class="muted" style="font-size: 12px">
+            提示：摄像头识别只在本地跑，不上传视频；识别到违规会自动发 `violation` 到房间。
+          </div>
+        </div>
+
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px">
+            <div>
+              <div style="font-weight: 600">事件日志</div>
+              <div class="muted" style="font-size: 12px">public 广播 + private 私信都会显示在这里。</div>
+            </div>
+            <button id="btnClear" style="max-width: 140px">清空</button>
+          </div>
+          <div style="height: 12px"></div>
+          <div class="log" id="log"></div>
+
+          <div style="height: 16px"></div>
+          <div style="font-weight: 600">玩家</div>
+          <div class="players" id="players"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const logEl = $("log");
+      const playersEl = $("players");
+      const connDot = $("connDot");
+      const connText = $("connText");
+
+      function log(line) {
+        const ts = new Date().toLocaleTimeString();
+        logEl.textContent = `[${ts}] ${line}\n` + logEl.textContent;
+      }
+
+      function setConnected(yes, details = "") {
+        connDot.className = "dot " + (yes ? "ok" : "bad");
+        connText.textContent = yes ? "已连接 " + details : "未连接";
+        $("btnStart").disabled = !yes;
+        $("btnAssign").disabled = !yes;
+        $("btnViolation").disabled = !yes;
+        $("btnChat").disabled = !yes;
+      }
+
+      function animalEmoji(animal) {
+        if (animal === "白狮子") return "🦁";
+        if (animal === "猫头鹰") return "🦉";
+        if (animal === "长颈鹿") return "🦒";
+        return "❓";
+      }
+
+      function renderPlayers(players = []) {
+        playersEl.innerHTML = "";
+        for (const p of players) {
+          const div = document.createElement("div");
+          div.className = "player";
+          const left = document.createElement("div");
+          left.className = "name";
+          left.innerHTML = `<span>${animalEmoji(p.animal)}</span><span>${p.name}</span>`;
+          const right = document.createElement("div");
+          right.innerHTML = `<span class="badge">♥ ${p.lives}</span>`;
+          div.appendChild(left);
+          div.appendChild(right);
+          playersEl.appendChild(div);
+        }
+      }
+
+      function partyUrl(roomId) {
+        const proto = location.protocol === "https:" ? "wss" : "ws";
+        return `${proto}://${location.host}/party/${encodeURIComponent(roomId)}`;
+      }
+
+      let ws = null;
+      let currentRoom = null;
+      let myAnimal = null;
+
+      // Onboarding flow state
+      const QUESTIONS = [
+        {
+          id: "q1",
+          text: "深夜，你一个人走在动物园里，发现园区的灯全灭了。你的第一反应是？",
+          A: "站在原地，等眼睛适应黑暗，观察四周",
+          B: "大声喊出来，告诉任何可能在附近的人你在这里",
+          C: "继续往前走，感觉黑暗没什么好怕的"
+        },
+        {
+          id: "q2",
+          text: "你捡到一张纸条，上面写着「不要相信你看到的大象」。你会怎么做？",
+          A: "把纸条收好，悄悄记在心里，继续观察",
+          B: "立刻告诉所有人，让大家一起警惕",
+          C: "看了看大象，觉得没问题，把纸条扔掉"
+        },
+        {
+          id: "q3",
+          text: "你发现同行的人眼神开始变得奇怪，你认为他们不再是原来的人了。你选择？",
+          A: "什么都不说，继续观察，等待更多证据",
+          B: "直接质问他们，你是谁",
+          C: "默默靠近他们，感觉和他们在一起更安全"
+        }
+      ];
+      let onboardStream = null;
+      let onboardShotDataUrl = null;
+      let qIdx = 0;
+      let answers = {};
+      let waitingReveal = false;
+
+      // --- Camera detectors (MediaPipe FaceMesh) ---
+      let faceMesh = null;
+      let camera = null;
+      let detectorEnabled = false;
+      let lastLandmarks = null;
+
+      const DET = {
+        owl: {
+          cycleMs: 40000,
+          prepMs: 2000,
+          windowMs: 5000,
+          earThresh: 0.19
+        },
+        giraffe: {
+          cycleMs: 45000,
+          windowMs: 5000,
+          // nose x range in [0..1], so 0.08 is a big lateral move
+          shakeAmpThresh: 0.08,
+          shakePeaksNeeded: 2
+        }
+      };
+
+      let owlTimer = null;
+      let giraffeTimer = null;
+
+      function setMyAnimal(animal) {
+        myAnimal = animal;
+        $("myAnimal").textContent = animal ? `${animalEmoji(animal)} ${animal}` : "未分配";
+      }
+
+      function setDetStatus(text) {
+        $("detStatus").textContent = text;
+      }
+
+      function dist(a, b) {
+        const dx = a.x - b.x;
+        const dy = a.y - b.y;
+        return Math.hypot(dx, dy);
+      }
+
+      function eyeEAR(landmarks, idx) {
+        // idx: {p1,p2,p3,p4,p5,p6} in common EAR definition
+        const p1 = landmarks[idx.p1];
+        const p2 = landmarks[idx.p2];
+        const p3 = landmarks[idx.p3];
+        const p4 = landmarks[idx.p4];
+        const p5 = landmarks[idx.p5];
+        const p6 = landmarks[idx.p6];
+        const A = dist(p2, p6);
+        const B = dist(p3, p5);
+        const C = dist(p1, p4);
+        return (A + B) / (2 * C);
+      }
+
+      // FaceMesh landmark indices (MediaPipe)
+      const LEFT_EYE = { p1: 33, p2: 160, p3: 158, p4: 133, p5: 153, p6: 144 };
+      const RIGHT_EYE = { p1: 362, p2: 385, p3: 387, p4: 263, p5: 373, p6: 380 };
+      const NOSE_TIP = 1;
+
+      function currentEAR(landmarks) {
+        const l = eyeEAR(landmarks, LEFT_EYE);
+        const r = eyeEAR(landmarks, RIGHT_EYE);
+        return (l + r) / 2;
+      }
+
+      let blinkSeenInWindow = false;
+      let owlWindowActive = false;
+
+      function scheduleOwl() {
+        clearTimeout(owlTimer);
+        if (myAnimal !== "猫头鹰" || !detectorEnabled) return;
+        setDetStatus("猫头鹰：等待下一次检测…");
+
+        owlTimer = setTimeout(() => {
+          if (!detectorEnabled || myAnimal !== "猫头鹰") return;
+          setDetStatus("猫头鹰：2 秒后开始（准备）");
+
+          setTimeout(() => {
+            if (!detectorEnabled || myAnimal !== "猫头鹰") return;
+            blinkSeenInWindow = false;
+            owlWindowActive = true;
+            setDetStatus("猫头鹰：窗口开始（5 秒禁止眨眼）");
+
+            setTimeout(() => {
+              owlWindowActive = false;
+              if (!detectorEnabled || myAnimal !== "猫头鹰") return;
+              if (blinkSeenInWindow) {
+                log("检测：眨眼触发违规");
+                sendViolation("眨眼了（猫头鹰守则违规）");
+              } else {
+                log("检测：本轮未眨眼（OK）");
+              }
+              scheduleOwl();
+            }, DET.owl.windowMs);
+          }, DET.owl.prepMs);
+        }, DET.owl.cycleMs);
+      }
+
+      let giraffeWindowActive = false;
+      let noseBaseX = null;
+      let noseMax = null;
+      let noseMin = null;
+      let peaks = 0;
+      let lastDir = 0;
+
+      function resetGiraffeWindow() {
+        giraffeWindowActive = true;
+        noseBaseX = null;
+        noseMax = null;
+        noseMin = null;
+        peaks = 0;
+        lastDir = 0;
+      }
+
+      function scheduleGiraffe() {
+        clearTimeout(giraffeTimer);
+        if (myAnimal !== "长颈鹿" || !detectorEnabled) return;
+        setDetStatus("长颈鹿：等待下一次甩脖子窗口…");
+
+        giraffeTimer = setTimeout(() => {
+          if (!detectorEnabled || myAnimal !== "长颈鹿") return;
+          resetGiraffeWindow();
+          setDetStatus("长颈鹿：窗口开始（5 秒内甩脖子）");
+
+          setTimeout(() => {
+            giraffeWindowActive = false;
+            if (!detectorEnabled || myAnimal !== "长颈鹿") return;
+            const amp =
+              noseMax != null && noseMin != null ? Math.abs(noseMax - noseMin) : 0;
+            const ok = amp >= DET.giraffe.shakeAmpThresh && peaks >= DET.giraffe.shakePeaksNeeded;
+            if (!ok) {
+              log(`检测：甩脖子不足（amp=${amp.toFixed(3)}, peaks=${peaks}）→ 违规`);
+              sendViolation("甩脖子动作不足（长颈鹿守则违规）");
+            } else {
+              log(`检测：甩脖子通过（amp=${amp.toFixed(3)}, peaks=${peaks}）`);
+            }
+            scheduleGiraffe();
+          }, DET.giraffe.windowMs);
+        }, DET.giraffe.cycleMs);
+      }
+
+      function onLandmarks(landmarks) {
+        lastLandmarks = landmarks;
+        if (!detectorEnabled) return;
+
+        if (myAnimal === "猫头鹰") {
+          const ear = currentEAR(landmarks);
+          const blink = ear < DET.owl.earThresh;
+          if (owlWindowActive && blink) blinkSeenInWindow = true;
+        }
+
+        if (myAnimal === "长颈鹿" && giraffeWindowActive) {
+          const noseX = landmarks[NOSE_TIP]?.x;
+          if (typeof noseX !== "number") return;
+          if (noseBaseX == null) noseBaseX = noseX;
+          noseMax = noseMax == null ? noseX : Math.max(noseMax, noseX);
+          noseMin = noseMin == null ? noseX : Math.min(noseMin, noseX);
+
+          const dx = noseX - noseBaseX;
+          const dir = dx > 0.01 ? 1 : dx < -0.01 ? -1 : 0;
+          if (dir !== 0 && lastDir !== 0 && dir !== lastDir) {
+            peaks += 1;
+          }
+          if (dir !== 0) lastDir = dir;
+        }
+      }
+
+      async function startCamera() {
+        if (detectorEnabled) return;
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          log("请先连接房间，再开启摄像头检测");
+          return;
+        }
+        if (!myAnimal || myAnimal === "白狮子") {
+          log("当前身份不是猫头鹰/长颈鹿：摄像头检测暂不需要（白狮子是麦克风）");
+        }
+
+        const video = $("video");
+        setDetStatus("初始化 FaceMesh…");
+
+        faceMesh = new FaceMesh.FaceMesh({
+          locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${file}`
+        });
+        faceMesh.setOptions({
+          maxNumFaces: 1,
+          refineLandmarks: true,
+          minDetectionConfidence: 0.6,
+          minTrackingConfidence: 0.6
+        });
+        faceMesh.onResults((results) => {
+          const landmarks = results.multiFaceLandmarks?.[0];
+          if (landmarks) onLandmarks(landmarks);
+        });
+
+        camera = new Camera(video, {
+          onFrame: async () => {
+            if (!faceMesh) return;
+            await faceMesh.send({ image: video });
+          },
+          width: 960,
+          height: 540
+        });
+
+        await camera.start();
+        detectorEnabled = true;
+        $("btnCam").disabled = true;
+        $("btnCamStop").disabled = false;
+        setDetStatus("检测已开启");
+        log("摄像头检测已开启（FaceMesh）");
+
+        scheduleOwl();
+        scheduleGiraffe();
+      }
+
+      async function stopCamera() {
+        detectorEnabled = false;
+        clearTimeout(owlTimer);
+        clearTimeout(giraffeTimer);
+        owlWindowActive = false;
+        giraffeWindowActive = false;
+
+        try {
+          if (camera) camera.stop();
+        } catch {}
+        camera = null;
+        faceMesh = null;
+        $("btnCam").disabled = false;
+        $("btnCamStop").disabled = true;
+        setDetStatus("未开启");
+        log("摄像头检测已关闭");
+      }
+
+      function sendViolation(detail) {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({ type: "violation", detail }));
+      }
+
+      async function startOnboarding() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) {
+          log("请先连接房间，再开始创建形象");
+          return;
+        }
+        $("onboardArea").style.display = "";
+        $("qArea").style.display = "none";
+        $("analyzing").style.display = "none";
+        $("reveal").style.display = "none";
+        $("btnUseShot").disabled = true;
+        onboardShotDataUrl = null;
+        answers = {};
+        qIdx = 0;
+        waitingReveal = false;
+
+        const video = $("onboardVideo");
+        onboardStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+        video.srcObject = onboardStream;
+        await video.play();
+        log("入场：摄像头已开启（拍照）");
+      }
+
+      function stopOnboardingCamera() {
+        if (onboardStream) {
+          for (const t of onboardStream.getTracks()) t.stop();
+        }
+        onboardStream = null;
+        const video = $("onboardVideo");
+        if (video) video.srcObject = null;
+      }
+
+      function snapPhoto() {
+        const video = $("onboardVideo");
+        const canvas = $("shotCanvas");
+        const w = video.videoWidth || 960;
+        const h = video.videoHeight || 540;
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(video, 0, 0, w, h);
+        onboardShotDataUrl = canvas.toDataURL("image/jpeg", 0.85);
+        $("btnUseShot").disabled = false;
+        log("入场：已拍照（可重拍/确认）");
+      }
+
+      function beginQuestions() {
+        $("qArea").style.display = "";
+        renderQuestion();
+      }
+
+      function renderQuestion() {
+        const q = QUESTIONS[qIdx];
+        $("qStep").textContent = `Q${qIdx + 1}/3`;
+        $("qText").textContent = q.text;
+        $("optA").textContent = `A · ${q.A}`;
+        $("optB").textContent = `B · ${q.B}`;
+        $("optC").textContent = `C · ${q.C}`;
+      }
+
+      function answerQuestion(letter) {
+        const q = QUESTIONS[qIdx];
+        answers[q.id] = letter;
+        qIdx += 1;
+        if (qIdx >= QUESTIONS.length) {
+          submitOnboarding();
+        } else {
+          renderQuestion();
+        }
+      }
+
+      function submitOnboarding() {
+        if (!onboardShotDataUrl) {
+          log("入场：还没有拍照");
+          return;
+        }
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+        // 1) photo
+        ws.send(JSON.stringify({ type: "submit_photo", photoBase64: onboardShotDataUrl }));
+
+        // 2) answers
+        ws.send(JSON.stringify({ type: "submit_answers", answers }));
+
+        $("qArea").style.display = "none";
+        $("analyzing").style.display = "";
+        waitingReveal = true;
+        log("入场：已提交照片与问卷，等待判定…");
+      }
+
+      function resetOnboarding() {
+        stopOnboardingCamera();
+        $("onboardArea").style.display = "none";
+        $("qArea").style.display = "none";
+        $("analyzing").style.display = "none";
+        $("reveal").style.display = "none";
+        $("btnUseShot").disabled = true;
+        onboardShotDataUrl = null;
+        answers = {};
+        qIdx = 0;
+        waitingReveal = false;
+      }
+
+      $("btnConnect").addEventListener("click", () => {
+        const roomId = $("roomId").value.trim() || "test-room";
+        const name = $("name").value.trim() || "Player";
+        currentRoom = roomId;
+
+        if (ws) ws.close();
+        ws = new WebSocket(partyUrl(roomId));
+
+        ws.addEventListener("open", () => {
+          setConnected(true, `(${roomId})`);
+          log(`WS open → ${partyUrl(roomId)}`);
+          ws.send(JSON.stringify({ type: "join", name }));
+          $("btnCam").disabled = false;
+          $("btnOnboard").disabled = false;
+          $("btnResetOnboard").disabled = false;
+        });
+
+        ws.addEventListener("close", () => {
+          setConnected(false);
+          log("WS close");
+          $("btnCam").disabled = true;
+          $("btnCamStop").disabled = true;
+          stopCamera();
+          $("btnOnboard").disabled = true;
+          $("btnResetOnboard").disabled = true;
+          resetOnboarding();
+        });
+
+        ws.addEventListener("error", () => {
+          setConnected(false);
+          log("WS error");
+        });
+
+        ws.addEventListener("message", (ev) => {
+          let msg = null;
+          try {
+            msg = JSON.parse(ev.data);
+          } catch {
+            log(`recv non-json: ${String(ev.data).slice(0, 200)}`);
+            return;
+          }
+
+          const { type, data } = msg;
+          if (type === "room_snapshot") {
+            renderPlayers(data.players);
+          }
+
+          if (type === "player_joined" || type === "player_updated") {
+            log(`${type}: ${data.name} ${animalEmoji(data.animal)} lives=${data.lives}`);
+          } else if (type === "system") {
+            log(`system: ${data.message}`);
+          } else if (type === "chat") {
+            log(`chat: ${data.playerName}: ${data.text}`);
+          } else if (type === "violation_narrative") {
+            log(`narrative: ${data.text}`);
+          } else if (type === "private_rules_card") {
+            log(`private rules: ${data.emoji} ${data.animal} / ${data.win}`);
+            setMyAnimal(data.animal);
+            if (detectorEnabled) {
+              scheduleOwl();
+              scheduleGiraffe();
+            }
+            if (waitingReveal) {
+              $("analyzing").style.display = "none";
+              $("reveal").style.display = "";
+              $("revealTitle").textContent = `${data.emoji} 你被判定为「${data.animal}」`;
+              $("revealVerdict").textContent = data.verdict || "（判定语：待接入）";
+              waitingReveal = false;
+              stopOnboardingCamera();
+              log("入场：判定已揭晓（收到私信规则卡）");
+            }
+          } else if (type === "private_owl_roster") {
+            log(`private owl roster: ${data.map((r) => `${r.name}${animalEmoji(r.animal)}`).join(" , ")}`);
+          } else if (type === "game_started") {
+            log(`game_started: duration=${Math.round(data.durationMs / 1000)}s`);
+          } else if (type === "game_ended") {
+            log(`game_ended: reveal=${(data.reveal || []).map((r) => `${r.name}${animalEmoji(r.animal)}`).join(" , ")}`);
+          } else {
+            if (type !== "room_snapshot") log(`${type}: ${JSON.stringify(data ?? msg)}`);
+          }
+        });
+      });
+
+      $("btnChat").addEventListener("click", () => {
+        const text = $("chatText").value.trim();
+        if (!ws || ws.readyState !== WebSocket.OPEN || !text) return;
+        ws.send(JSON.stringify({ type: "chat", text }));
+        $("chatText").value = "";
+      });
+
+      $("chatText").addEventListener("keydown", (e) => {
+        if (e.key === "Enter") $("btnChat").click();
+      });
+
+      $("btnStart").addEventListener("click", () => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({ type: "start" }));
+      });
+
+      $("btnAssign").addEventListener("click", () => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        // 简化：随便送 3 题答案，服务端会 fallback 分配身份
+        ws.send(
+          JSON.stringify({
+            type: "submit_answers",
+            answers: { q1: "A", q2: "B", q3: "C" }
+          })
+        );
+      });
+
+      $("btnViolation").addEventListener("click", () => {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(JSON.stringify({ type: "violation", detail: "违规（demo 按钮触发）" }));
+      });
+
+      $("btnCam").addEventListener("click", () => {
+        startCamera().catch((e) => {
+          log(`摄像头启动失败：${String(e?.message || e)}`);
+          setDetStatus("启动失败");
+          stopCamera();
+        });
+      });
+
+      $("btnCamStop").addEventListener("click", () => {
+        stopCamera();
+      });
+
+      $("btnOnboard").addEventListener("click", () => {
+        startOnboarding()
+          .then(() => {
+            // show snap step
+            $("qArea").style.display = "none";
+            $("analyzing").style.display = "none";
+            $("reveal").style.display = "none";
+          })
+          .catch((e) => log(`入场摄像头启动失败：${String(e?.message || e)}`));
+      });
+
+      $("btnResetOnboard").addEventListener("click", () => {
+        resetOnboarding();
+        log("入场：已重置");
+      });
+
+      $("btnSnap").addEventListener("click", () => {
+        snapPhoto();
+      });
+
+      $("btnUseShot").addEventListener("click", () => {
+        // after confirm photo, proceed to questions
+        beginQuestions();
+      });
+
+      $("optA").addEventListener("click", () => answerQuestion("A"));
+      $("optB").addEventListener("click", () => answerQuestion("B"));
+      $("optC").addEventListener("click", () => answerQuestion("C"));
+
+      $("btnClear").addEventListener("click", () => {
+        logEl.textContent = "";
+      });
+
+      // Defaults
+      $("roomId").value = "test-room";
+      $("name").value = "Player-" + Math.floor(Math.random() * 1000);
+      setConnected(false);
+      setMyAnimal(null);
+    </script>
+  </body>
+</html>
+

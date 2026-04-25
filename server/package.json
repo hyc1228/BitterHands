@@ -1,0 +1,13 @@
+{
+  "name": "nocturne-zoo-server",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "partykit dev ./src/server.js --serve ./public",
+    "deploy": "partykit deploy ./src/server.js --name nocturne-zoo"
+  },
+  "dependencies": {
+    "partykit": "^0.0.115"
+  }
+}
+
