@@ -8,7 +8,7 @@
   },
   "serve": {
     "path": "./public",
-    "singlePageApp": true,
+    "singlePageApp": false,
     "edgeTTL": 0,
     "browserTTL": 0
   }
