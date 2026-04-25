@@ -1,7 +1,8 @@
 /**
- * Copy repo root `main scene/` into `server/app/public/main-scene/` for Vite (publicDir), and
- * emit a root-level `nz-scene.html` (with `<base href="/main-scene/">`) for the iframe.
- * PartyKit maps *any* `main-scene/*.html` request to the SPA; only non-.html and root HTML work.
+ * Copy repo root `main scene/` into `server/app/public/main-scene/` for Vite (publicDir),
+ * keeping the source `index.html` in place at `main-scene/index.html`. SPA mode is off in
+ * `server/partykit.json`, so this is served directly with `text/html` and all relative
+ * SVG / CSS references inside it resolve against `/main-scene/` automatically.
  * Does not modify any file under the source `main scene/` folder.
  */
 import fs from "node:fs";
@@ -13,39 +14,19 @@ const repoRoot = path.resolve(here, "../..");
 const src = path.join(repoRoot, "main scene");
 const dest = path.join(here, "../app/public/main-scene");
 const publicRoot = path.join(here, "../app/public");
-/** Root-level so PartyKit static serves it directly with text/html (SPA is off; SPA uses HashRouter). */
-const nzName = "nz-scene.html";
-const nzPath = path.join(publicRoot, nzName);
 
 if (!fs.existsSync(src)) {
   console.warn("[sync-main-scene] Skipped: source not found:", src);
   process.exit(0);
 }
-fs.mkdirSync(path.dirname(dest), { recursive: true });
 fs.mkdirSync(publicRoot, { recursive: true });
+fs.mkdirSync(path.dirname(dest), { recursive: true });
 fs.rmSync(dest, { recursive: true, force: true });
 fs.cpSync(src, dest, { recursive: true });
 
-const mainIdx = path.join(dest, "index.html");
-if (!fs.existsSync(mainIdx)) {
-  console.warn("[sync-main-scene] No index.html under main scene, skipped nz emit");
-  process.exit(0);
-}
-
-const raw = fs.readFileSync(mainIdx, "utf8");
-// Resolve relative `href="…"` in the scene against `/main-scene/`.
-const withBase = raw.replace(
-  /(<meta\s+charset="UTF-8"\s*\/>)/i,
-  `$1\n    <base href="/main-scene/" />`
-);
-fs.writeFileSync(nzPath, withBase, "utf8");
-
-fs.rmSync(mainIdx, { force: true });
-const legacyDoc = path.join(publicRoot, "nz-scene.document");
-if (fs.existsSync(legacyDoc)) fs.rmSync(legacyDoc, { force: true });
-// Legacy names from prior builds
-for (const n of ["zoo-scene.html"]) {
-  const p = path.join(dest, n);
+// Drop legacy emit locations from prior approaches so PartyKit deploy doesn't include stale files.
+for (const n of ["nz-scene.html", "nz-scene.document"]) {
+  const p = path.join(publicRoot, n);
   if (fs.existsSync(p)) fs.rmSync(p, { force: true });
 }
-console.log("[sync-main-scene] Copied to", dest, "+", path.relative(path.join(here, ".."), nzPath));
+console.log("[sync-main-scene] Copied to", dest);

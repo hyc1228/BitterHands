@@ -110,32 +110,28 @@ function localAvatarPlugin(): Plugin {
   };
 }
 
-/** `emptyOutDir` is false for PartyKit; drop stray `*.html` from `public/main-scene` (see sync-main-scene.mjs). */
-function removeMainSceneStrayHtmlPlugin(): Plugin {
+/** `emptyOutDir` is false for PartyKit; drop legacy `nz-scene.*` left over from prior builds. */
+function removeLegacyMainScenePlugin(): Plugin {
   return {
-    name: "nz-rm-main-scene-stray-html",
+    name: "nz-rm-legacy-main-scene",
     closeBundle() {
       if (isVercel) return;
-      const d = path.join(outDir, "main-scene");
-      if (fs.existsSync(d)) {
-        for (const f of fs.readdirSync(d)) {
-          if (f.toLowerCase().endsWith(".html")) {
-            try {
-              fs.rmSync(path.join(d, f), { force: true });
-            } catch {
-              /* ignore */
-            }
+      for (const n of ["nz-scene.html", "nz-scene.document"]) {
+        const p = path.join(outDir, n);
+        if (fs.existsSync(p)) {
+          try {
+            fs.rmSync(p, { force: true });
+          } catch {
+            /* ignore */
           }
         }
       }
-      const legacyDoc = path.join(outDir, "nz-scene.document");
-      if (fs.existsSync(legacyDoc)) fs.rmSync(legacyDoc, { force: true });
     }
   };
 }
 
 export default defineConfig({
-  plugins: [react(), localAvatarPlugin(), removeMainSceneStrayHtmlPlugin()],
+  plugins: [react(), localAvatarPlugin(), removeLegacyMainScenePlugin()],
   base: "./",
   build: {
     outDir,
