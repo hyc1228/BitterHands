@@ -1,0 +1,1730 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
+    />
+    <title>Nocturne Zoo · 主场景</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Patrick+Hand&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #161618;
+        color: #fff;
+        font-family: "Patrick Hand", "Comic Sans MS", system-ui, sans-serif;
+        overflow: hidden;
+        overscroll-behavior: none;
+        user-select: none;
+        -webkit-user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      /* ---------- Phone frame (desktop preview) ---------- */
+      body {
+        display: grid;
+        place-items: center;
+      }
+      .phone-frame {
+        position: relative;
+        width: 100vw;
+        height: 100vh;
+        max-width: 100vw;
+        background: #000;
+        overflow: hidden;
+      }
+      @media (min-width: 600px) {
+        body {
+          padding: 16px;
+          background: #0d0d10;
+        }
+        .phone-frame {
+          width: min(420px, 100%);
+          aspect-ratio: 9 / 19.5;
+          height: auto;
+          max-height: calc(100vh - 32px);
+          border-radius: 42px;
+          border: 10px solid #1a1a1c;
+          box-shadow: 0 30px 80px rgba(0, 0, 0, 0.65),
+            0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+        }
+      }
+
+      .screen {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        background: #000;
+        overflow: hidden;
+      }
+
+      /* ---------- HUD top bar ---------- */
+      .hud-top {
+        position: relative;
+        z-index: 10;
+        display: grid;
+        grid-template-columns: 1fr auto 1fr;
+        align-items: center;
+        padding: 16px 18px 6px;
+        font-family: "Caveat", cursive;
+      }
+      .rec {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        justify-self: start;
+      }
+      .rec-dot {
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #ee3a3a;
+        box-shadow: 0 0 8px rgba(238, 58, 58, 0.7);
+        animation: blink 1.4s ease-in-out infinite;
+      }
+      @keyframes blink {
+        0%,
+        55% {
+          opacity: 1;
+        }
+        60%,
+        90% {
+          opacity: 0.15;
+        }
+        100% {
+          opacity: 1;
+        }
+      }
+      .rec-text {
+        font-weight: 700;
+        font-size: 26px;
+        letter-spacing: 4px;
+      }
+      .lives {
+        justify-self: center;
+        display: flex;
+        gap: 4px;
+        font-size: 22px;
+        line-height: 1;
+        color: #ff5e5e;
+        text-shadow: 0 0 6px rgba(255, 94, 94, 0.4);
+      }
+      .lives .heart-off {
+        color: rgba(255, 255, 255, 0.18);
+        text-shadow: none;
+      }
+      .timer {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        justify-self: end;
+        font-size: 28px;
+        font-weight: 700;
+      }
+      .clock-icon {
+        flex: 0 0 auto;
+      }
+
+      /* ---------- World viewport ---------- */
+      .world {
+        flex: 1;
+        position: relative;
+        min-height: 0;
+        overflow: hidden;
+      }
+      .world-svg {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        cursor: crosshair;
+      }
+      .hint {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 8px;
+        text-align: center;
+        font-family: "Patrick Hand", cursive;
+        font-size: 13px;
+        color: rgba(255, 255, 255, 0.35);
+        pointer-events: none;
+        z-index: 5;
+        letter-spacing: 0.5px;
+      }
+
+      /* ---------- Zoo keeper log ---------- */
+      .log {
+        position: relative;
+        z-index: 10;
+        margin: 6px 14px 14px;
+        padding: 10px 16px 12px;
+        background: #f3ecdb;
+        color: #131313;
+        border: 2.5px solid #0d0d0d;
+        border-radius: 22px;
+        font-family: "Patrick Hand", cursive;
+        box-shadow: 3px 3px 0 #000;
+        transform: rotate(-0.5deg);
+        height: 142px;
+        overflow-y: auto;
+        overflow-x: hidden;
+        scrollbar-width: thin;
+        scrollbar-color: rgba(0, 0, 0, 0.4) transparent;
+        -webkit-overflow-scrolling: touch;
+        overscroll-behavior: contain;
+        background-image: radial-gradient(
+            rgba(0, 0, 0, 0.04) 1px,
+            transparent 1px
+          ),
+          repeating-linear-gradient(
+            to bottom,
+            transparent 0,
+            transparent 22px,
+            rgba(0, 0, 0, 0.06) 23px
+          );
+        background-size: 6px 6px, 100% 100%;
+        background-attachment: local;
+      }
+      .log::-webkit-scrollbar {
+        width: 5px;
+      }
+      .log::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      .log::-webkit-scrollbar-thumb {
+        background: rgba(0, 0, 0, 0.35);
+        border-radius: 3px;
+      }
+      .log h2 {
+        margin: 0 0 4px;
+        font-family: "Caveat", cursive;
+        font-weight: 700;
+        font-size: 24px;
+        letter-spacing: 2px;
+        position: sticky;
+        top: 0;
+        background: #f3ecdb;
+        padding-bottom: 2px;
+      }
+      .log ul {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        font-size: 16px;
+        line-height: 22px;
+      }
+      .log li {
+        display: flex;
+        gap: 6px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .log li::before {
+        content: "·";
+        font-weight: 700;
+      }
+      .log .ts {
+        font-weight: 700;
+        flex: 0 0 auto;
+      }
+      .log .msg {
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .log li.rule {
+        color: #c8000f;
+        font-weight: 700;
+        text-shadow: 0 0 0.5px #c8000f;
+      }
+      .log li.rule::before {
+        content: "▸";
+      }
+      .log li.fade-in {
+        animation: logIn 0.4s ease-out;
+      }
+      @keyframes logIn {
+        from {
+          opacity: 0;
+          transform: translateY(6px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* ---------- CRT / REC post-processing ---------- */
+      /* The shake is on the screen wrapper so the whole picture wobbles. */
+      .screen {
+        animation: screenShake 0.55s ease-in-out infinite;
+      }
+      @keyframes screenShake {
+        0%, 100% {
+          transform: translate(0, 0);
+        }
+        20% {
+          transform: translate(0.6px, -0.4px);
+        }
+        40% {
+          transform: translate(-0.5px, 0.4px);
+        }
+        60% {
+          transform: translate(0.4px, 0.5px);
+        }
+        80% {
+          transform: translate(-0.4px, -0.3px);
+        }
+      }
+
+      .rec-fx {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 50;
+        /* Vignette + slight green tint */
+        background: radial-gradient(
+            130% 95% at 50% 50%,
+            transparent 38%,
+            rgba(0, 0, 0, 0.45) 78%,
+            rgba(0, 0, 0, 0.85) 100%
+          ),
+          linear-gradient(
+            to bottom,
+            rgba(0, 30, 10, 0.05),
+            rgba(0, 30, 10, 0.02)
+          );
+      }
+      /* Scanlines layer */
+      .rec-fx::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: repeating-linear-gradient(
+          to bottom,
+          rgba(0, 0, 0, 0.42) 0,
+          rgba(0, 0, 0, 0.42) 1px,
+          transparent 1px,
+          transparent 3px
+        );
+        mix-blend-mode: multiply;
+        opacity: 0.55;
+        animation: jitter 0.12s steps(2) infinite;
+      }
+      /* RGB phosphor stripes + slow rolling band (one element with two bgs) */
+      .rec-fx::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(
+            to bottom,
+            transparent 0%,
+            transparent 38%,
+            rgba(255, 255, 255, 0.06) 45%,
+            rgba(255, 255, 255, 0.10) 50%,
+            rgba(255, 255, 255, 0.06) 55%,
+            transparent 62%,
+            transparent 100%
+          ),
+          repeating-linear-gradient(
+            to right,
+            rgba(255, 60, 60, 0.06) 0 1px,
+            rgba(60, 255, 60, 0.06) 1px 2px,
+            rgba(60, 60, 255, 0.06) 2px 3px
+          );
+        background-size: 100% 220%, auto auto;
+        animation: roll 7s linear infinite;
+      }
+      @keyframes jitter {
+        0%, 100% {
+          transform: translate(0, 0);
+        }
+        50% {
+          transform: translate(0.4px, -0.4px);
+        }
+      }
+      @keyframes roll {
+        from {
+          background-position: 0 -110%, 0 0;
+        }
+        to {
+          background-position: 0 110%, 0 0;
+        }
+      }
+
+      /* Random VHS glitch slice */
+      .glitch-band {
+        position: absolute;
+        left: -4%;
+        right: -4%;
+        height: 14px;
+        background: rgba(255, 255, 255, 0.18);
+        mix-blend-mode: screen;
+        pointer-events: none;
+        z-index: 51;
+        opacity: 0;
+      }
+      .glitch-band.on {
+        animation: glitchSlice 0.22s steps(4) forwards;
+      }
+      @keyframes glitchSlice {
+        0% {
+          opacity: 0.55;
+          top: 22%;
+          transform: translateX(-3px);
+        }
+        25% {
+          opacity: 0.35;
+          top: 64%;
+          transform: translateX(5px);
+        }
+        50% {
+          opacity: 0.5;
+          top: 41%;
+          transform: translateX(-7px);
+        }
+        75% {
+          opacity: 0.25;
+          top: 78%;
+          transform: translateX(3px);
+        }
+        100% {
+          opacity: 0;
+          top: 90%;
+          transform: translateX(0);
+        }
+      }
+
+      /* Item disappear animation (for heart pickup, alarm pickup) */
+      .item-fade {
+        animation: itemFade 0.42s ease-out forwards;
+      }
+      @keyframes itemFade {
+        0% {
+          opacity: 1;
+          transform: scale(1);
+        }
+        100% {
+          opacity: 0;
+          transform: scale(2.2);
+        }
+      }
+      .heart-gain {
+        animation: heartGain 0.6s ease-out forwards;
+      }
+      @keyframes heartGain {
+        0% {
+          transform: scale(1);
+          color: #ff5e5e;
+        }
+        50% {
+          transform: scale(1.4);
+          color: #ffffff;
+          text-shadow: 0 0 14px #ff7a7a;
+        }
+        100% {
+          transform: scale(1);
+          color: #ff5e5e;
+        }
+      }
+
+      /* SVG entity helpers */
+      .entity {
+        cursor: default;
+      }
+      .leg {
+        transform-box: fill-box;
+        transform-origin: top center;
+      }
+      .walking .leg-l {
+        animation: legL 0.36s ease-in-out infinite;
+      }
+      .walking .leg-r {
+        animation: legR 0.36s ease-in-out infinite;
+      }
+      @keyframes legL {
+        0%,
+        100% {
+          transform: rotate(-12deg);
+        }
+        50% {
+          transform: rotate(12deg);
+        }
+      }
+      @keyframes legR {
+        0%,
+        100% {
+          transform: rotate(12deg);
+        }
+        50% {
+          transform: rotate(-12deg);
+        }
+      }
+      /* Owl wing flap. The inner wing group rotates around its base (where it
+         meets the body). The left wing's outer group is mirrored via
+         scale(-1, 1) so the same animation produces a symmetric flap. */
+      .owl-wing {
+        transform-box: fill-box;
+        transform-origin: 0% 50%;
+      }
+      .walking .wing-r,
+      .walking .wing-l {
+        animation: wingFlap 0.32s ease-in-out infinite;
+      }
+      @keyframes wingFlap {
+        0%,
+        100% {
+          transform: rotate(-14deg);
+        }
+        50% {
+          transform: rotate(22deg);
+        }
+      }
+      .alarm-shake {
+        animation: shake 0.4s ease-in-out infinite;
+        transform-box: fill-box;
+        transform-origin: center;
+      }
+      @keyframes shake {
+        0%,
+        100% {
+          transform: rotate(-6deg);
+        }
+        50% {
+          transform: rotate(6deg);
+        }
+      }
+      .heart-pulse {
+        transform-box: fill-box;
+        transform-origin: center;
+        animation: heartPulse 1.4s ease-in-out infinite;
+      }
+      @keyframes heartPulse {
+        0%,
+        100% {
+          transform: scale(1);
+        }
+        50% {
+          transform: scale(1.12);
+        }
+      }
+      /*
+       * NOTE: do NOT set `transform-box`/`transform-origin` on the cone or
+       * torch groups. The flashlight uses the SVG `transform` attribute
+       * (`translate(monX monY) rotate(angle)`), and those CSS properties
+       * would silently shift the rotation pivot to the element's bounding
+       * box corner, making the beam spin around the wrong point.
+       */
+      .me-ring {
+        animation: meRing 2.2s ease-in-out infinite;
+      }
+      @keyframes meRing {
+        0%,
+        100% {
+          opacity: 0.85;
+        }
+        50% {
+          opacity: 1;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="phone-frame">
+      <div class="screen">
+        <header class="hud-top">
+          <div class="rec">
+            <span class="rec-dot"></span>
+            <span class="rec-text">REC</span>
+          </div>
+          <div class="lives" id="lives" aria-label="lives">
+            <span>♥</span><span>♥</span><span>♥</span>
+          </div>
+          <div class="timer">
+            <svg
+              class="clock-icon"
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="white"
+              stroke-width="2.4"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            >
+              <circle cx="12" cy="13" r="8.2" />
+              <path d="M12 8.5v5l3 1.6" />
+              <path d="M9.5 2.5h5" />
+            </svg>
+            <span id="timer">02:43</span>
+          </div>
+        </header>
+
+        <main class="world" id="world">
+          <svg
+            class="world-svg"
+            viewBox="0 0 360 600"
+            preserveAspectRatio="xMidYMid meet"
+            id="worldSvg"
+          >
+            <defs>
+              <filter
+                id="rough"
+                x="-10%"
+                y="-10%"
+                width="120%"
+                height="120%"
+              >
+                <feTurbulence
+                  type="fractalNoise"
+                  baseFrequency="0.045"
+                  numOctaves="2"
+                  seed="5"
+                />
+                <feDisplacementMap in="SourceGraphic" scale="1.6" />
+              </filter>
+              <filter
+                id="rough2"
+                x="-10%"
+                y="-10%"
+                width="120%"
+                height="120%"
+              >
+                <feTurbulence
+                  type="fractalNoise"
+                  baseFrequency="0.07"
+                  numOctaves="2"
+                  seed="11"
+                />
+                <feDisplacementMap in="SourceGraphic" scale="2.4" />
+              </filter>
+              <filter
+                id="redGlow"
+                x="-80%"
+                y="-80%"
+                width="260%"
+                height="260%"
+              >
+                <feGaussianBlur stdDeviation="2.4" />
+              </filter>
+              <!-- Tints "me"'s body/legs/wings from white to soft blue
+                   so the local player stands out from other players. -->
+              <filter id="meTint" color-interpolation-filters="sRGB">
+                <feColorMatrix
+                  type="matrix"
+                  values="0.34 0 0 0 0
+                          0 0.78 0 0 0
+                          0 0 1 0 0
+                          0 0 0 1 0"
+                />
+              </filter>
+              <!-- Tiled grass background -->
+              <pattern
+                id="grassTile"
+                width="200"
+                height="200"
+                patternUnits="userSpaceOnUse"
+              >
+                <image
+                  href="backgroundTile.svg"
+                  x="0"
+                  y="0"
+                  width="200"
+                  height="200"
+                  preserveAspectRatio="none"
+                />
+              </pattern>
+              <!-- Tiled fence (horizontal). Original is 627x413. Scaled to ~140x92. -->
+              <pattern
+                id="fenceTileH"
+                width="140"
+                height="92"
+                patternUnits="userSpaceOnUse"
+              >
+                <image
+                  href="fenceTile.svg"
+                  x="0"
+                  y="0"
+                  width="140"
+                  height="92"
+                  preserveAspectRatio="none"
+                />
+              </pattern>
+            </defs>
+
+            <!-- Camera group: translated each frame so player stays centered -->
+            <g id="cameraGroup">
+              <!-- Background grass covers the entire map -->
+              <rect
+                id="mapBg"
+                x="0"
+                y="0"
+                width="1080"
+                height="1500"
+                fill="url(#grassTile)"
+              />
+              <!-- Fences around perimeter -->
+              <g id="fenceLayer"></g>
+              <!-- Cone (drawn behind so it doesn't cover players) -->
+              <g id="coneLayer"></g>
+              <g id="itemsLayer"></g>
+              <g id="othersLayer"></g>
+              <g id="monitorLayer"></g>
+              <!-- Torch held in hand: drawn ABOVE monitor so the body looks like
+                   it's grasping it; same rotation transform as cone. -->
+              <g id="torchLayer"></g>
+              <g id="meLayer"></g>
+            </g>
+          </svg>
+          <div class="hint">WASD 移动 · 也可点击地面走动</div>
+        </main>
+
+        <footer class="log">
+          <h2>ZOO KEEPER LOG</h2>
+          <ul id="logList"></ul>
+        </footer>
+
+        <div class="rec-fx" aria-hidden="true"></div>
+        <div class="glitch-band" id="glitchBand" aria-hidden="true"></div>
+      </div>
+    </div>
+
+    <script>
+      // =================================================================
+      // Coordinates
+      //   VIEW_W / VIEW_H : the SVG viewBox (camera window the player sees)
+      //   MAP_W  / MAP_H  : the whole walkable map. Camera follows player.
+      // =================================================================
+      const VIEW_W = 360;
+      const VIEW_H = 600;
+      const MAP_W = 1080;
+      const MAP_H = 1500;
+      // Legacy aliases (kept so existing maths reads naturally inside callers)
+      const W = VIEW_W;
+      const H = VIEW_H;
+      const SVG = document.getElementById("worldSvg");
+      const cameraGroup = document.getElementById("cameraGroup");
+
+      const layers = {
+        cone: document.getElementById("coneLayer"),
+        torch: document.getElementById("torchLayer"),
+        fence: document.getElementById("fenceLayer"),
+        items: document.getElementById("itemsLayer"),
+        others: document.getElementById("othersLayer"),
+        monitor: document.getElementById("monitorLayer"),
+        me: document.getElementById("meLayer"),
+      };
+
+      // =================================================================
+      // SVG entity templates (returns DOM elements)
+      // =================================================================
+      const SVGNS = "http://www.w3.org/2000/svg";
+      function el(name, attrs = {}, children = []) {
+        const node = document.createElementNS(SVGNS, name);
+        for (const [k, v] of Object.entries(attrs)) {
+          if (v == null) continue;
+          node.setAttribute(k, v);
+        }
+        for (const c of children) if (c) node.appendChild(c);
+        return node;
+      }
+
+      // Per-animal avatar:
+      //   - body outline comes from the SVG file ("Owl body.svg" / "lion.svg" /
+      //     "giraffe.svg") embedded as <image>
+      //   - webcam viewport (white circle + scared placeholder face) sits at
+      //     the body's "head" position
+      //   - lion / giraffe get procedural stick legs that swing while walking
+      //   - owl has no legs; it has two wings on the sides that flap while
+      //     walking (wing image = "owl wing.svg")
+      //   - if isMe, the white body/legs/wings get tinted blue via #meTint
+      //     while the webcam viewport (the actual "face" area) stays white.
+      const ANIMAL_SPEC = {
+        owl: {
+          body: "Owl body.svg",
+          bodyW: 80,
+          bodyH: 80,
+          viewport: { cx: 0, cy: 0, r: 22 },
+          nameY: -52,
+          wing: { attach: 36, w: 32, h: 28 },
+        },
+        lion: {
+          body: "lion.svg",
+          bodyW: 80,
+          bodyH: 86,
+          viewport: { cx: 0, cy: 6, r: 22 },
+          nameY: -60,
+          legs: { y: 38, spread: 12 },
+        },
+        giraffe: {
+          body: "giraffe.svg",
+          bodyW: 50,
+          bodyH: 100,
+          viewport: { cx: 0, cy: -32, r: 14 },
+          nameY: -62,
+          legs: { y: 46, spread: 8 },
+        },
+      };
+
+      function makeAnimalAvatar({ animal = "lion", isMe = false, name = "" }) {
+        const spec = ANIMAL_SPEC[animal] || ANIMAL_SPEC.lion;
+        const tint = isMe ? "url(#meTint)" : null;
+        const strokeColor = "#ffffff"; // tinted to blue via filter when isMe
+
+        const root = el("g", { class: `entity animal ${animal}` });
+        const inner = el("g", { class: "bob" });
+
+        // Body outline (the SVG file). Tinted if isMe.
+        const body = el("image", {
+          href: spec.body,
+          x: -spec.bodyW / 2,
+          y: -spec.bodyH / 2,
+          width: spec.bodyW,
+          height: spec.bodyH,
+          preserveAspectRatio: "xMidYMid meet",
+          filter: tint,
+        });
+        inner.appendChild(body);
+
+        // Wings (owl) — two on each side. The wing.svg has its tip in the
+        // upper-LEFT and base in the lower-RIGHT. So we flip the RIGHT wing
+        // horizontally (so its tip extends rightward, away from the body),
+        // and keep the LEFT wing in its natural orientation (tip already
+        // points leftward).
+        if (animal === "owl") {
+          const w = spec.wing.w;
+          const h = spec.wing.h;
+          // Right wing — flipped horizontally
+          const wRG = el("g", {
+            transform: `translate(${spec.wing.attach} 0) scale(-1 1)`,
+          });
+          const wR = el("g", { class: "owl-wing wing-r" });
+          wR.appendChild(
+            el("image", {
+              href: "owl wing.svg",
+              x: 0,
+              y: -h / 2,
+              width: w,
+              height: h,
+              preserveAspectRatio: "xMidYMid meet",
+              filter: tint,
+            })
+          );
+          wRG.appendChild(wR);
+          inner.appendChild(wRG);
+
+          // Left wing — natural orientation
+          const wLG = el("g", {
+            transform: `translate(${-spec.wing.attach} 0)`,
+          });
+          const wL = el("g", { class: "owl-wing wing-l" });
+          wL.appendChild(
+            el("image", {
+              href: "owl wing.svg",
+              x: 0,
+              y: -h / 2,
+              width: w,
+              height: h,
+              preserveAspectRatio: "xMidYMid meet",
+              filter: tint,
+            })
+          );
+          wLG.appendChild(wL);
+          inner.appendChild(wLG);
+        } else {
+          // Lion / giraffe — procedural stick legs that swing via CSS.
+          const ly = spec.legs.y;
+          const lx = spec.legs.spread;
+          const legL = el("path", {
+            d: `M${-lx} ${ly} L${-lx - 2} ${ly + 18} L${-lx - 6} ${ly + 19}`,
+            fill: "none",
+            stroke: strokeColor,
+            "stroke-width": 3.6,
+            "stroke-linecap": "round",
+            class: "leg leg-l",
+            filter: tint,
+          });
+          const legR = el("path", {
+            d: `M${lx} ${ly} L${lx + 2} ${ly + 18} L${lx + 6} ${ly + 19}`,
+            fill: "none",
+            stroke: strokeColor,
+            "stroke-width": 3.6,
+            "stroke-linecap": "round",
+            class: "leg leg-r",
+            filter: tint,
+          });
+          inner.appendChild(legL);
+          inner.appendChild(legR);
+        }
+
+        // Webcam viewport (white circle, NOT tinted so the actual webcam
+        // area stays light when wired up later).
+        const viewport = el("circle", {
+          cx: spec.viewport.cx,
+          cy: spec.viewport.cy,
+          r: spec.viewport.r,
+          fill: "#fdfdfd",
+          stroke: "#fdfdfd",
+          "stroke-width": 1,
+        });
+        inner.appendChild(viewport);
+
+        // Placeholder "scared" face inside the viewport.
+        const r = spec.viewport.r;
+        const face = el("g");
+        const eyeDx = r * 0.32;
+        const eyeDy = r * -0.18;
+        face.appendChild(
+          el("circle", {
+            cx: spec.viewport.cx - eyeDx,
+            cy: spec.viewport.cy + eyeDy,
+            r: Math.max(1.8, r * 0.1),
+            fill: "#0a0a0a",
+          })
+        );
+        face.appendChild(
+          el("circle", {
+            cx: spec.viewport.cx + eyeDx,
+            cy: spec.viewport.cy + eyeDy,
+            r: Math.max(1.8, r * 0.1),
+            fill: "#0a0a0a",
+          })
+        );
+        face.appendChild(
+          el("ellipse", {
+            cx: spec.viewport.cx,
+            cy: spec.viewport.cy + r * 0.35,
+            rx: Math.max(2.4, r * 0.14),
+            ry: Math.max(3.6, r * 0.22),
+            fill: "#0a0a0a",
+          })
+        );
+        inner.appendChild(face);
+
+        // Name tag (above body)
+        if (name) {
+          const nameEl = el("text", {
+            x: 0,
+            y: spec.nameY,
+            "text-anchor": "middle",
+            "font-family": "Patrick Hand, cursive",
+            "font-size": 13,
+            fill: "rgba(255,255,255,0.7)",
+            "letter-spacing": 1,
+          });
+          nameEl.textContent = name;
+          inner.appendChild(nameEl);
+        }
+
+        root.appendChild(inner);
+        return root;
+      }
+
+      // Monitor character (red-eyed, with flashlight in hand).
+      function makeMonitor() {
+        const root = el("g", { class: "entity monitor", filter: "url(#rough)" });
+
+        // Head (black filled, white outline)
+        const head = el("ellipse", {
+          cx: 0,
+          cy: 0,
+          rx: 38,
+          ry: 36,
+          fill: "#000",
+          stroke: "#fff",
+          "stroke-width": 3.2,
+        });
+
+        // Hat brim (small curve on top)
+        const brim = el("path", {
+          d: "M-30 -16 Q0 -28 30 -16",
+          fill: "none",
+          stroke: "#fff",
+          "stroke-width": 3.2,
+          "stroke-linecap": "round",
+        });
+
+        // Red eyes (with glow)
+        const eyeGlowL = el("circle", {
+          cx: -14,
+          cy: -2,
+          r: 8,
+          fill: "#ff2a2a",
+          filter: "url(#redGlow)",
+          opacity: 0.85,
+        });
+        const eyeGlowR = el("circle", {
+          cx: 14,
+          cy: -2,
+          r: 8,
+          fill: "#ff2a2a",
+          filter: "url(#redGlow)",
+          opacity: 0.85,
+        });
+        const eyeL = el("circle", { cx: -14, cy: -2, r: 5.2, fill: "#ff2a2a" });
+        const eyeR = el("circle", { cx: 14, cy: -2, r: 5.2, fill: "#ff2a2a" });
+
+        // White pupils — translated each frame toward target
+        const pupilL = el("circle", { cx: -14, cy: -2, r: 1.9, fill: "#fff" });
+        const pupilR = el("circle", { cx: 14, cy: -2, r: 1.9, fill: "#fff" });
+
+        // Jagged red zigzag mouth
+        const mouth = el("path", {
+          d: "M-17 14 L-12 8 L-6 15 L0 8 L6 15 L12 8 L17 14",
+          fill: "none",
+          stroke: "#ff2a2a",
+          "stroke-width": 3.2,
+          "stroke-linecap": "round",
+          "stroke-linejoin": "round",
+        });
+
+        // Legs
+        const legL = el("path", {
+          d: "M-11 33 L-13 50",
+          fill: "none",
+          stroke: "#fff",
+          "stroke-width": 3.2,
+          "stroke-linecap": "round",
+          class: "leg leg-l",
+        });
+        const legR = el("path", {
+          d: "M11 33 L13 50",
+          fill: "none",
+          stroke: "#fff",
+          "stroke-width": 3.2,
+          "stroke-linecap": "round",
+          class: "leg leg-r",
+        });
+
+        root.append(
+          head,
+          brim,
+          eyeGlowL,
+          eyeGlowR,
+          eyeL,
+          eyeR,
+          pupilL,
+          pupilR,
+          mouth,
+          legL,
+          legR
+        );
+        // Expose pupils for per-frame tracking
+        root._pupilL = pupilL;
+        root._pupilR = pupilR;
+        return root;
+      }
+
+      // Heart pickup — uses heart.svg
+      function makeHeart() {
+        const root = el("g", { class: "entity heart" });
+        const inner = el("g", { class: "heart-pulse" });
+        const W = 38;
+        const H = 36;
+        inner.appendChild(
+          el("image", {
+            href: "heart.svg",
+            x: -W / 2,
+            y: -H / 2,
+            width: W,
+            height: H,
+            preserveAspectRatio: "xMidYMid meet",
+          })
+        );
+        root.appendChild(inner);
+        return root;
+      }
+
+      // Alarm clock pickup — uses ring.svg
+      function makeAlarm() {
+        const root = el("g", { class: "entity alarm" });
+        const inner = el("g", { class: "alarm-shake" });
+        const W = 38;
+        const H = 38;
+        inner.appendChild(
+          el("image", {
+            href: "ring.svg",
+            x: -W / 2,
+            y: -H / 2,
+            width: W,
+            height: H,
+            preserveAspectRatio: "xMidYMid meet",
+          })
+        );
+        root.appendChild(inner);
+        return root;
+      }
+
+      // The flashlight is split into TWO groups that share the same world
+      // transform (translate to monitor center + rotate to target):
+      //
+      //   - cone group  : drawn BEHIND items/monitor so it lights the scene
+      //                   without covering player avatars in front of it.
+      //   - torch group : drawn ABOVE the monitor body so the handle visibly
+      //                   extends out of the body — looks like it's holding it.
+      //
+      // Local x-axis points along the beam direction; rotation around (0,0)
+      // is applied in render().
+      // Cone narrows at x=70 (torch lens position) and fans outward along +x.
+      function makeCone() {
+        const root = el("g", { class: "flashlight-cone" });
+        const halo = el("polygon", {
+          points: "70,-22 330,-150 330,150 70,22",
+          fill: "rgba(173, 162, 70, 0.16)",
+          filter: "url(#rough)",
+        });
+        const cone = el("polygon", {
+          points: "70,-14 300,-118 300,118 70,14",
+          fill: "rgba(173, 162, 70, 0.78)",
+          filter: "url(#rough)",
+        });
+        root.append(halo, cone);
+        return root;
+      }
+
+      // Torch = arm + lamp + yellow lens, all in the rotated group.
+      // Body radius is ~38, so we keep the arm starting at x=14 (visible
+      // across the body) and the lamp clearly outside at x=46+.
+      function makeTorch() {
+        const root = el("g", { class: "flashlight-torch" });
+        // Arm: a thick white stick from inside the body out to the lamp,
+        // so it visually reads as "an arm holding the torch".
+        const arm = el("line", {
+          x1: 14,
+          y1: 0,
+          x2: 50,
+          y2: 0,
+          stroke: "#fff",
+          "stroke-width": 6,
+          "stroke-linecap": "round",
+        });
+        // Lamp head: clearly outside the body, big enough to read as a torch.
+        const lamp = el("rect", {
+          x: 46,
+          y: -10,
+          width: 22,
+          height: 20,
+          rx: 2.5,
+          fill: "#fff",
+          stroke: "#fff",
+          "stroke-width": 1.5,
+        });
+        // Yellow lens at the tip (cone starts here).
+        const lens = el("rect", {
+          x: 64,
+          y: -11,
+          width: 6,
+          height: 22,
+          fill: "#fceb6f",
+        });
+        root.append(arm, lamp, lens);
+        return root;
+      }
+
+      // =================================================================
+      // State
+      //
+      // Map size = 1500 x 2100. Player spawns near the middle. Other players,
+      // monitor and items are scattered across the map so the player has to
+      // walk to find them.
+      // =================================================================
+      const cx = MAP_W / 2;
+      const cy = MAP_H / 2;
+      const state = {
+        me: {
+          x: cx,
+          y: cy,
+          vx: 0,
+          vy: 0,
+          color: "#5cc9ff",
+          lives: 3,
+          moving: false,
+          animal: "owl",
+        },
+        others: [
+          { id: "p1", name: "MIA", animal: "lion",    x: cx - 160, y: cy - 270, vx: 0, vy: 0, moving: false },
+          { id: "p2", name: "LEO", animal: "giraffe", x: cx + 200, y: cy + 170, vx: 0, vy: 0, moving: false },
+          { id: "p3", name: "ZOE", animal: "owl",     x: cx - 250, y: cy + 320, vx: 0, vy: 0, moving: false },
+        ],
+        monitor: {
+          x: cx + 130,
+          y: cy - 170,
+          aimAngle: Math.PI,
+          targetId: null,
+          retargetIn: 0,
+        },
+        items: [
+          { id: "h1", type: "heart", x: cx - 80, y: cy - 340 },
+          { id: "h2", type: "heart", x: cx - 320, y: cy - 60 },
+          { id: "h3", type: "heart", x: cx + 270, y: cy + 380 },
+          { id: "a1", type: "alarm", x: cx + 140, y: cy + 40 },
+          { id: "a2", type: "alarm", x: cx - 200, y: cy + 220 },
+          { id: "a3", type: "alarm", x: cx + 320, y: cy - 260 },
+        ],
+        keys: { up: false, down: false, left: false, right: false },
+        tap: null, // world coordinates
+        timer: 2 * 60 + 43,
+        cam: { x: 0, y: 0 },
+        nodes: {
+          me: null,
+          monitor: null,
+          cone: null,
+          torch: null,
+          others: new Map(),
+          items: new Map(),
+        },
+      };
+
+      // =================================================================
+      // Build initial scene
+      // =================================================================
+      function buildScene() {
+        // ---- Fence around the perimeter --------------------------------
+        // fenceTile = 627 x 413 horizontal fence segment; we tile it via
+        // SVG patterns. For the vertical sides, we rotate the same tile.
+        const FH = 92; // fence thickness
+        // Top edge
+        layers.fence.appendChild(
+          el("rect", {
+            x: 0,
+            y: 0,
+            width: MAP_W,
+            height: FH,
+            fill: "url(#fenceTileH)",
+          })
+        );
+        // Bottom edge
+        layers.fence.appendChild(
+          el("rect", {
+            x: 0,
+            y: MAP_H - FH,
+            width: MAP_W,
+            height: FH,
+            fill: "url(#fenceTileH)",
+          })
+        );
+        // Left edge: rotated copy of the horizontal fence pattern
+        const leftG = el("g", {
+          transform: `translate(${FH} 0) rotate(90)`,
+        });
+        leftG.appendChild(
+          el("rect", {
+            x: 0,
+            y: 0,
+            width: MAP_H,
+            height: FH,
+            fill: "url(#fenceTileH)",
+          })
+        );
+        layers.fence.appendChild(leftG);
+        // Right edge
+        const rightG = el("g", {
+          transform: `translate(${MAP_W} 0) rotate(90)`,
+        });
+        rightG.appendChild(
+          el("rect", {
+            x: 0,
+            y: 0,
+            width: MAP_H,
+            height: FH,
+            fill: "url(#fenceTileH)",
+          })
+        );
+        layers.fence.appendChild(rightG);
+
+        // ---- Cone (drawn behind everything except background) ----------
+        const cone = makeCone();
+        layers.cone.appendChild(cone);
+        state.nodes.cone = cone;
+
+        // ---- Items -----------------------------------------------------
+        for (const it of state.items) {
+          const node = it.type === "heart" ? makeHeart() : makeAlarm();
+          node.dataset.id = it.id;
+          layers.items.appendChild(node);
+          state.nodes.items.set(it.id, node);
+        }
+
+        // ---- Other players --------------------------------------------
+        for (const p of state.others) {
+          const node = makeAnimalAvatar({
+            animal: p.animal,
+            isMe: false,
+            name: p.name,
+          });
+          layers.others.appendChild(node);
+          state.nodes.others.set(p.id, node);
+        }
+
+        // ---- Monitor ---------------------------------------------------
+        const mon = makeMonitor();
+        layers.monitor.appendChild(mon);
+        state.nodes.monitor = mon;
+
+        // ---- Torch (rendered ABOVE monitor body so it looks held) -----
+        const torch = makeTorch();
+        layers.torch.appendChild(torch);
+        state.nodes.torch = torch;
+
+        // ---- Me --------------------------------------------------------
+        const me = makeAnimalAvatar({
+          animal: state.me.animal,
+          isMe: true,
+        });
+        layers.me.appendChild(me);
+        state.nodes.me = me;
+      }
+
+      // =================================================================
+      // Render (set transforms each frame)
+      // =================================================================
+      function updateCamera() {
+        // Center the viewport on the player, but clamp to map bounds so the
+        // camera doesn't show the void outside the fence.
+        let camX = state.me.x - VIEW_W / 2;
+        let camY = state.me.y - VIEW_H / 2;
+        camX = clamp(camX, 0, Math.max(0, MAP_W - VIEW_W));
+        camY = clamp(camY, 0, Math.max(0, MAP_H - VIEW_H));
+        state.cam.x = camX;
+        state.cam.y = camY;
+        cameraGroup.setAttribute("transform", `translate(${-camX} ${-camY})`);
+      }
+
+      function render() {
+        updateCamera();
+
+        // items
+        for (const it of state.items) {
+          const node = state.nodes.items.get(it.id);
+          if (!node) continue;
+          node.setAttribute("transform", `translate(${it.x} ${it.y})`);
+        }
+        // others
+        for (const p of state.others) {
+          const node = state.nodes.others.get(p.id);
+          if (!node) continue;
+          node.setAttribute("transform", `translate(${p.x} ${p.y})`);
+          node.classList.toggle("walking", p.moving);
+        }
+        // monitor body stays upright (no rotation) — only flashlight rotates.
+        state.nodes.monitor.setAttribute(
+          "transform",
+          `translate(${state.monitor.x} ${state.monitor.y})`
+        );
+        // me
+        state.nodes.me.setAttribute(
+          "transform",
+          `translate(${state.me.x} ${state.me.y})`
+        );
+        state.nodes.me.classList.toggle("walking", state.me.moving);
+
+        // Cone + torch share the same world transform: they rotate around
+        // the monitor's center and always point along the aim angle.
+        const angDeg = (state.monitor.aimAngle * 180) / Math.PI;
+        const tf = `translate(${state.monitor.x} ${state.monitor.y}) rotate(${angDeg})`;
+        if (state.nodes.cone) state.nodes.cone.setAttribute("transform", tf);
+        if (state.nodes.torch) state.nodes.torch.setAttribute("transform", tf);
+
+        // Pupils: shift the white pupil dots inside the red eyes toward target.
+        const ux = Math.cos(state.monitor.aimAngle);
+        const uy = Math.sin(state.monitor.aimAngle);
+        const PUPIL_OFFSET = 2.4;
+        const pL = state.nodes.monitor._pupilL;
+        const pR = state.nodes.monitor._pupilR;
+        if (pL) {
+          pL.setAttribute("cx", -14 + ux * PUPIL_OFFSET);
+          pL.setAttribute("cy", -2 + uy * PUPIL_OFFSET);
+        }
+        if (pR) {
+          pR.setAttribute("cx", 14 + ux * PUPIL_OFFSET);
+          pR.setAttribute("cy", -2 + uy * PUPIL_OFFSET);
+        }
+      }
+
+      // =================================================================
+      // Update (movement / monitor AI)
+      // =================================================================
+      const SPEED = 110; // units per second
+      const MON_SPEED = 46;
+      // Fence thickness — entities must stay inside this border.
+      const BORDER = 110;
+
+      function updatePlayer(dt) {
+        const me = state.me;
+        let dx = 0,
+          dy = 0;
+        if (state.keys.up) dy -= 1;
+        if (state.keys.down) dy += 1;
+        if (state.keys.left) dx -= 1;
+        if (state.keys.right) dx += 1;
+
+        // Tap-to-move target (world coords)
+        if (!dx && !dy && state.tap) {
+          const ddx = state.tap.x - me.x;
+          const ddy = state.tap.y - me.y;
+          const d = Math.hypot(ddx, ddy);
+          if (d < 4) {
+            state.tap = null;
+          } else {
+            dx = ddx / d;
+            dy = ddy / d;
+          }
+        } else if (dx || dy) {
+          state.tap = null;
+        }
+
+        const len = Math.hypot(dx, dy) || 1;
+        dx /= len;
+        dy /= len;
+        me.moving = dx !== 0 || dy !== 0;
+        if (me.moving) {
+          me.x = clamp(me.x + dx * SPEED * dt, BORDER, MAP_W - BORDER);
+          me.y = clamp(me.y + dy * SPEED * dt, BORDER, MAP_H - BORDER);
+        }
+
+        // Pickup detection
+        for (let i = state.items.length - 1; i >= 0; i--) {
+          const it = state.items[i];
+          if (Math.hypot(it.x - me.x, it.y - me.y) < 32) {
+            pickup(it, i);
+          }
+        }
+      }
+
+      function pickup(it, idx) {
+        if (it.type === "heart") {
+          if (state.me.lives >= 3) return; // full HP, walk over without consuming
+          state.me.lives += 1;
+          renderLives();
+          flashHeartGain();
+        } else if (it.type === "alarm") {
+          addLog("闹铃响了…它转过头来。");
+          state.monitor.targetId = "__alarm__";
+          state.monitor.retargetIn = 4;
+          state.monitor.lured = { x: it.x, y: it.y };
+        }
+        // disappear animation, then remove
+        const node = state.nodes.items.get(it.id);
+        if (node) {
+          const inner = node.firstElementChild;
+          if (inner) {
+            inner.classList.remove("heart-pulse", "alarm-shake");
+            inner.classList.add("item-fade");
+          }
+          setTimeout(() => node.remove(), 460);
+        }
+        state.nodes.items.delete(it.id);
+        state.items.splice(idx, 1);
+      }
+
+      function flashHeartGain() {
+        const root = document.getElementById("lives");
+        // Flash the rightmost filled heart
+        const filled = [...root.children].filter(
+          (c) => !c.classList.contains("heart-off")
+        );
+        const target = filled[filled.length - 1];
+        if (!target) return;
+        target.classList.remove("heart-gain");
+        // force reflow to restart animation
+        void target.offsetWidth;
+        target.classList.add("heart-gain");
+      }
+
+      function updateOthers(dt) {
+        // gentle wandering for visual life (within map bounds)
+        for (const p of state.others) {
+          if (Math.random() < 0.012) {
+            p.vx = (Math.random() - 0.5) * 1.6;
+            p.vy = (Math.random() - 0.5) * 1.6;
+            p.moveTimer = 0.6 + Math.random() * 1.4;
+          }
+          if (p.moveTimer && p.moveTimer > 0) {
+            p.x = clamp(p.x + p.vx * 36 * dt, BORDER, MAP_W - BORDER);
+            p.y = clamp(p.y + p.vy * 36 * dt, BORDER, MAP_H - BORDER);
+            p.moveTimer -= dt;
+            p.moving = true;
+          } else {
+            p.moving = false;
+          }
+        }
+      }
+
+      function updateMonitor(dt) {
+        const m = state.monitor;
+        m.retargetIn -= dt;
+        if (m.retargetIn <= 0) {
+          m.retargetIn = 5 + Math.random() * 5;
+          // pick a target: any player in flashlight beam, or random
+          const candidates = [
+            { id: "me", x: state.me.x, y: state.me.y },
+            ...state.others.map((p) => ({ id: p.id, x: p.x, y: p.y })),
+          ];
+          const pick = candidates[Math.floor(Math.random() * candidates.length)];
+          m.targetId = pick.id;
+          m.lured = null;
+        }
+
+        // Resolve target position
+        let target;
+        if (m.lured) {
+          target = m.lured;
+        } else if (m.targetId === "me") {
+          target = state.me;
+        } else {
+          target = state.others.find((p) => p.id === m.targetId);
+        }
+        if (!target) return;
+
+        // Aim angle (smooth — slower than before so the cone doesn't feel jittery)
+        const desired = Math.atan2(target.y - m.y, target.x - m.x);
+        const diff = wrapAngle(desired - m.aimAngle);
+        m.aimAngle += clamp(diff, -3 * dt, 3 * dt);
+
+        // Drift slowly toward target so the monitor "patrols"
+        const dx = target.x - m.x;
+        const dy = target.y - m.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist > 120) {
+          m.x += (dx / dist) * MON_SPEED * dt;
+          m.y += (dy / dist) * MON_SPEED * dt;
+        }
+        m.x = clamp(m.x, BORDER, MAP_W - BORDER);
+        m.y = clamp(m.y, BORDER, MAP_H - BORDER);
+      }
+
+      function clamp(v, lo, hi) {
+        return Math.max(lo, Math.min(hi, v));
+      }
+      function wrapAngle(a) {
+        while (a > Math.PI) a -= 2 * Math.PI;
+        while (a < -Math.PI) a += 2 * Math.PI;
+        return a;
+      }
+
+      // =================================================================
+      // HUD
+      // =================================================================
+      function renderLives() {
+        const root = document.getElementById("lives");
+        root.innerHTML = "";
+        for (let i = 0; i < 3; i++) {
+          const sp = document.createElement("span");
+          sp.textContent = "♥";
+          if (i >= state.me.lives) sp.className = "heart-off";
+          root.appendChild(sp);
+        }
+      }
+
+      function renderTimer() {
+        const m = Math.floor(state.timer / 60);
+        const s = state.timer % 60;
+        document.getElementById("timer").textContent =
+          String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+      }
+
+      // =================================================================
+      // Zoo keeper log
+      // =================================================================
+      const seedLogs = [
+        { t: "00:08", m: "白狮子每分钟必须低吼。", rule: true },
+        { t: "00:23", m: "园区广播：请保持你的动物姿势。" },
+        { t: "01:02", m: "禁止在镜头里微笑。", rule: true },
+        { t: "01:30", m: "MIA 的影子比她慢了半步。" },
+        { t: "02:11", m: "它喜欢看你慌张的样子。" },
+        { t: "02:31", m: "你在镜头里站得太久了。" },
+      ];
+      const logList = document.getElementById("logList");
+      const logBox = document.querySelector(".log");
+      function fmtNow() {
+        const elapsed = 4 * 60 - state.timer;
+        const m = Math.floor(Math.max(0, elapsed) / 60);
+        const s = Math.max(0, elapsed) % 60;
+        return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+      }
+      function addLog(message, ts, opts = {}) {
+        const li = document.createElement("li");
+        li.className = "fade-in";
+        if (opts.rule) li.classList.add("rule");
+        const t = document.createElement("span");
+        t.className = "ts";
+        t.textContent = ts || fmtNow();
+        const m = document.createElement("span");
+        m.className = "msg";
+        m.textContent = message;
+        li.append(t, m);
+        logList.prepend(li);
+        // Auto-scroll to top so newest is visible
+        if (logBox) logBox.scrollTop = 0;
+      }
+      function seedLog() {
+        // Append in reverse so the freshest sits on top.
+        for (let i = seedLogs.length - 1; i >= 0; i--) {
+          const e = seedLogs[i];
+          addLog(e.m, e.t, { rule: e.rule });
+        }
+      }
+
+      // Random AI commentary (placeholder for Claude output)
+      const flavorLines = [
+        "它喜欢看你慌张的样子。",
+        "园区广播：请保持你的动物姿势。",
+        "LEO 的脚步停得太突然了。",
+        "有什么东西在你身后写下笔记。",
+        "MIA 的甩脖动作不够大。",
+        "提示：闹铃会暂时分散它的注意。",
+        "它在你的格子上画了一个圈。",
+        "镜头里多了一只手，但你不认识它。",
+        "你的影子站得比你直。",
+      ];
+      function tickFlavor() {
+        if (Math.random() < 0.55) {
+          addLog(flavorLines[Math.floor(Math.random() * flavorLines.length)]);
+        }
+      }
+      setInterval(tickFlavor, 6500);
+
+      // Periodic new-rule announcements (red, distinct from flavor)
+      const ruleLines = [
+        "新规则：禁止低头。",
+        "新规则：每 30 秒必须张开嘴一次。",
+        "新规则：手不得离开视线。",
+        "新规则：禁止说出'动物园'三个字。",
+        "新规则：眨眼不得超过两次/分钟。",
+        "新规则：原地转一圈，否则视为可疑。",
+        "新规则：被照到时必须保持微笑。",
+      ];
+      function tickRule() {
+        addLog(ruleLines[Math.floor(Math.random() * ruleLines.length)], null, {
+          rule: true,
+        });
+      }
+      setInterval(tickRule, 22000);
+
+      // =================================================================
+      // Input
+      // =================================================================
+      const KEYMAP = {
+        w: "up",
+        ArrowUp: "up",
+        s: "down",
+        ArrowDown: "down",
+        a: "left",
+        ArrowLeft: "left",
+        d: "right",
+        ArrowRight: "right",
+      };
+      window.addEventListener("keydown", (e) => {
+        const k = KEYMAP[e.key];
+        if (k) {
+          state.keys[k] = true;
+          e.preventDefault();
+        }
+      });
+      window.addEventListener("keyup", (e) => {
+        const k = KEYMAP[e.key];
+        if (k) state.keys[k] = false;
+      });
+
+      // Tap-to-move: convert pointer position → SVG viewport → world coords
+      // (world = viewport + camera offset).
+      function svgPointFromEvent(ev) {
+        const rect = SVG.getBoundingClientRect();
+        const cx =
+          ev.clientX != null
+            ? ev.clientX
+            : ev.touches && ev.touches[0]
+            ? ev.touches[0].clientX
+            : 0;
+        const cy =
+          ev.clientY != null
+            ? ev.clientY
+            : ev.touches && ev.touches[0]
+            ? ev.touches[0].clientY
+            : 0;
+        // preserveAspectRatio="xMidYMid meet" — replicate that mapping.
+        const sx = rect.width / VIEW_W;
+        const sy = rect.height / VIEW_H;
+        const scale = Math.min(sx, sy);
+        const offX = (rect.width - VIEW_W * scale) / 2;
+        const offY = (rect.height - VIEW_H * scale) / 2;
+        return {
+          x: (cx - rect.left - offX) / scale,
+          y: (cy - rect.top - offY) / scale,
+        };
+      }
+      SVG.addEventListener("pointerdown", (ev) => {
+        const p = svgPointFromEvent(ev);
+        if (p.x < 0 || p.x > VIEW_W || p.y < 0 || p.y > VIEW_H) return;
+        // Translate viewport -> world by adding the current camera offset.
+        state.tap = {
+          x: p.x + state.cam.x,
+          y: p.y + state.cam.y,
+        };
+      });
+
+      // =================================================================
+      // Main loop
+      // =================================================================
+      let last = performance.now();
+      function frame(now) {
+        const dt = Math.min(0.05, (now - last) / 1000);
+        last = now;
+        updatePlayer(dt);
+        updateOthers(dt);
+        updateMonitor(dt);
+        render();
+        requestAnimationFrame(frame);
+      }
+
+      // Timer ticking
+      setInterval(() => {
+        if (state.timer > 0) {
+          state.timer -= 1;
+          renderTimer();
+        }
+      }, 1000);
+
+      // Random VHS glitch — fires every 4–9s, briefly flashes a horizontal slice.
+      function scheduleGlitch() {
+        const next = 4000 + Math.random() * 5000;
+        setTimeout(() => {
+          const band = document.getElementById("glitchBand");
+          if (band) {
+            band.classList.remove("on");
+            void band.offsetWidth; // restart animation
+            band.classList.add("on");
+            setTimeout(() => band.classList.remove("on"), 240);
+          }
+          scheduleGlitch();
+        }, next);
+      }
+      scheduleGlitch();
+
+      // =================================================================
+      // Boot
+      // =================================================================
+      buildScene();
+      seedLog();
+      renderLives();
+      renderTimer();
+      requestAnimationFrame(frame);
+    </script>
+  </body>
+</html>
