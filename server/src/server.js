@@ -87,9 +87,17 @@ export default class Server {
    */
   static async onFetch(req, lobby, _ctx) {
     const url = new URL(req.url);
-    if (url.pathname === "/nz-scene.html" && req.method === "GET") {
-      const r = await lobby.assets.fetch("/nz-scene.html");
-      if (r) return r;
+    if (url.pathname === "/nz-scene.document" && req.method === "GET") {
+      const r = await lobby.assets.fetch("/nz-scene.document");
+      if (r && r.ok) {
+        const body = await r.arrayBuffer();
+        return new Response(body, {
+          headers: {
+            "Content-Type": "text/html; charset=utf-8",
+            "Cache-Control": "public, max-age=120"
+          }
+        });
+      }
     }
   }
 

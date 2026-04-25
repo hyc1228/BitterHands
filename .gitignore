@@ -16,6 +16,7 @@ server/certs/
 
 # Copied from repo `main scene/` for Vite `publicDir` (see server/scripts/sync-main-scene.mjs)
 server/app/public/main-scene/
+server/app/public/nz-scene.document
 # `server/public/main-scene/**` is tracked so PartyKit deploy includes the iframe (SPA fallback
 # was serving the React `index.html` for `/main-scene/*` when this folder was gitignored).
 

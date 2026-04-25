@@ -13,7 +13,8 @@ const repoRoot = path.resolve(here, "../..");
 const src = path.join(repoRoot, "main scene");
 const dest = path.join(here, "../app/public/main-scene");
 const publicRoot = path.join(here, "../app/public");
-const nzName = "nz-scene.html";
+/** Not `.html` — PartyKit SPA mode maps all `*.html` to the React shell before our handler runs. */
+const nzName = "nz-scene.document";
 const nzPath = path.join(publicRoot, nzName);
 
 if (!fs.existsSync(src)) {
@@ -40,6 +41,8 @@ const withBase = raw.replace(
 fs.writeFileSync(nzPath, withBase, "utf8");
 
 fs.rmSync(mainIdx, { force: true });
+const legacyHtml = path.join(publicRoot, "nz-scene.html");
+if (fs.existsSync(legacyHtml)) fs.rmSync(legacyHtml, { force: true });
 // Legacy names from prior builds
 for (const n of ["zoo-scene.html"]) {
   const p = path.join(dest, n);

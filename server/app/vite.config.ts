@@ -117,17 +117,19 @@ function removeMainSceneStrayHtmlPlugin(): Plugin {
     closeBundle() {
       if (isVercel) return;
       const d = path.join(outDir, "main-scene");
-      if (!fs.existsSync(d)) return;
-      for (const f of fs.readdirSync(d)) {
-        if (f.toLowerCase().endsWith(".html")) {
-          const p = path.join(d, f);
-          try {
-            fs.rmSync(p, { force: true });
-          } catch {
-            /* ignore */
+      if (fs.existsSync(d)) {
+        for (const f of fs.readdirSync(d)) {
+          if (f.toLowerCase().endsWith(".html")) {
+            try {
+              fs.rmSync(path.join(d, f), { force: true });
+            } catch {
+              /* ignore */
+            }
           }
         }
       }
+      const legacy = path.join(outDir, "nz-scene.html");
+      if (fs.existsSync(legacy)) fs.rmSync(legacy, { force: true });
     }
   };
 }

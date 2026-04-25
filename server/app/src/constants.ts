@@ -4,10 +4,10 @@ export const DEFAULT_ROOM_ID = "junction";
 /**
  * Iframe page for the in-zoo prototype, relative to the SPA origin. Source of truth: repo
  * root `main scene/` (copied to `public/main-scene` by `server/scripts/sync-main-scene.mjs` on build).
- * Set `VITE_MAIN_SCENE_PATH` in `.env` to override. Lives at site root: PartyKit rewrites
- * `main-scene/*.html` to the React shell, so the prototype is `nz-scene.html` with `<base href="/main-scene/">`.
+ * Set `VITE_MAIN_SCENE_PATH` in `.env` to override. Not named `.html` on PartyKit (SPA rewrites
+ * all `*.html`); `server` serves this as `text/html` via `onFetch` from `sync-main-scene` output.
  */
-export const DEFAULT_MAIN_SCENE_PATH = "nz-scene.html";
+export const DEFAULT_MAIN_SCENE_PATH = "nz-scene.document";
 
 /** Max face slots on the OB “camera wall” (matches server room cap). */
 export const OB_FACE_SLOTS = 10;
