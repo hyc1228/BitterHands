@@ -86,8 +86,10 @@ export default class Server {
    * @param {import("partykit/server").ExecutionContext} _ctx
    */
   /**
-   * SPA mode is off (we use HashRouter so `/` is the only HTML page the browser requests).
-   * PartyKit static auto-serves `*.html` as text/html; we only need to handle the bare `/`.
+   * SPA mode is off (HashRouter), so we only handle:
+   *  - bare `/` → React shell at `/index.html`
+   *  - `/main-scene/index.html` → re-emit with `X-Frame-Options: SAMEORIGIN`, otherwise PartyKit's
+   *    default `DENY` blocks the React route from embedding the prototype as an iframe.
    * @param {import("partykit/server").Request} req
    * @param {import("partykit/server").FetchLobby} lobby
    * @param {import("partykit/server").ExecutionContext} _ctx
@@ -97,7 +99,11 @@ export default class Server {
     const url = new URL(req.url);
     if (url.pathname === "/") {
       const r = await lobby.assets.fetch("/index.html");
-      if (r && r.ok) return r;
+      if (r && r.ok) return _withFrameSameOrigin(r);
+    }
+    if (url.pathname === "/main-scene/index.html" || url.pathname === "/main-scene/") {
+      const r = await lobby.assets.fetch("/main-scene/index.html");
+      if (r && r.ok) return _withFrameSameOrigin(r);
     }
   }
 
@@ -697,5 +703,19 @@ export default class Server {
       );
     }
   }
+}
+
+/**
+ * Re-emit a static-asset Response with `X-Frame-Options: SAMEORIGIN` (PartyKit defaults to `DENY`,
+ * which blocks the React shell from embedding `/main-scene/index.html` as an iframe).
+ * @param {Response} r
+ * @returns {Promise<Response>}
+ */
+async function _withFrameSameOrigin(r) {
+  const headers = new Headers(r.headers);
+  headers.set("X-Frame-Options", "SAMEORIGIN");
+  headers.delete("Content-Security-Policy");
+  const body = await r.arrayBuffer();
+  return new Response(body, { status: r.status, statusText: r.statusText, headers });
 }
 
