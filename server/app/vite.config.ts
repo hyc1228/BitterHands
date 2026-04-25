@@ -134,19 +134,24 @@ function mainSceneIframeDevPlugin(): Plugin {
 }
 
 /**
- * Dev: serve `/voice/*` (Monitor PA WAV files) from `server/public/voice/`.
+ * Dev: serve audio assets that live outside Vite's publicDir.
  *
- * In production they're hosted at the same origin as the SPA via PartyKit's static layer,
- * but during `npm run dev:client` Vite's publicDir is `app/public/` (which doesn't have
- * `voice/`), so without this middleware `<audio>.src = "/voice/..."` 404s back to the SPA
- * shell as `text/html` and never plays. Mobile browsers are especially picky about MIME
- * type, so we set `audio/wav` explicitly.
+ *   - `/voice/*`    → Monitor PA WAV bank (`server/public/voice/`)
+ *   - `/resource/*` → Main-scene SFX (alarm, hp gain/loss) referenced by the iframe via
+ *     relative `../resource/...`, source-of-truth in the repo's root `resource/`.
+ *
+ * In production both come from the SPA origin via PartyKit's static layer, but Vite dev only
+ * sees `app/public/`. Without this middleware the audio element gets the SPA shell HTML
+ * (404 fallback) and silently fails — particularly nasty on mobile.
  */
-function voiceAssetsDevPlugin(): Plugin {
+function audioAssetsDevPlugin(): Plugin {
   return {
-    name: "nz-voice-dev",
+    name: "nz-audio-dev",
     configureServer(server) {
-      const voiceRoot = path.resolve(appDir, "../public/voice");
+      const ROOTS: Record<string, string> = {
+        "/voice/": path.resolve(appDir, "../public/voice"),
+        "/resource/": path.resolve(appDir, "../public/resource")
+      };
       const mimeFor = (ext: string): string => {
         const e = ext.toLowerCase();
         if (e === "mp3") return "audio/mpeg";
@@ -157,12 +162,14 @@ function voiceAssetsDevPlugin(): Plugin {
       server.middlewares.use((req, res, next) => {
         const u = req.url || "";
         const p = u.split("?")[0] ?? u;
-        if (!p.startsWith("/voice/")) return next();
+        const matchedPrefix = Object.keys(ROOTS).find((pre) => p.startsWith(pre));
+        if (!matchedPrefix) return next();
         if (req.method !== "GET" && req.method !== "HEAD") return next();
+        const root = ROOTS[matchedPrefix];
         const name = path.basename(p);
         if (!/^[a-zA-Z0-9._-]+\.(wav|mp3|ogg|oga|m4a|aac)$/.test(name)) return next();
-        const filePath = path.join(voiceRoot, name);
-        if (!filePath.startsWith(voiceRoot) || !fs.existsSync(filePath)) return next();
+        const filePath = path.join(root, name);
+        if (!filePath.startsWith(root) || !fs.existsSync(filePath)) return next();
         const ext = path.extname(name).slice(1);
         res.setHeader("Content-Type", mimeFor(ext));
         res.setHeader("Cache-Control", "public, max-age=300");
@@ -194,7 +201,7 @@ function removeLegacyMainScenePlugin(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), localAvatarPlugin(), mainSceneIframeDevPlugin(), voiceAssetsDevPlugin(), removeLegacyMainScenePlugin()],
+  plugins: [react(), localAvatarPlugin(), mainSceneIframeDevPlugin(), audioAssetsDevPlugin(), removeLegacyMainScenePlugin()],
   base: "./",
   build: {
     outDir,

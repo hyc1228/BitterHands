@@ -340,7 +340,9 @@ export default class Server {
 
         this._broadcast(ServerEventTypes.SYSTEM, { message: "游戏开始" });
         this._sendRoomSnapshot();
-        void this._dispatchMonitorLine({ kind: "game_started", priority: 8, ttlMs: 9000 });
+        // Opening Monitor PA voice intentionally muted for now — the cold-open line
+        // was too jarring on first load. Re-enable by uncommenting:
+        //   void this._dispatchMonitorLine({ kind: "game_started", priority: 8, ttlMs: 9000 });
         return;
       }
 

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import CameraFrameUploader from "../components/CameraFrameUploader";
 import { getMainSceneFrameSrc } from "../constants";
 import { useMainSceneIframeBridge } from "../hooks/useMainSceneIframeBridge";
 import { postToMainSceneFrame, postItemInboxToFrame, postMainSceneNetToFrame } from "../mainSync/postToMainSceneFrame";
@@ -64,13 +65,19 @@ export default function MainScene() {
   }, [conn]);
 
   return (
-    <iframe
-      ref={iframeRef}
-      className="main-scene-iframe"
-      title="Nocturne Zoo main scene"
-      src={src}
-      onLoad={pushToIframe}
-      allow="camera; microphone"
-    />
+    <>
+      <iframe
+        ref={iframeRef}
+        className="main-scene-iframe"
+        title="Nocturne Zoo main scene"
+        src={src}
+        onLoad={pushToIframe}
+        allow="camera; microphone"
+      />
+      {/* Off-screen uploader keeps OB's face wall live during the actual game.
+          Mounting here (not inside the iframe) sidesteps the iframe's permission
+          quirks and reuses the React-side store/WS we already have open. */}
+      <CameraFrameUploader />
+    </>
   );
 }

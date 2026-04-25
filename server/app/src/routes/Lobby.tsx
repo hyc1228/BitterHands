@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import CameraFrameUploader from "../components/CameraFrameUploader";
 import PlayerRowFace from "../components/PlayerRowFace";
 import { animalLocalized, dict } from "../i18n";
 import { ClientMessageTypes } from "../party/protocol";
@@ -71,6 +72,7 @@ export default function Lobby() {
 
   return (
     <div className="lobby-wrap">
+      <CameraFrameUploader />
       <div className="card lobby-card">
         <div className="lobby-pulse" aria-hidden="true">
           <span />
