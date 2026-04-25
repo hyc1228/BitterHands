@@ -1567,6 +1567,10 @@
         lastMainSyncName: "",
         /** OB: hide local avatar, camera follows everyone. */
         spectator: false,
+        /** Main map view for pure spectator: centroid | follow one id | free pan. */
+        obCamMode: "centroid",
+        obFollowId: null,
+        obFreeTarget: { x: cx, y: cy },
         roomStarted: false,
         netSelfId: "",
         _pickupReq: typeof Set !== "undefined" ? new Set() : null,
@@ -1726,25 +1730,35 @@
       // =================================================================
       // Render (set transforms each frame)
       // =================================================================
+      function getSpectatorTargetXY() {
+        const oth = state.others;
+        if (state.obCamMode === "free") {
+          return { x: state.obFreeTarget.x, y: state.obFreeTarget.y };
+        }
+        if (state.obCamMode === "follow" && state.obFollowId) {
+          const row = oth.find(function (o) {
+            return o.id === state.obFollowId;
+          });
+          if (row) return { x: row.x, y: row.y };
+        }
+        if (oth.length === 0) {
+          return { x: MAP_W / 2, y: MAP_H / 2 };
+        }
+        var sx = 0,
+          sy = 0;
+        for (var i = 0; i < oth.length; i++) {
+          sx += oth[i].x;
+          sy += oth[i].y;
+        }
+        return { x: sx / oth.length, y: sy / oth.length };
+      }
+
       function updateCamera() {
         let camX, camY;
         if (state.spectator) {
-          const oth = state.others;
-          if (oth.length === 0) {
-            camX = MAP_W / 2 - VIEW_W / 2;
-            camY = MAP_H / 2 - VIEW_H / 2;
-          } else {
-            let sx = 0,
-              sy = 0;
-            for (const p of oth) {
-              sx += p.x;
-              sy += p.y;
-            }
-            const cx = sx / oth.length,
-              cy = sy / oth.length;
-            camX = cx - VIEW_W / 2;
-            camY = cy - VIEW_H / 2;
-          }
+          const t = getSpectatorTargetXY();
+          camX = t.x - VIEW_W / 2;
+          camY = t.y - VIEW_H / 2;
         } else {
           camX = state.me.x - VIEW_W / 2;
           camY = state.me.y - VIEW_H / 2;
@@ -2365,7 +2379,57 @@
           y: (cy - rect.top - offY) / scale,
         };
       }
+      var obDrag = null;
+      function svgClientScale() {
+        const rect = SVG.getBoundingClientRect();
+        const sx = rect.width / VIEW_W;
+        const sy = rect.height / VIEW_H;
+        return Math.min(sx, sy);
+      }
+      function obPointerDown(ev) {
+        if (!state.spectator || state.obCamMode !== "free") return false;
+        const p = svgPointFromEvent(ev);
+        if (p.x < 0 || p.x > VIEW_W || p.y < 0 || p.y > VIEW_H) return false;
+        obDrag = {
+          lastX: ev.clientX,
+          lastY: ev.clientY,
+          scale: svgClientScale(),
+        };
+        try {
+          SVG.setPointerCapture(ev.pointerId);
+        } catch (e) {}
+        ev.preventDefault();
+        return true;
+      }
+      function obPointerMove(ev) {
+        if (!obDrag) return;
+        const dcx = ev.clientX - obDrag.lastX;
+        const dcy = ev.clientY - obDrag.lastY;
+        const sc = obDrag.scale || svgClientScale();
+        state.obFreeTarget.x = clamp(
+          state.obFreeTarget.x - dcx / sc,
+          BORDER,
+          MAP_W - BORDER
+        );
+        state.obFreeTarget.y = clamp(
+          state.obFreeTarget.y - dcy / sc,
+          BORDER,
+          MAP_H - BORDER
+        );
+        obDrag.lastX = ev.clientX;
+        obDrag.lastY = ev.clientY;
+      }
+      function obPointerUp(ev) {
+        if (obDrag) {
+          obDrag = null;
+          try {
+            SVG.releasePointerCapture(ev.pointerId);
+          } catch (e) {}
+        }
+      }
       SVG.addEventListener("pointerdown", (ev) => {
+        if (obPointerDown(ev)) return;
+        if (state.spectator) return;
         const p = svgPointFromEvent(ev);
         if (p.x < 0 || p.x > VIEW_W || p.y < 0 || p.y > VIEW_H) return;
         // Translate viewport -> world by adding the current camera offset.
@@ -2374,6 +2438,9 @@
           y: p.y + state.cam.y,
         };
       });
+      SVG.addEventListener("pointermove", obPointerMove);
+      SVG.addEventListener("pointerup", obPointerUp);
+      SVG.addEventListener("pointercancel", obPointerUp);
 
       // =================================================================
       // Main loop
@@ -2918,6 +2985,30 @@
           state.nodes.me.setAttribute("visibility", "visible");
         }
       }
+      function applyObCamera(p) {
+        if (!p || typeof p !== "object" || !state.spectator) return;
+        if (p.initFromCurrent) {
+          var c = getSpectatorTargetXY();
+          state.obFreeTarget.x = c.x;
+          state.obFreeTarget.y = c.y;
+        }
+        if (p.mode === "centroid" || p.mode === "follow" || p.mode === "free") {
+          state.obCamMode = p.mode;
+        }
+        if (p.followPlayerId !== undefined) {
+          state.obFollowId = p.followPlayerId ? String(p.followPlayerId) : null;
+        }
+        if (
+          p.freeCenter &&
+          typeof p.freeCenter.x === "number" &&
+          Number.isFinite(p.freeCenter.x) &&
+          typeof p.freeCenter.y === "number" &&
+          Number.isFinite(p.freeCenter.y)
+        ) {
+          state.obFreeTarget.x = clamp(p.freeCenter.x, BORDER, MAP_W - BORDER);
+          state.obFreeTarget.y = clamp(p.freeCenter.y, BORDER, MAP_H - BORDER);
+        }
+      }
       function applyNetPeers(raw) {
         if (!raw || typeof raw !== "object") return;
         var peers = raw.peers;
@@ -3020,6 +3111,8 @@
           applyNetPeers(d.payload);
         } else if (d.type === "NZ_MS_ITEM") {
           if (d.payload && d.payload.events) applyItemInbox(d.payload.events);
+        } else if (d.type === "NZ_OB_CAMERA") {
+          applyObCamera(d.payload);
         }
       });
     </script>
