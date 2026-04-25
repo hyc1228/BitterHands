@@ -14,9 +14,10 @@ yarn-error.log*
 # mkcert / local HTTPS (see server README)
 server/certs/
 
-# Copied from repo `main scene/` (see server/scripts/sync-main-scene.mjs)
+# Copied from repo `main scene/` for Vite `publicDir` (see server/scripts/sync-main-scene.mjs)
 server/app/public/main-scene/
-server/public/main-scene/
+# `server/public/main-scene/**` is tracked so PartyKit deploy includes the iframe (SPA fallback
+# was serving the React `index.html` for `/main-scene/*` when this folder was gitignored).
 
 # Optional local design notes (not part of the app build)
 design-system/

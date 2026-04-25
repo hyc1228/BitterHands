@@ -4,9 +4,10 @@ export const DEFAULT_ROOM_ID = "junction";
 /**
  * Iframe page for the in-zoo prototype, relative to the SPA origin. Source of truth: repo
  * root `main scene/` (copied to `public/main-scene` by `server/scripts/sync-main-scene.mjs` on build).
- * To point at a different file after pulling updates, set `VITE_MAIN_SCENE_PATH` in `.env` (e.g. `main-scene/index.html`).
+ * Set `VITE_MAIN_SCENE_PATH` in `.env` to override. Not named `index.html` — hosts that serve
+ * an SPA often remap nested `index.html` to the shell.
  */
-export const DEFAULT_MAIN_SCENE_PATH = "main-scene/index.html";
+export const DEFAULT_MAIN_SCENE_PATH = "main-scene/zoo-scene.html";
 
 /** Max face slots on the OB “camera wall” (matches server room cap). */
 export const OB_FACE_SLOTS = 10;

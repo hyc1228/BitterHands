@@ -6,6 +6,9 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover"
     />
+    <!-- Avoid long-lived cached HTML (CF can cache index.html) so new JS/CSS hashes load after deploy. -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+    <meta http-equiv="Pragma" content="no-cache" />
     <meta name="theme-color" content="#0a0a0a" />
     <title>Nocturne Zoo</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -14,7 +17,7 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Patrick+Hand&display=swap"
     />
-    <script type="module" crossorigin src="./assets/index-IVk-NZtd.js"></script>
+    <script type="module" crossorigin src="./assets/index-BmA4IfLq.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-rbW73tri.css">
   </head>
   <body>

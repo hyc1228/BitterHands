@@ -110,8 +110,20 @@ function localAvatarPlugin(): Plugin {
   };
 }
 
+/** `emptyOutDir` is false for PartyKit, so a previous `public/main-scene/index.html` can remain and confuse SPA static hosts. */
+function removeStaleMainSceneIndexPlugin(): Plugin {
+  return {
+    name: "nz-rm-stale-main-scene-index",
+    closeBundle() {
+      if (isVercel) return;
+      const p = path.join(outDir, "main-scene/index.html");
+      if (fs.existsSync(p)) fs.rmSync(p);
+    }
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), localAvatarPlugin()],
+  plugins: [react(), localAvatarPlugin(), removeStaleMainSceneIndexPlugin()],
   base: "./",
   build: {
     outDir,

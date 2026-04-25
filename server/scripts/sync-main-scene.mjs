@@ -18,4 +18,11 @@ if (!fs.existsSync(src)) {
 fs.mkdirSync(path.dirname(dest), { recursive: true });
 fs.rmSync(dest, { recursive: true, force: true });
 fs.cpSync(src, dest, { recursive: true });
+// PartyKit (and similar hosts) map every `.../index.html` to the SPA shell; use a distinct
+// filename so /main-scene/* serves the real prototype HTML instead of the React app.
+const idx = path.join(dest, "index.html");
+const zoop = path.join(dest, "zoo-scene.html");
+if (fs.existsSync(idx)) {
+  fs.renameSync(idx, zoop);
+}
 console.log("[sync-main-scene] Copied to", dest);

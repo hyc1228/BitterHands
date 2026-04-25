@@ -3,9 +3,14 @@
   "name": "nocturne-zoo",
   "main": "src/server.js",
   "compatibilityDate": "2024-04-05",
+  "build": {
+    "command": "npm run build:client"
+  },
   "serve": {
     "path": "./public",
-    "singlePageApp": true
+    "singlePageApp": true,
+    "edgeTTL": 0,
+    "browserTTL": 0
   }
 }
 
