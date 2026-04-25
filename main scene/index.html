@@ -600,6 +600,20 @@
           transform: rotate(22deg);
         }
       }
+
+      /* ZooKeeper eye states.
+           default     → sweep eyes visible (white sclera + small red pupil)
+           .locked     → glowing red eyes visible, sweep hidden, body shakes */
+      .zookeeper .zk-eye-locked { display: none; }
+      .zookeeper.locked .zk-eye-sweep { display: none; }
+      .zookeeper.locked .zk-eye-locked { display: block; }
+      .zookeeper.locked .zk-body {
+        animation: zkShake 0.16s ease-in-out infinite;
+      }
+      @keyframes zkShake {
+        0%, 100% { transform: translateY(0); }
+        50%      { transform: translateY(-3px); }
+      }
       .alarm-shake {
         animation: shake 0.4s ease-in-out infinite;
         transform-box: fill-box;
@@ -648,100 +662,123 @@
         }
       }
 
-      /* ---------- Action challenge overlay ---------- */
-      #challengeOverlay {
-        display: none;
-        position: absolute;
-        left: 50%;
-        top: 40%;
-        transform: translate(-50%, -50%);
-        z-index: 25;
-        background: rgba(4, 4, 4, 0.93);
-        border: 2.5px solid #f0c040;
-        border-radius: 14px;
-        padding: 14px 22px 16px;
-        text-align: center;
-        min-width: 200px;
-        box-shadow: 0 0 30px rgba(240, 192, 64, 0.28);
-        pointer-events: none;
-      }
-      #challengeOverlay.active  { display: block; }
-      #challengeOverlay.success { border-color: #30d080; box-shadow: 0 0 30px rgba(48,208,128,0.32); }
-      #challengeOverlay.fail    { border-color: #ff4444; box-shadow: 0 0 30px rgba(255,68,68,0.32); }
-      #chal-icon  { font-size: 2.2rem; margin-bottom: 4px; }
-      #chal-label {
-        font-family: "Caveat", cursive;
-        font-size: 1.55rem;
-        font-weight: 700;
-        color: #f0c040;
-        margin-bottom: 4px;
-      }
-      #challengeOverlay.success #chal-label { color: #30d080; }
-      #challengeOverlay.fail    #chal-label { color: #ff4444; }
-      #chal-status {
-        font-size: 0.82rem;
-        color: #999;
-        margin-bottom: 10px;
-        font-family: "Patrick Hand", cursive;
-        min-height: 1.2em;
-      }
-      .chal-bar { height: 5px; background: #2a2a2a; border-radius: 3px; overflow: hidden; }
-      #chal-bar-fill {
-        height: 100%;
-        width: 100%;
-        background: #f0c040;
-        border-radius: 3px;
-        transition: width 0.1s linear;
-      }
-      #challengeOverlay.success #chal-bar-fill { background: #30d080; }
-      #challengeOverlay.fail    #chal-bar-fill { background: #ff4444; }
+      /* ---------- Action prompt bars ----------
+         Two slim rounded bars instead of centered modals so they don't
+         block the player's view of the world.
 
-      /* ---------- Universal rule challenge overlay ---------- */
-      #universalOverlay {
+           .action-bar-top    — monitor challenge (when the flashlight
+                                lands on you and you have to perform an
+                                action like "don't blink for 5s").
+           .action-bar-bottom — universal rule that everyone in the room
+                                must follow simultaneously.
+
+         Visuals:
+           - light purple bg (#BAB4DA), heavy black "doodle" drop shadow
+           - a fill rect on the left whose width = remaining time / max,
+             coloured RED while active and GREEN once you pass.
+           - on success the bar snaps to full green and a ✓ badge slides
+             in at the right edge. */
+      .action-bar {
         display: none;
         position: absolute;
         left: 50%;
-        bottom: 168px;
         transform: translateX(-50%);
-        z-index: 24;
-        background: rgba(4, 4, 4, 0.93);
-        border: 2px solid #88aaff;
-        border-radius: 12px;
-        padding: 10px 18px 12px;
-        text-align: center;
-        min-width: 185px;
-        box-shadow: 0 0 20px rgba(136, 170, 255, 0.22);
+        width: min(94%, 340px);
+        height: 38px;
+        background: #bab4da;
+        border-radius: 22px;
+        box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.78);
+        overflow: hidden;
+        z-index: 22;
         pointer-events: none;
-      }
-      #universalOverlay.active  { display: block; }
-      #universalOverlay.success { border-color: #30d080; box-shadow: 0 0 20px rgba(48,208,128,0.28); }
-      #universalOverlay.fail    { border-color: #ff4444; box-shadow: 0 0 20px rgba(255,68,68,0.28); }
-      #uchal-icon  { font-size: 1.8rem; margin-bottom: 3px; }
-      #uchal-label {
         font-family: "Caveat", cursive;
-        font-size: 1.35rem;
-        font-weight: 700;
-        color: #88aaff;
-        margin-bottom: 3px;
       }
-      #universalOverlay.success #uchal-label { color: #30d080; }
-      #universalOverlay.fail    #uchal-label { color: #ff4444; }
-      #uchal-status {
-        font-size: 0.78rem;
-        color: #888;
-        margin-bottom: 8px;
-        font-family: "Patrick Hand", cursive;
-        min-height: 1.1em;
+      .action-bar.active {
+        display: block;
       }
-      #uchal-bar-fill {
-        height: 100%;
+      .action-bar-top {
+        top: 64px;
+      }
+      .action-bar-bottom {
+        bottom: 178px;
+      }
+
+      .action-bar .bar-fill {
+        position: absolute;
+        left: 0;
+        top: 0;
+        bottom: 0;
         width: 100%;
-        background: #88aaff;
-        border-radius: 3px;
-        transition: width 0.1s linear;
+        background: #970000;
+        transition: width 0.12s linear, background 0.25s ease-out;
       }
-      #universalOverlay.success #uchal-bar-fill { background: #30d080; }
-      #universalOverlay.fail    #uchal-bar-fill { background: #ff4444; }
+      .action-bar.success .bar-fill {
+        background: #009717;
+      }
+      .action-bar.fail .bar-fill {
+        background: #970000;
+        opacity: 0.55;
+      }
+
+      .action-bar .bar-content {
+        position: relative;
+        z-index: 2;
+        display: flex;
+        align-items: center;
+        height: 100%;
+        padding: 0 14px;
+        gap: 6px;
+        font-weight: 700;
+        font-size: 17px;
+        color: #0a0a0a;
+        letter-spacing: 0.6px;
+        white-space: nowrap;
+        overflow: hidden;
+      }
+      .action-bar .bar-warn {
+        font-size: 16px;
+        flex: 0 0 auto;
+      }
+      .action-bar .bar-label {
+        flex: 0 0 auto;
+        font-family: "Caveat", cursive;
+        font-weight: 700;
+      }
+      .action-bar .bar-status {
+        flex: 1 1 auto;
+        min-width: 0;
+        font-family: "Patrick Hand", cursive;
+        font-weight: 400;
+        font-size: 13.5px;
+        color: #1a1a1a;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      .action-bar .bar-emoji {
+        flex: 0 0 auto;
+        font-size: 17px;
+        margin-left: auto;
+      }
+      .action-bar.success .bar-emoji {
+        opacity: 0;
+      }
+
+      /* Pass / fail badge — slides in on success, replaces the action emoji. */
+      .action-bar .bar-check {
+        display: none;
+        position: absolute;
+        right: 4px;
+        top: 50%;
+        transform: translateY(-50%) scale(0.4);
+        z-index: 3;
+        font-size: 26px;
+        line-height: 1;
+        transition: transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1);
+      }
+      .action-bar.success .bar-check {
+        display: block;
+        transform: translateY(-50%) scale(1);
+      }
 
       /* ---------- Death / spectator overlay ---------- */
       /* Full-screen flash shown briefly on death, then shrinks to badge */
@@ -828,6 +865,55 @@
       /* Show on touch devices (no hover, coarse pointer = phone/tablet). */
       @media (hover: none) and (pointer: coarse) {
         .joystick { display: block; }
+      }
+
+      /* ---------- Self-cam preview (bottom-right, local-only) ---------- */
+      /* Same <video> element that feeds FaceMesh, just made visible in a
+         circular frame. Mirrored so the player sees a natural mirror view.
+         object-fit: cover crops the video to fill the circle without
+         letterboxing. */
+      .cam-preview {
+        position: absolute;
+        right: 14px;
+        bottom: 16px;
+        width: 88px;
+        height: 88px;
+        border-radius: 50%;
+        object-fit: cover;
+        border: 2.5px solid #ffffff;
+        box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.78);
+        background: #1a1a1a;
+        z-index: 28;
+        pointer-events: none;
+        transform: scaleX(-1); /* mirror like a real selfie cam */
+      }
+
+      /* ---------- Alert vignette (red glow when a rule is active) ----------
+         Inner box-shadow creates a glow around the screen edges only —
+         center stays fully transparent so the cam preview, joystick and
+         challenge bars remain crisp. The keyframe pulses the shadow's
+         spread/intensity for urgency. */
+      .alert-overlay {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 60;
+        opacity: 0;
+        box-shadow: inset 0 0 50px 10px rgba(255, 0, 0, 0.45);
+        transition: opacity 0.25s ease;
+        will-change: opacity, box-shadow;
+      }
+      .alert-overlay.active {
+        opacity: 1;
+        animation: alertPulse 0.8s ease-in-out infinite;
+      }
+      @keyframes alertPulse {
+        0%, 100% {
+          box-shadow: inset 0 0 50px 10px rgba(255, 0, 0, 0.40);
+        }
+        50% {
+          box-shadow: inset 0 0 95px 20px rgba(255, 0, 0, 0.78);
+        }
       }
     </style>
   </head>
@@ -1001,20 +1087,42 @@
         </div>
 
         <!-- Webcam: hidden input for FaceMesh -->
-        <video id="webcamVideo" playsinline autoplay muted style="display:none"></video>
-        <!-- Action challenge overlay (monitor) -->
-        <div id="challengeOverlay">
-          <div id="chal-icon">👁️</div>
-          <div id="chal-label">守则提示</div>
-          <div id="chal-status">监管者注视着你…</div>
-          <div class="chal-bar"><div id="chal-bar-fill"></div></div>
+        <!-- Local self-cam preview (bottom-right). The same video element is
+             also fed to FaceMesh — making it visible has no effect on
+             tracking. This view is purely client-side; it is NOT broadcast
+             to other players. -->
+        <video
+          id="webcamVideo"
+          class="cam-preview"
+          playsinline
+          autoplay
+          muted
+        ></video>
+
+        <!-- Red alert vignette — pulses around the screen edge while a
+             challenge (monitor or universal) is active. -->
+        <div class="alert-overlay" id="alertOverlay" aria-hidden="true"></div>
+        <!-- Monitor challenge bar (top): when flashlight lands on you. -->
+        <div id="challengeOverlay" class="action-bar action-bar-top">
+          <div class="bar-fill" id="chal-bar-fill"></div>
+          <div class="bar-content">
+            <span class="bar-warn">⚠️</span>
+            <span class="bar-label" id="chal-label">守则提示</span>
+            <span class="bar-status" id="chal-status">监管者注视着你…</span>
+            <span class="bar-emoji" id="chal-icon">👁️</span>
+          </div>
+          <div class="bar-check">✅</div>
         </div>
-        <!-- Universal rule challenge overlay -->
-        <div id="universalOverlay">
-          <div id="uchal-icon">👁️</div>
-          <div id="uchal-label">通用规则</div>
-          <div id="uchal-status">请执行！</div>
-          <div class="chal-bar"><div id="uchal-bar-fill"></div></div>
+        <!-- Universal rule bar (bottom): global state, applies to everyone. -->
+        <div id="universalOverlay" class="action-bar action-bar-bottom">
+          <div class="bar-fill" id="uchal-bar-fill"></div>
+          <div class="bar-content">
+            <span class="bar-warn">⚠️</span>
+            <span class="bar-label" id="uchal-label">通用规则</span>
+            <span class="bar-status" id="uchal-status">请执行！</span>
+            <span class="bar-emoji" id="uchal-icon">👁️</span>
+          </div>
+          <div class="bar-check">✅</div>
         </div>
         <!-- Death flash overlay (auto-dismisses) -->
         <div id="deathOverlay">
@@ -1372,21 +1480,21 @@
 
         const W = 90;
         const H = 124;
-        // Round head sits in the lower half of the SVG (below the long ears).
-        // Eyes go in its upper-middle, just above the red triangular nose
-        // (which is at display y≈19-25 from the SVG's nose path).
-        const eyeY = 8;
-        const eyeX = 15;     // wider apart — old 11 felt cramped
+        const eyeY = 12;     // moved a touch lower per design feedback
+        const eyeX = 15;
         const eyeR = 8;
-        const pupilR = 2.5;
-        // Compensate for SVG drop-shadow padding (viewBox grew from 723x992
-        // to 755x1023). The body image is shifted right/down so its visible
-        // content lines up with the procedural eyes at (0, 0).
-        const SHIFT_X = 1.91;
+        const sweepPupilR  = 4;    // red pupil (sweep / "calm" mode)
+        const lockedPupilR = 2.5;  // white pupil (locked / "alert" mode)
+        const SHIFT_X = 1.91;      // SVG drop-shadow compensation
         const SHIFT_Y = 1.88;
 
-        // Body (silhouette, ears, mouth, nose all included in the SVG)
-        root.appendChild(
+        // Inner wrapper carries the up/down shake when monitor is locked
+        // on a target. The OUTER root carries the SVG translate(monX monY)
+        // from render(); this inner group only takes the CSS-animation
+        // transform so they don't fight.
+        const inner = el("g", { class: "zk-body" });
+
+        inner.appendChild(
           el("image", {
             href: "ZooKeeper.svg",
             x: -W / 2 + SHIFT_X,
@@ -1397,39 +1505,47 @@
           })
         );
 
-        // Soft red glow halos behind the eyes
-        root.appendChild(
+        // ---- Sweep eyes (default): white sclera + small red pupil --------
+        // Looks like the other animals' eyes — soft and unthreatening.
+        const sweepEyes = el("g", { class: "zk-eye-sweep" });
+        sweepEyes.appendChild(el("circle", { cx: -eyeX, cy: eyeY, r: eyeR, fill: "#ffffff" }));
+        sweepEyes.appendChild(el("circle", { cx:  eyeX, cy: eyeY, r: eyeR, fill: "#ffffff" }));
+        const sweepPupilL = el("circle", { cx: -eyeX, cy: eyeY, r: sweepPupilR, fill: "#cf1313" });
+        const sweepPupilR2 = el("circle", { cx:  eyeX, cy: eyeY, r: sweepPupilR, fill: "#cf1313" });
+        sweepEyes.append(sweepPupilL, sweepPupilR2);
+        inner.appendChild(sweepEyes);
+
+        // ---- Locked eyes (alert): glowing red + small white pupil --------
+        // Shown only when monitor is locked on a target (CSS toggles).
+        const lockedEyes = el("g", { class: "zk-eye-locked" });
+        lockedEyes.appendChild(
           el("circle", {
-            cx: -eyeX,
-            cy: eyeY,
-            r: eyeR + 2,
-            fill: "#ff2a2a",
-            filter: "url(#redGlow)",
-            opacity: 0.85,
+            cx: -eyeX, cy: eyeY, r: eyeR + 2,
+            fill: "#ff2a2a", filter: "url(#redGlow)", opacity: 0.85,
           })
         );
-        root.appendChild(
+        lockedEyes.appendChild(
           el("circle", {
-            cx: eyeX,
-            cy: eyeY,
-            r: eyeR + 2,
-            fill: "#ff2a2a",
-            filter: "url(#redGlow)",
-            opacity: 0.85,
+            cx: eyeX, cy: eyeY, r: eyeR + 2,
+            fill: "#ff2a2a", filter: "url(#redGlow)", opacity: 0.85,
           })
         );
+        lockedEyes.appendChild(el("circle", { cx: -eyeX, cy: eyeY, r: eyeR, fill: "#ff2a2a" }));
+        lockedEyes.appendChild(el("circle", { cx:  eyeX, cy: eyeY, r: eyeR, fill: "#ff2a2a" }));
+        const lockedPupilL = el("circle", { cx: -eyeX, cy: eyeY, r: lockedPupilR, fill: "#fff" });
+        const lockedPupilR_node = el("circle", { cx:  eyeX, cy: eyeY, r: lockedPupilR, fill: "#fff" });
+        lockedEyes.append(lockedPupilL, lockedPupilR_node);
+        inner.appendChild(lockedEyes);
 
-        // Solid red eyes
-        root.appendChild(el("circle", { cx: -eyeX, cy: eyeY, r: eyeR, fill: "#ff2a2a" }));
-        root.appendChild(el("circle", { cx: eyeX, cy: eyeY, r: eyeR, fill: "#ff2a2a" }));
+        root.appendChild(inner);
 
-        // White pupils — moved each frame to track the current target
-        const pupilL = el("circle", { cx: -eyeX, cy: eyeY, r: pupilR, fill: "#fff" });
-        const pupilR_node = el("circle", { cx: eyeX, cy: eyeY, r: pupilR, fill: "#fff" });
-        root.append(pupilL, pupilR_node);
-
-        root._pupilL = pupilL;
-        root._pupilR = pupilR_node;
+        // Expose all four pupils so render() can keep them in sync with the
+        // current aim angle even while the corresponding eye group is hidden
+        // (so when modes flip, pupils are already in the right spot).
+        root._sweepPupilL  = sweepPupilL;
+        root._sweepPupilR  = sweepPupilR2;
+        root._lockedPupilL = lockedPupilL;
+        root._lockedPupilR = lockedPupilR_node;
         root._eyeX = eyeX;
         root._eyeY = eyeY;
         return root;
@@ -1495,7 +1611,7 @@
       // flashlight's lens position) and the cone fans rightward from there.
       const CONE_W = 260;
       const CONE_H = 340;
-      const APEX_X = 80;     // cone apex x (= flashlight lens x)
+      const APEX_X = 64;     // cone apex x (= flashlight lens x)
       function makeCone() {
         const root = el("g", { class: "flashlight-cone" });
         root.appendChild(
@@ -1770,8 +1886,18 @@
         cameraGroup.setAttribute("transform", `translate(${-camX} ${-camY})`);
       }
 
+      const alertOverlay = document.getElementById("alertOverlay");
+
       function render() {
         updateCamera();
+
+        // Red alert vignette: pulses while ANY rule challenge is in progress.
+        if (alertOverlay) {
+          const inAlert =
+            (challenge.active && !challenge.completed) ||
+            (universalChallenge.active && !universalChallenge.completed);
+          alertOverlay.classList.toggle("active", inAlert);
+        }
 
         // items
         for (const it of state.items) {
@@ -1817,18 +1943,27 @@
         if (state.nodes.cone) state.nodes.cone.setAttribute("transform", tf);
         if (state.nodes.torch) state.nodes.torch.setAttribute("transform", tf);
 
-        // Pupils: shift the white pupil dots inside the red eyes toward target.
+        // Pupils: shift inside the eye toward the current target. Update
+        // BOTH the sweep pupils (red on white) and the locked pupils
+        // (white on red) so when the monitor flips between modes the
+        // visible pupil is already in the right spot.
         const ux = Math.cos(state.monitor.aimAngle);
         const uy = Math.sin(state.monitor.aimAngle);
         const PUPIL_OFFSET = 2.6;
         const m = state.nodes.monitor;
-        if (m && m._pupilL) {
-          m._pupilL.setAttribute("cx", -m._eyeX + ux * PUPIL_OFFSET);
-          m._pupilL.setAttribute("cy", m._eyeY + uy * PUPIL_OFFSET);
-        }
-        if (m && m._pupilR) {
-          m._pupilR.setAttribute("cx", m._eyeX + ux * PUPIL_OFFSET);
-          m._pupilR.setAttribute("cy", m._eyeY + uy * PUPIL_OFFSET);
+        if (m) {
+          const lcx = -m._eyeX + ux * PUPIL_OFFSET;
+          const rcx =  m._eyeX + ux * PUPIL_OFFSET;
+          const cy  =  m._eyeY + uy * PUPIL_OFFSET;
+          for (const p of [m._sweepPupilL, m._lockedPupilL]) {
+            if (p) { p.setAttribute("cx", lcx); p.setAttribute("cy", cy); }
+          }
+          for (const p of [m._sweepPupilR, m._lockedPupilR]) {
+            if (p) { p.setAttribute("cx", rcx); p.setAttribute("cy", cy); }
+          }
+          // Toggle "locked" appearance (red glowing eyes + body shake)
+          // based on the monitor's current AI mode.
+          m.classList.toggle("locked", state.monitor.mode === "locked");
         }
       }
 
@@ -2205,10 +2340,10 @@
         if (state.nodes.me) state.nodes.me.setAttribute("visibility", "hidden");
         challenge.active = false;
         challenge.completed = false;
-        chalOverlay.className = "";
+        chalOverlay.className = "action-bar action-bar-top";
         universalChallenge.active = false;
         universalChallenge.completed = false;
-        uChalOverlay.className = "";
+        uChalOverlay.className = "action-bar action-bar-bottom";
         renderLives();
         addLog("💀 生命值归零，进入观战模式。");
         // Flash the full overlay for 2.5s, then fade out and show small badge
@@ -2589,7 +2724,7 @@
         chalLabel.textContent  = info.label;
         chalStatus.textContent = "快做出动作！";
         chalBarFill.style.width = "100%";
-        chalOverlay.className  = "active";
+        chalOverlay.className  = "action-bar action-bar-top active";
         addLog("⚠ 监管者注视你了——执行守则！", null, { rule: true });
       }
 
@@ -2604,18 +2739,21 @@
           state.monitor.sweepTimer = 1;
         }
         if (success) {
-          chalStatus.textContent = "✓ 守则完成！";
-          chalOverlay.className  = "active success";
+          chalStatus.textContent = "守则完成！";
+          chalBarFill.style.width = "100%"; // green snaps full
+          chalOverlay.className  = "action-bar action-bar-top active success";
           addLog("✓ 守则完成。");
         } else {
-          chalStatus.textContent = "✗ 违规！−1♥";
-          chalOverlay.className  = "active fail";
+          chalStatus.textContent = "违规！−1♥";
+          chalOverlay.className  = "action-bar action-bar-top active fail";
           state.me.lives = Math.max(0, state.me.lives - 1);
           renderLives();
           addLog("❌ 未执行守则，扣 1 生命值。", null, { rule: true });
           if (state.me.lives <= 0) { setTimeout(handleDeath, 1400); }
         }
-        setTimeout(() => { chalOverlay.className = ""; }, 1400);
+        setTimeout(() => {
+          chalOverlay.className = "action-bar action-bar-top";
+        }, 1400);
       }
 
       function updateChallenge(dt) {
@@ -2836,25 +2974,28 @@
         uChalLabel.textContent   = rule.label;
         uChalStatus.textContent  = "请执行！";
         uChalBarFill.style.width = "100%";
-        uChalOverlay.className   = "active";
+        uChalOverlay.className   = "action-bar action-bar-bottom active";
       }
 
       function endUniversalChallenge(success) {
         if (!universalChallenge.active) return;
         universalChallenge.active = false;
         if (success) {
-          uChalStatus.textContent = "✓ 完成！";
-          uChalOverlay.className  = "active success";
+          uChalStatus.textContent = "完成！";
+          uChalBarFill.style.width = "100%";
+          uChalOverlay.className  = "action-bar action-bar-bottom active success";
           addLog("✓ 通用规则完成。");
         } else {
-          uChalStatus.textContent = "✗ 违规！−1♥";
-          uChalOverlay.className  = "active fail";
+          uChalStatus.textContent = "违规！−1♥";
+          uChalOverlay.className  = "action-bar action-bar-bottom active fail";
           state.me.lives = Math.max(0, state.me.lives - 1);
           renderLives();
           addLog("❌ 未执行通用规则，扣 1 生命值。", null, { rule: true });
           if (state.me.lives <= 0) { setTimeout(handleDeath, 1200); }
         }
-        setTimeout(() => { uChalOverlay.className = ""; }, 1200);
+        setTimeout(() => {
+          uChalOverlay.className = "action-bar action-bar-bottom";
+        }, 1200);
       }
 
       function updateUniversalChallenge(dt) {
