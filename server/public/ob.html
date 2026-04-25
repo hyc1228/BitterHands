@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Nocturne Zoo · OB</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #070710;
+        --panel: rgba(255, 255, 255, 0.04);
+        --text: #eaeaf6;
+        --muted: #a7a7c4;
+        --border: rgba(255, 255, 255, 0.12);
+        --accent: #8b5cf6;
+      }
+      html,
+      body {
+        height: 100%;
+      }
+      body {
+        margin: 0;
+        background: radial-gradient(1200px 600px at 20% 0%, rgba(139, 92, 246, 0.18), transparent),
+          radial-gradient(900px 500px at 90% 10%, rgba(20, 184, 166, 0.14), transparent), var(--bg);
+        color: var(--text);
+        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      }
+      .wrap {
+        height: 100%;
+        display: grid;
+        grid-template-rows: auto 1fr;
+      }
+      .top {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 16px;
+        border-bottom: 1px solid var(--border);
+        background: rgba(0, 0, 0, 0.15);
+        backdrop-filter: blur(8px);
+      }
+      .title {
+        display: grid;
+        gap: 4px;
+      }
+      .title h1 {
+        margin: 0;
+        font-size: 16px;
+        letter-spacing: 0.2px;
+      }
+      .sub {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .pill {
+        display: inline-flex;
+        gap: 8px;
+        align-items: center;
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 999px;
+        background: #6b7280;
+        box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04);
+      }
+      .dot.ok {
+        background: #22c55e;
+      }
+      .dot.bad {
+        background: #ef4444;
+      }
+      input,
+      select,
+      button {
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--text);
+        padding: 10px 10px;
+        outline: none;
+      }
+      button {
+        cursor: pointer;
+        border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+      }
+      .main {
+        display: grid;
+        grid-template-columns: 520px 1fr;
+        gap: 12px;
+        padding: 12px;
+      }
+      .card {
+        background: color-mix(in srgb, var(--panel) 90%, transparent);
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        padding: 14px;
+        backdrop-filter: blur(8px);
+        min-height: 0;
+      }
+      .players {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 10px;
+        align-content: start;
+      }
+      .player {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 12px;
+        background: rgba(255, 255, 255, 0.03);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      .name {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+        font-weight: 600;
+      }
+      .meta {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .badge {
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid var(--border);
+      }
+      .log {
+        height: 100%;
+        overflow: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono",
+          "Courier New", monospace;
+        font-size: 12px;
+        white-space: pre-wrap;
+        word-break: break-word;
+        line-height: 1.45;
+      }
+      .controls {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+      @media (max-width: 1024px) {
+        .main {
+          grid-template-columns: 1fr;
+        }
+        .players {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="top">
+        <div class="title">
+          <h1>Nocturne Zoo · OB</h1>
+          <div class="sub">
+            横屏展示用观察者页面（不参与游戏）。URL 可带 `?room=xxx`。
+          </div>
+        </div>
+
+        <div class="controls">
+          <select id="lang">
+            <option value="zh">中文</option>
+            <option value="en">English</option>
+          </select>
+          <input id="roomId" placeholder="room" style="width: 180px" />
+          <button id="btnConnect">Connect</button>
+          <div class="pill">
+            <span class="dot" id="connDot"></span>
+            <span id="connText">Disconnected</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="main">
+        <div class="card">
+          <div style="display:flex; align-items:end; justify-content:space-between; gap:10px">
+            <div style="font-weight:700">Players</div>
+            <div class="meta"><span class="badge" id="roomBadge">room: -</span></div>
+          </div>
+          <div style="height:12px"></div>
+          <div class="players" id="players"></div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex; align-items:end; justify-content:space-between; gap:10px">
+            <div style="font-weight:700">Events</div>
+            <button id="btnClear" style="max-width:120px">Clear</button>
+          </div>
+          <div style="height:12px"></div>
+          <div class="log" id="log"></div>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const $ = (id) => document.getElementById(id);
+      const logEl = $("log");
+      const playersEl = $("players");
+      const connDot = $("connDot");
+      const connText = $("connText");
+      const langSel = $("lang");
+
+      const I18N = {
+        zh: {
+          connected: "已连接",
+          disconnected: "未连接",
+          connect: "连接",
+          players: "玩家",
+          events: "事件",
+          clear: "清空",
+          sys_PLAYER_SUBMITTED_PHOTO: ({ name }) => `${name} 已提交照片`,
+          sys_PLAYER_ENTERED_ZONE: ({ name, animal, emoji }) => `${name} 已进入 ${emoji || ""} 区域`,
+          sys_GIRAFFE_PURIFIED: ({ name }) => `${name} 的感染似乎被“净化”了（累计违规 3 次）`,
+          sys_PLAYER_LEFT: ({ name }) => `${name} 离开了房间`
+        },
+        en: {
+          connected: "Connected",
+          disconnected: "Disconnected",
+          connect: "Connect",
+          players: "Players",
+          events: "Events",
+          clear: "Clear",
+          sys_PLAYER_SUBMITTED_PHOTO: ({ name }) => `${name} submitted a photo`,
+          sys_PLAYER_ENTERED_ZONE: ({ name, animal, emoji }) => `${name} entered ${emoji || ""} zone`,
+          sys_GIRAFFE_PURIFIED: ({ name }) => `${name} seems “purified” (3 violations)`,
+          sys_PLAYER_LEFT: ({ name }) => `${name} left the room`
+        }
+      };
+
+      function getLang() {
+        return langSel.value === "en" ? "en" : "zh";
+      }
+
+      function animalEmoji(animal) {
+        if (animal === "白狮子") return "🦁";
+        if (animal === "猫头鹰") return "🦉";
+        if (animal === "长颈鹿") return "🦒";
+        return "❓";
+      }
+
+      function log(line) {
+        const ts = new Date().toLocaleTimeString();
+        logEl.textContent = `[${ts}] ${line}\n` + logEl.textContent;
+      }
+
+      function setConnected(yes, details = "") {
+        connDot.className = "dot " + (yes ? "ok" : "bad");
+        connText.textContent = yes
+          ? `${I18N[getLang()].connected} ${details}`
+          : I18N[getLang()].disconnected;
+      }
+
+      function renderPlayers(players = []) {
+        playersEl.innerHTML = "";
+        for (const p of players) {
+          const div = document.createElement("div");
+          div.className = "player";
+          const left = document.createElement("div");
+          left.className = "name";
+          left.innerHTML = `<span style="font-size:18px">${animalEmoji(p.animal)}</span><span>${p.name}</span>`;
+          const right = document.createElement("div");
+          right.className = "meta";
+          right.innerHTML = `<span class="badge">♥ ${p.lives}</span><span class="badge">V ${p.violations}</span>`;
+          div.appendChild(left);
+          div.appendChild(right);
+          playersEl.appendChild(div);
+        }
+      }
+
+      function partyUrl(roomId) {
+        const proto = location.protocol === "https:" ? "wss" : "ws";
+        return `${proto}://${location.host}/party/${encodeURIComponent(roomId)}`;
+      }
+
+      let ws = null;
+      let currentRoom = null;
+
+      function connect() {
+        const roomId = $("roomId").value.trim() || "test-room";
+        currentRoom = roomId;
+        $("roomBadge").textContent = `room: ${roomId}`;
+        if (ws) ws.close();
+        ws = new WebSocket(partyUrl(roomId));
+
+        ws.addEventListener("open", () => {
+          setConnected(true, `(${roomId})`);
+          log(`WS open → ${partyUrl(roomId)}`);
+          // Observer does not join as player.
+        });
+        ws.addEventListener("close", () => {
+          setConnected(false);
+          log("WS close");
+        });
+        ws.addEventListener("error", () => {
+          setConnected(false);
+          log("WS error");
+        });
+        ws.addEventListener("message", (ev) => {
+          let msg = null;
+          try {
+            msg = JSON.parse(ev.data);
+          } catch {
+            return;
+          }
+          const { type, data } = msg;
+          if (type === "room_snapshot") {
+            renderPlayers(data.players || []);
+            return;
+          }
+          if (type === "system") {
+            if (data?.code) {
+              const fn = I18N[getLang()]["sys_" + data.code] || I18N.zh["sys_" + data.code];
+              if (typeof fn === "function") log(`system: ${fn(data.params || {})}`);
+              else log(`system: ${data.message || data.code}`);
+            } else {
+              log(`system: ${data.message}`);
+            }
+            return;
+          }
+          if (type === "chat") {
+            log(`chat: ${data.playerName}: ${data.text}`);
+            return;
+          }
+          if (type === "violation_narrative") {
+            log(`narrative: ${data.text}`);
+            return;
+          }
+          if (type === "game_started") {
+            log(`game_started: ${Math.round((data.durationMs || 0) / 1000)}s`);
+            return;
+          }
+          if (type === "game_ended") {
+            log(`game_ended`);
+            return;
+          }
+        });
+      }
+
+      $("btnConnect").addEventListener("click", connect);
+      $("btnClear").addEventListener("click", () => (logEl.textContent = ""));
+      langSel.addEventListener("change", () => {
+        $("btnConnect").textContent = I18N[getLang()].connect;
+        $("btnClear").textContent = I18N[getLang()].clear;
+        setConnected(ws && ws.readyState === WebSocket.OPEN, currentRoom ? `(${currentRoom})` : "");
+      });
+
+      // init
+      $("btnConnect").textContent = I18N[getLang()].connect;
+      $("btnClear").textContent = I18N[getLang()].clear;
+      const params = new URLSearchParams(location.search);
+      $("roomId").value = params.get("room") || "test-room";
+      setConnected(false);
+      connect();
+    </script>
+  </body>
+</html>
+
