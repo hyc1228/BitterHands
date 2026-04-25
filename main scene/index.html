@@ -476,12 +476,17 @@
           transform: rotate(-12deg);
         }
       }
-      /* Owl wing flap. The inner wing group rotates around its base (where it
-         meets the body). The left wing's outer group is mirrored via
-         scale(-1, 1) so the same animation produces a symmetric flap. */
+      /* Owl wing flap. Each wing pivots at the edge of its bbox that
+         touches the body, so flapping rotates the tip up/down without
+         dragging the wing across the body. */
       .owl-wing {
         transform-box: fill-box;
-        transform-origin: 0% 50%;
+      }
+      .wing-r {
+        transform-origin: 0% 50%; /* left edge of bbox = body side */
+      }
+      .wing-l {
+        transform-origin: 100% 50%; /* right edge of bbox = body side */
       }
       .walking .wing-r,
       .walking .wing-l {
@@ -802,17 +807,50 @@
         });
         inner.appendChild(body);
 
-        // Wings (owl) — two on each side. The wing.svg has its tip in the
-        // upper-LEFT and base in the lower-RIGHT. So we flip the RIGHT wing
-        // horizontally (so its tip extends rightward, away from the body),
-        // and keep the LEFT wing in its natural orientation (tip already
-        // points leftward).
+        // Wings (owl) — two stub wings extending OUTWARD from the body sides.
+        //
+        //   The wing.svg has its tip in the upper-LEFT and base in the
+        //   lower-RIGHT. For the LEFT wing we keep the natural orientation
+        //   (tip already points leftward) and just position the image so
+        //   it sits to the LEFT of the body. For the RIGHT wing we flip the
+        //   image content horizontally — but on the *image element itself*
+        //   (with a counter-translate) so the image's local rect stays at
+        //   x=0..w, keeping the inner group's bbox stable for the rotation
+        //   pivot.
+        //
+        //   Pivot lives at body-side edge of each wing (CSS sets origin):
+        //     wing-l  : 100% 50% (right edge of bbox = body side)
+        //     wing-r  :   0% 50% (left  edge of bbox = body side)
         if (animal === "owl") {
           const w = spec.wing.w;
           const h = spec.wing.h;
-          // Right wing — flipped horizontally
+
+          // LEFT wing — extends leftward; image positioned to the LEFT of
+          // origin so the wing visibly sits outside the body.
+          const wLG = el("g", {
+            transform: `translate(${-spec.wing.attach} 0)`,
+          });
+          const wL = el("g", { class: "owl-wing wing-l" });
+          wL.appendChild(
+            el("image", {
+              href: "owl wing.svg",
+              x: -w,
+              y: -h / 2,
+              width: w,
+              height: h,
+              preserveAspectRatio: "xMidYMid meet",
+              filter: tint,
+            })
+          );
+          wLG.appendChild(wL);
+          inner.appendChild(wLG);
+
+          // RIGHT wing — extends rightward; the image element itself has its
+          // content flipped horizontally via "translate(w 0) scale(-1 1)",
+          // which keeps the rendered rect at x=0..w (so bbox is stable) but
+          // the wing's tip now appears on the right of the image.
           const wRG = el("g", {
-            transform: `translate(${spec.wing.attach} 0) scale(-1 1)`,
+            transform: `translate(${spec.wing.attach} 0)`,
           });
           const wR = el("g", { class: "owl-wing wing-r" });
           wR.appendChild(
@@ -824,29 +862,11 @@
               height: h,
               preserveAspectRatio: "xMidYMid meet",
               filter: tint,
+              transform: `translate(${w} 0) scale(-1 1)`,
             })
           );
           wRG.appendChild(wR);
           inner.appendChild(wRG);
-
-          // Left wing — natural orientation
-          const wLG = el("g", {
-            transform: `translate(${-spec.wing.attach} 0)`,
-          });
-          const wL = el("g", { class: "owl-wing wing-l" });
-          wL.appendChild(
-            el("image", {
-              href: "owl wing.svg",
-              x: 0,
-              y: -h / 2,
-              width: w,
-              height: h,
-              preserveAspectRatio: "xMidYMid meet",
-              filter: tint,
-            })
-          );
-          wLG.appendChild(wL);
-          inner.appendChild(wLG);
         } else {
           // Lion / giraffe — procedural stick legs that swing via CSS.
           const ly = spec.legs.y;
