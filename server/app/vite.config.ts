@@ -110,20 +110,30 @@ function localAvatarPlugin(): Plugin {
   };
 }
 
-/** `emptyOutDir` is false for PartyKit, so a previous `public/main-scene/index.html` can remain and confuse SPA static hosts. */
-function removeStaleMainSceneIndexPlugin(): Plugin {
+/** `emptyOutDir` is false for PartyKit; drop stray `*.html` from `public/main-scene` (see sync-main-scene.mjs). */
+function removeMainSceneStrayHtmlPlugin(): Plugin {
   return {
-    name: "nz-rm-stale-main-scene-index",
+    name: "nz-rm-main-scene-stray-html",
     closeBundle() {
       if (isVercel) return;
-      const p = path.join(outDir, "main-scene/index.html");
-      if (fs.existsSync(p)) fs.rmSync(p);
+      const d = path.join(outDir, "main-scene");
+      if (!fs.existsSync(d)) return;
+      for (const f of fs.readdirSync(d)) {
+        if (f.toLowerCase().endsWith(".html")) {
+          const p = path.join(d, f);
+          try {
+            fs.rmSync(p, { force: true });
+          } catch {
+            /* ignore */
+          }
+        }
+      }
     }
   };
 }
 
 export default defineConfig({
-  plugins: [react(), localAvatarPlugin(), removeStaleMainSceneIndexPlugin()],
+  plugins: [react(), localAvatarPlugin(), removeMainSceneStrayHtmlPlugin()],
   base: "./",
   build: {
     outDir,
