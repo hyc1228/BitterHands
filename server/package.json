@@ -3,10 +3,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "partykit dev ./src/server.js --serve ./public",
+    "dev": "partykit dev ./src/server.js",
     "dev:client": "npm --prefix ./app run dev",
-    "build:client": "npm --prefix ./app run build",
+    "build:client": "node ./scripts/sync-main-scene.mjs && npm --prefix ./app run build",
     "install:client": "npm --prefix ./app install",
+    "playtest": "npm run build:client && partykit dev ./src/server.js --port 1999",
     "deploy": "partykit deploy ./src/server.js --name nocturne-zoo"
   },
   "dependencies": {

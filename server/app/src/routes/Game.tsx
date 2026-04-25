@@ -1,12 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DetectionPanel from "../components/DetectionPanel";
+import PlayerRowFace from "../components/PlayerRowFace";
 import { dict, animalLocalized } from "../i18n";
-import {
-  ClientMessageTypes,
-  animalEmoji,
-  type PublicPlayer
-} from "../party/protocol";
+import { ClientMessageTypes, type PublicPlayer } from "../party/protocol";
 import { usePartyStore, type LogEntry } from "../party/store";
 
 export default function Game() {
@@ -41,6 +38,7 @@ export default function Game() {
 
   function handleStart() {
     send(ClientMessageTypes.START);
+    nav("/main-scene", { replace: true });
   }
 
   function handleViolation() {
@@ -137,7 +135,7 @@ function PlayersList({ players }: { players: PublicPlayer[] }) {
           players.map((p) => (
             <div className="player" key={p.id}>
               <span className="name">
-                <span aria-hidden>{animalEmoji(p.animal)}</span>
+                <PlayerRowFace player={p} />
                 <span>{p.name}</span>
               </span>
               <span className="badge">{`♥ ${p.lives}`}</span>

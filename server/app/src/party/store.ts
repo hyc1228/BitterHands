@@ -44,10 +44,15 @@ interface PartyStoreState {
   setMode: (mode: Mode) => void;
   connect: (opts: { roomId: string; name: string; lang: Lang; mode?: Mode }) => Promise<void>;
   disconnect: () => void;
-  send: (type: string, payload?: Record<string, unknown>) => void;
+  /** @returns true if the message was sent; false if socket not open (caller should show error) */
+  send: (type: string, payload?: Record<string, unknown>) => boolean;
+  /** Clear assignment UI state before a new onboarding / resubmit. */
+  clearOnboardingAssignment: () => void;
   pushLog: (entry: Omit<LogEntry, "ts"> & { ts?: number }) => void;
   reset: () => void;
 }
+
+const DEFAULT_APP_LANG: Lang = "en";
 
 function initialLang(): Lang {
   try {
@@ -56,13 +61,30 @@ function initialLang(): Lang {
   } catch {
     /* ignore */
   }
-  // Default to English; only switch to zh if explicitly chosen via the pill.
-  return "en";
+  // Default UI language: English (switch with bottom-right control; persists as `nz.lang`).
+  return DEFAULT_APP_LANG;
 }
 
 const ENV_LANG: Lang = initialLang();
 
+function partykitHostFromEnv(): string | null {
+  const raw = import.meta.env.VITE_PARTYKIT_HOST;
+  if (raw == null || String(raw).trim() === "") return null;
+  let h = String(raw).trim();
+  h = h.replace(/^(wss?|https?):\/\//i, "");
+  h = h.split("/")[0] ?? h;
+  return h;
+}
+
+/**
+ * `wss` when a deploy host is set (Vercel + PartyKit cloud) or the page is HTTPS; otherwise
+ * `ws` for local HTTP (e.g. Vite + PartyKit on localhost).
+ */
 function partyUrl(roomId: string): string {
+  const host = partykitHostFromEnv();
+  if (host) {
+    return `wss://${host}/party/${encodeURIComponent(roomId)}`;
+  }
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
   return `${proto}//${location.host}/party/${encodeURIComponent(roomId)}`;
 }
@@ -101,9 +123,13 @@ export const usePartyStore = create<PartyStoreState>((set, get) => ({
 
   send: (type, payload) => {
     const ws = get().ws;
-    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return false;
     ws.send(JSON.stringify({ type, ...(payload || {}) }));
+    return true;
   },
+
+  clearOnboardingAssignment: () =>
+    set({ rulesCard: null, myAnimal: null, owlRoster: null }),
 
   connect: ({ roomId, name, lang, mode }) => {
     const existing = get().ws;

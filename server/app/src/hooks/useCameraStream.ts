@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { dict } from "../i18n";
+import { getGetUserMediaBlockReason } from "../lib/mediaAccess";
+import { usePartyStore } from "../party/store";
 
 interface Options {
   video?: MediaTrackConstraints | boolean;
@@ -35,6 +38,12 @@ export function useCameraStream(opts: Options = { video: true, audio: false }): 
     setStarting(true);
     setError(null);
     try {
+      const block = getGetUserMediaBlockReason();
+      if (block) {
+        const t = dict(usePartyStore.getState().lang);
+        setError(block === "insecure" ? t.permInsecureContext : t.permMediaUnavailable);
+        return null;
+      }
       const s = await navigator.mediaDevices.getUserMedia(optsRef.current);
       setStream(s);
       return s;

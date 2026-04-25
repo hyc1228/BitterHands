@@ -2,6 +2,10 @@
   "$schema": "https://www.partykit.io/schema.json",
   "name": "nocturne-zoo",
   "main": "src/server.js",
-  "compatibilityDate": "2024-04-05"
+  "compatibilityDate": "2024-04-05",
+  "serve": {
+    "path": "./public",
+    "singlePageApp": true
+  }
 }
 

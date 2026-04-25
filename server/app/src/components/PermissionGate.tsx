@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { getGetUserMediaBlockReason } from "../lib/mediaAccess";
 import { dict } from "../i18n";
 import { usePartyStore } from "../party/store";
 
@@ -24,6 +25,11 @@ export default function PermissionGate({ open, onCancel, onAccept }: Props) {
     try {
       if (!cam && !mic) {
         onAccept(null);
+        return;
+      }
+      const block = getGetUserMediaBlockReason();
+      if (block) {
+        setError(block === "insecure" ? t.permInsecureContext : t.permMediaUnavailable);
         return;
       }
       const stream = await navigator.mediaDevices.getUserMedia({

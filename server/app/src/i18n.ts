@@ -1,13 +1,5 @@
 import type { Lang } from "./party/protocol";
 
-export interface Question {
-  id: "q1" | "q2" | "q3";
-  text: string;
-  A: string;
-  B: string;
-  C: string;
-}
-
 interface Dict {
   appTitle: string;
   joinRoom: string;
@@ -25,6 +17,9 @@ interface Dict {
   permMicHint: string;
   permContinue: string;
   permLater: string;
+  /** http://LAN-IP: camera API unavailable */
+  permInsecureContext: string;
+  permMediaUnavailable: string;
   profileTitle: string;
   profileHint: string;
   takePhoto: string;
@@ -32,6 +27,9 @@ interface Dict {
   submitProfile: string;
   quizTitle: string;
   analyzing: string;
+  /** Shown if rules card is slow; offers manual resubmit */
+  analyzingSlow: string;
+  retrySubmit: string;
   revealHeader: (emoji: string, animal: string) => string;
   revealVerdictDefault: string;
   goToGame: string;
@@ -52,9 +50,10 @@ interface Dict {
   ownAnimalUnknown: string;
   detOff: string;
   obTitle: string;
+  /** Accessible name for the floating language control */
+  langAria: string;
   cameras: string;
   events: string;
-  questions: Question[];
 }
 
 const en: Dict = {
@@ -75,6 +74,9 @@ const en: Dict = {
   permMicHint: "Used for the White Lion's roar (later)",
   permContinue: "Continue",
   permLater: "Not now",
+  permInsecureContext:
+    "Camera/mic need HTTPS on this device (or localhost). Opening http://<your-LAN-IP> blocks them. Use https://, ngrok, or run PartyKit with HTTPS (see server/README).",
+  permMediaUnavailable: "This browser does not expose the camera or microphone (blocked or not supported).",
   profileTitle: "Identify player",
   profileHint: "Center your face inside the circle.",
   takePhoto: "Take photo",
@@ -82,6 +84,8 @@ const en: Dict = {
   submitProfile: "Next",
   quizTitle: "Questionnaire",
   analyzing: "Analyzing…",
+  analyzingSlow: "Taking longer than usual… you can resend your answers.",
+  retrySubmit: "Resend",
   revealHeader: (emoji, animal) => `${emoji} You are «${animal}»`,
   revealVerdictDefault: "(verdict: coming soon)",
   goToGame: "Enter the zoo",
@@ -102,31 +106,9 @@ const en: Dict = {
   ownAnimalUnknown: "Unassigned",
   detOff: "Off",
   obTitle: "Nocturne Zoo · OB",
+  langAria: "Language",
   cameras: "CAMERAS",
-  events: "ZOO KEEPER LOG",
-  questions: [
-    {
-      id: "q1",
-      text: "Late at night, you're walking alone through the zoo when every light cuts out. Your first reaction?",
-      A: "Stand still, let your eyes adjust to the dark, observe.",
-      B: "Shout out loud — let anyone nearby know you're here.",
-      C: "Keep walking. The dark doesn't scare you."
-    },
-    {
-      id: "q2",
-      text: "You find a note that reads: «Do not trust the elephant you see.» What do you do?",
-      A: "Pocket the note, keep it to yourself, watch quietly.",
-      B: "Tell everyone immediately, put the group on alert.",
-      C: "Glance at the elephant, decide it's fine, toss the note."
-    },
-    {
-      id: "q3",
-      text: "Your companions' eyes start looking strange — you suspect they aren't themselves anymore. You…",
-      A: "Say nothing. Keep watching for more evidence.",
-      B: "Confront them directly: «Who are you?»",
-      C: "Quietly move closer to them — safer in numbers."
-    }
-  ]
+  events: "ZOO KEEPER LOG"
 };
 
 const zh: Dict = {
@@ -146,6 +128,9 @@ const zh: Dict = {
   permMicHint: "白狮子低吼（后续启用）",
   permContinue: "继续",
   permLater: "暂不",
+  permInsecureContext:
+    "通过局域网 http://IP 访问时浏览器不会开放摄像头/麦克风。请改用 https:// 打开本页，或用 ngrok 等；开发可在 server 为 PartyKit 配 HTTPS（见 server/README）。",
+  permMediaUnavailable: "当前浏览器未提供摄像头/麦克风能力（被禁用或不支持）。",
   profileTitle: "识别玩家",
   profileHint: "把脸放进圆圈里，尽量保持正对镜头。",
   takePhoto: "拍照",
@@ -153,6 +138,8 @@ const zh: Dict = {
   submitProfile: "提交",
   quizTitle: "问卷",
   analyzing: "正在分析你…",
+  analyzingSlow: "比平常久…可尝试重新提交答案。",
+  retrySubmit: "重新提交",
   revealHeader: (emoji, animal) => `${emoji} 你被判定为「${animal}」`,
   revealVerdictDefault: "（判定语：待接入）",
   goToGame: "进入动物园",
@@ -173,31 +160,9 @@ const zh: Dict = {
   ownAnimalUnknown: "未分配",
   detOff: "未开启",
   obTitle: "深夜动物园 · OB",
+  langAria: "界面语言",
   cameras: "摄像头",
-  events: "ZOO KEEPER LOG",
-  questions: [
-    {
-      id: "q1",
-      text: "深夜，你一个人走在动物园里，发现园区的灯全灭了。你的第一反应是？",
-      A: "站在原地，等眼睛适应黑暗，观察四周",
-      B: "大声喊出来，告诉任何可能在附近的人你在这里",
-      C: "继续往前走，感觉黑暗没什么好怕的"
-    },
-    {
-      id: "q2",
-      text: "你捡到一张纸条，上面写着「不要相信你看到的大象」。你会怎么做？",
-      A: "把纸条收好，悄悄记在心里，继续观察",
-      B: "立刻告诉所有人，让大家一起警惕",
-      C: "看了看大象，觉得没问题，把纸条扔掉"
-    },
-    {
-      id: "q3",
-      text: "你发现同行的人眼神开始变得奇怪，你认为他们不再是原来的人了。你选择？",
-      A: "什么都不说，继续观察，等待更多证据",
-      B: "直接质问他们，你是谁",
-      C: "默默靠近他们，感觉和他们在一起更安全"
-    }
-  ]
+  events: "ZOO KEEPER LOG"
 };
 
 export function dict(lang: Lang): Dict {

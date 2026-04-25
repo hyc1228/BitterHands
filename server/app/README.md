@@ -32,6 +32,10 @@ npm run dev:client       # vite dev server with HMR (proxies /party → :1999)
 npm run dev              # in another terminal, run partykit on the default port
 ```
 
+## Production (Vercel + PartyKit in the cloud)
+
+Set **`VITE_PARTYKIT_HOST`** to your deployed PartyKit hostname (see `../README.md` section B and `.env.example`). The build on Vercel uses `VERCEL=1` and outputs to `dist/`. Local `npm run build` without `VERCEL` still writes to `../public/` for `npm run playtest` in `server/`.
+
 ## Responsive notes
 
 - Mobile-portrait first, breakpoint upgrades in `src/styles/screens.css`.

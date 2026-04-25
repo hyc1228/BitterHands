@@ -13,6 +13,7 @@ import { Animals, ClientMessageTypes, ServerEventTypes } from "./protocol.js";
  * @property {boolean} alive
  * @property {number} joinedAt
  * @property {"en" | "zh"} lang
+ * @property {string | null} avatarUrl public URL path for profile photo
  */
 
 /**
@@ -44,6 +45,10 @@ export default class Server {
 
     /** @type {Map<string, {dataUrl: string, ts: number}>} */
     this.lastCameraFrameByPlayerId = new Map();
+
+    /** In-room profile avatars (data URLs decoded); keyed by connection id. */
+    /** @type {Map<string, { mime: string, bytes: Uint8Array }>} */
+    this._avatarByPlayerId = new Map();
   }
 
   /**
@@ -114,7 +119,8 @@ export default class Server {
             violations: 0,
             alive: true,
             joinedAt: Date.now(),
-            lang
+            lang,
+            avatarUrl: null
           };
           this.players.set(conn.id, player);
           this._broadcast(ServerEventTypes.PLAYER_JOINED, this._publicPlayer(player));
@@ -127,6 +133,37 @@ export default class Server {
       case ClientMessageTypes.SUBMIT_PHOTO: {
         const player = this.players.get(conn.id);
         if (!player) return;
+
+        // Optional: Vite dev saved file under /avatars/ — use as stable URL.
+        const publicPath =
+          typeof msg?.avatarPublicPath === "string" ? msg.avatarPublicPath : "";
+        if (
+          publicPath.length > 0 &&
+          publicPath.length < 200 &&
+          /^\/avatars\/[a-zA-Z0-9._-]+\.(jpe?g|png|webp)$/.test(publicPath)
+        ) {
+          this._avatarByPlayerId.delete(conn.id);
+          player.avatarUrl = publicPath;
+        } else {
+          const raw = typeof msg?.photoBase64 === "string" ? msg.photoBase64 : "";
+          if (!raw.startsWith("data:image/")) {
+            conn.send(JSON.stringify({ type: "error", error: "bad_photo" }));
+            return;
+          }
+          if (raw.length > 500_000) {
+            conn.send(JSON.stringify({ type: "error", error: "photo_too_large" }));
+            return;
+          }
+          const parsed = this._dataUrlToBytes(raw);
+          if (!parsed) {
+            conn.send(JSON.stringify({ type: "error", error: "bad_photo" }));
+            return;
+          }
+          this._avatarByPlayerId.set(conn.id, { mime: parsed.mime, bytes: parsed.bytes });
+          const rid = encodeURIComponent(this.party.id);
+          const pid = encodeURIComponent(conn.id);
+          player.avatarUrl = `/party/${rid}/__nz_avatar?id=${pid}`;
+        }
 
         // GDD: client uploads base64 photo; server calls Claude Vision -> "impression"
         // For now we store a placeholder so the rest of the flow can run.
@@ -294,6 +331,7 @@ export default class Server {
     this.players.delete(conn.id);
     this.owlGuessesByPlayerId.delete(conn.id);
     this.lastCameraFrameByPlayerId.delete(conn.id);
+    this._avatarByPlayerId.delete(conn.id);
 
     this._broadcast(ServerEventTypes.SYSTEM, {
       code: "PLAYER_LEFT",
@@ -306,6 +344,18 @@ export default class Server {
   async onRequest(req) {
     const url = new URL(req.url);
     if (url.pathname === "/health") return new Response("ok");
+    if (url.pathname.endsWith("/__nz_avatar")) {
+      const id = url.searchParams.get("id");
+      if (!id) return new Response("missing id", { status: 400 });
+      const data = this._avatarByPlayerId.get(id);
+      if (!data) return new Response("not found", { status: 404 });
+      return new Response(data.bytes, {
+        headers: {
+          "Content-Type": data.mime,
+          "Cache-Control": "private, max-age=60"
+        }
+      });
+    }
     if (url.pathname === "/state") {
       return Response.json({
         room: this.party.id,
@@ -338,6 +388,22 @@ export default class Server {
     this._broadcast(ServerEventTypes.ROOM_SNAPSHOT, this._publicSnapshot());
   }
 
+  /**
+   * @param {string} dataUrl
+   * @returns {{ mime: string, bytes: Uint8Array } | null}
+   */
+  _dataUrlToBytes(dataUrl) {
+    const m = dataUrl.match(/^data:(image\/[a-zA-Z+.-]+);base64,([\s\S]+)$/);
+    if (!m) return null;
+    const b64 = m[2].replace(/\s/g, "");
+    if (b64.length > 500_000) return null;
+    if (typeof atob !== "function") return null;
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return { mime: m[1], bytes };
+  }
+
   _broadcast(type, data) {
     this.party.broadcast(JSON.stringify({ type, data }));
   }
@@ -349,7 +415,8 @@ export default class Server {
       animal: p.animal, // UI uses emoji; per GDD, animal itself is public after assignment
       lives: p.lives,
       alive: p.alive,
-      violations: p.violations
+      violations: p.violations,
+      avatarUrl: p.avatarUrl ?? null
     };
   }
 

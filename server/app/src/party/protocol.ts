@@ -44,6 +44,8 @@ export interface PublicPlayer {
   lives: number;
   alive: boolean;
   violations: number;
+  /** URL path to profile photo, e.g. `/avatars/...` (static) or `/party/.../__nz_avatar?...` (in-memory). */
+  avatarUrl: string | null;
 }
 
 export interface RoomSnapshot {

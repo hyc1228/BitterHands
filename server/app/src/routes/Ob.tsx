@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
+import { DEFAULT_ROOM_ID } from "../constants";
 import { dict } from "../i18n";
-import { animalEmoji, type PublicPlayer } from "../party/protocol";
+import type { PublicPlayer } from "../party/protocol";
 import { usePartyStore, type LogEntry } from "../party/store";
+import PlayerRowFace from "../components/PlayerRowFace";
 
 export default function Ob() {
   const lang = usePartyStore((s) => s.lang);
@@ -19,9 +21,9 @@ export default function Ob() {
     const fromQuery = params.get("room");
     if (fromQuery) return fromQuery;
     try {
-      return localStorage.getItem("nz.obRoom") || "test-room";
+      return localStorage.getItem("nz.obRoom") || DEFAULT_ROOM_ID;
     } catch {
-      return "test-room";
+      return DEFAULT_ROOM_ID;
     }
   });
   const [error, setError] = useState<string | null>(null);
@@ -53,8 +55,9 @@ export default function Ob() {
   return (
     <div className="ob-grid">
       <section className="card stack" aria-label="ob-left">
-        <div className="row" style={{ gridTemplateColumns: "1fr auto" }}>
+        <div className="ob-room-row">
           <input
+            className="ob-room-input"
             value={room}
             onChange={(e) => setRoom(e.target.value)}
             placeholder={t.roomPlaceholder}
@@ -123,7 +126,7 @@ function ObPlayer({ player }: { player: PublicPlayer }) {
   return (
     <div className="player">
       <span className="name">
-        <span aria-hidden>{animalEmoji(player.animal)}</span>
+        <PlayerRowFace player={player} />
         <span>{player.name}</span>
       </span>
       <span className="badge">
