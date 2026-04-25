@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <title>动作识别 · Determination</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a0a0a; color: #fff;
+      font-family: 'PingFang SC', 'Helvetica Neue', sans-serif;
+      display: flex; flex-direction: column; align-items: center;
+      min-height: 100vh; padding: 24px;
+    }
+    h1 { margin-bottom: 20px; font-size: 1.3rem; letter-spacing: 3px; color: #eee; }
+
+    #container { position: relative; width: 640px; height: 480px; }
+    video { display: none; }
+    canvas#output {
+      width: 640px; height: 480px;
+      border-radius: 14px; display: block;
+      background: #111;
+    }
+
+    #actions { display: flex; gap: 16px; margin-top: 20px; width: 640px; }
+    .action-card {
+      flex: 1; padding: 16px 12px; border-radius: 12px;
+      background: #141414; border: 2px solid #2a2a2a;
+      text-align: center; transition: border-color 0.2s, background 0.2s;
+    }
+    .action-card.active  { border-color: #f0c040; background: #201a00; }
+    .action-card.done    { border-color: #30d080; background: #001a0e; }
+    .action-card .icon   { font-size: 2rem; margin-bottom: 6px; }
+    .action-card .label  { font-size: 0.85rem; color: #888; margin-bottom: 4px; }
+    .action-card .status { font-size: 0.8rem; color: #555; min-height: 1.2em; }
+    .action-card.active .status { color: #f0c040; }
+    .action-card.done   .status { color: #30d080; }
+
+    .progress-bar  { height: 5px; background: #2a2a2a; border-radius: 3px; margin-top: 10px; overflow: hidden; }
+    .progress-fill { height: 100%; width: 0%; background: #f0c040; border-radius: 3px; transition: width 0.1s linear; }
+    .action-card.done .progress-fill { background: #30d080; }
+
+    #no-face {
+      display: none; position: absolute; top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0,0,0,0.7); padding: 12px 20px;
+      border-radius: 8px; font-size: 0.9rem; color: #aaa;
+      pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+  <h1>动作识别 · Determination</h1>
+
+  <div id="container">
+    <video id="video" autoplay playsinline></video>
+    <canvas id="output"></canvas>
+    <div id="no-face">未检测到人脸</div>
+  </div>
+
+  <div id="actions">
+    <div class="action-card" id="card-shake">
+      <div class="icon">🙂</div>
+      <div class="label">摇头晃脑</div>
+      <div class="status" id="status-shake">等待动作…</div>
+    </div>
+    <div class="action-card" id="card-mouth">
+      <div class="icon">😮</div>
+      <div class="label">张嘴</div>
+      <div class="status" id="status-mouth">等待动作…</div>
+    </div>
+    <div class="action-card" id="card-blink">
+      <div class="icon">👁️</div>
+      <div class="label">5 秒不眨眼</div>
+      <div class="status" id="status-blink">等待动作…</div>
+      <div class="progress-bar"><div class="progress-fill" id="blink-progress"></div></div>
+    </div>
+  </div>
+
+  <!-- MediaPipe -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+
+  <script>
+    const videoEl  = document.getElementById('video');
+    const canvas   = document.getElementById('output');
+    const ctx      = canvas.getContext('2d');
+    canvas.width   = 640;
+    canvas.height  = 480;
+
+    // ── Landmark index groups ──────────────────────────────────────
+    const LEFT_EYE_EAR  = [33,  160, 158, 133, 153, 144];
+    const RIGHT_EYE_EAR = [362, 385, 387, 263, 373, 380];
+    const EAR_CLOSED    = 0.20;   // below → eye closed
+    const MAR_OPEN      = 0.40;   // above → mouth open
+    const BLINK_MS      = 5000;
+    const SHAKE_THRESH  = 0.08;   // normalized x deviation from face center
+    const SHAKE_NEEDED  = 4;      // direction changes (= 2 full shakes)
+
+    // ── State ──────────────────────────────────────────────────────
+    const S = {
+      shake: { done: false, dir: 0, changes: 0 },
+      mouth: { done: false, openFrames: 0 },
+      blink: { done: false, since: null }
+    };
+
+    // ── Utilities ──────────────────────────────────────────────────
+    function dist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+    function earValue(lm, idx) {
+      const [p1, p2, p3, p4, p5, p6] = idx.map(i => lm[i]);
+      return (dist(p2, p6) + dist(p3, p5)) / (2 * dist(p1, p4));
+    }
+
+    function setCard(id, state) {
+      document.getElementById('card-' + id).className = 'action-card' + (state ? ' ' + state : '');
+    }
+    function setStatus(id, text) {
+      document.getElementById('status-' + id).textContent = text;
+    }
+
+    // ── Detectors ──────────────────────────────────────────────────
+    function detectBlink(lm, now) {
+      if (S.blink.done) return;
+      const avgEAR = (earValue(lm, LEFT_EYE_EAR) + earValue(lm, RIGHT_EYE_EAR)) / 2;
+      const prog   = document.getElementById('blink-progress');
+
+      if (avgEAR < EAR_CLOSED) {
+        S.blink.since = null;
+        prog.style.width = '0%';
+        setCard('blink', '');
+        setStatus('blink', '眨眼了，重新计时…');
+        return;
+      }
+      if (!S.blink.since) S.blink.since = now;
+      const elapsed = now - S.blink.since;
+      prog.style.width = Math.min(elapsed / BLINK_MS * 100, 100) + '%';
+
+      if (elapsed >= BLINK_MS) {
+        S.blink.done = true;
+        prog.style.width = '100%';
+        setCard('blink', 'done');
+        setStatus('blink', '✓ 完成！');
+      } else {
+        setCard('blink', 'active');
+        setStatus('blink', `保持 ${((BLINK_MS - elapsed) / 1000).toFixed(1)}s…`);
+      }
+    }
+
+    function detectMouth(lm) {
+      if (S.mouth.done) return;
+      const mar = dist(lm[13], lm[14]) / (dist(lm[61], lm[291]) + 1e-6);
+
+      if (mar > MAR_OPEN) {
+        S.mouth.openFrames++;
+        setCard('mouth', 'active');
+        setStatus('mouth', '嘴巴张开中…');
+        if (S.mouth.openFrames >= 8) {
+          S.mouth.done = true;
+          setCard('mouth', 'done');
+          setStatus('mouth', '✓ 完成！');
+        }
+      } else {
+        S.mouth.openFrames = 0;
+        if (!S.mouth.done) {
+          setCard('mouth', '');
+          setStatus('mouth', '等待张嘴…');
+        }
+      }
+    }
+
+    function detectShake(lm) {
+      if (S.shake.done) return;
+      const nose        = lm[4];
+      const leftBound   = lm[234];
+      const rightBound  = lm[454];
+      const cx          = (leftBound.x + rightBound.x) / 2;
+      const fw          = Math.abs(rightBound.x - leftBound.x) + 1e-6;
+      const nx          = (nose.x - cx) / fw;
+
+      const cur = nx > SHAKE_THRESH ? 1 : nx < -SHAKE_THRESH ? -1 : 0;
+      if (cur !== 0 && cur !== S.shake.dir) {
+        S.shake.dir = cur;
+        S.shake.changes++;
+      }
+
+      const shakes = Math.floor(S.shake.changes / 2);
+      if (S.shake.changes >= SHAKE_NEEDED) {
+        S.shake.done = true;
+        setCard('shake', 'done');
+        setStatus('shake', '✓ 完成！');
+      } else {
+        setCard('shake', S.shake.changes > 0 ? 'active' : '');
+        setStatus('shake', S.shake.changes > 0 ? `摇头 ${shakes}/2…` : '等待摇头…');
+      }
+    }
+
+    // ── FaceMesh callback ──────────────────────────────────────────
+    const noFaceEl = document.getElementById('no-face');
+
+    function onResults(results) {
+      ctx.save();
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      // mirror horizontally for natural selfie view
+      ctx.translate(canvas.width, 0);
+      ctx.scale(-1, 1);
+      ctx.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+      ctx.restore();
+
+      if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+        noFaceEl.style.display = 'block';
+        return;
+      }
+      noFaceEl.style.display = 'none';
+
+      const lm  = results.multiFaceLandmarks[0];
+      const now = performance.now();
+
+      // Mirror landmark x for drawing (canvas is flipped above)
+      const mirroredLm = lm.map(p => ({ x: 1 - p.x, y: p.y, z: p.z }));
+
+      drawConnectors(ctx, mirroredLm, FACEMESH_TESSELATION, { color: '#ffffff10', lineWidth: 1 });
+      drawConnectors(ctx, mirroredLm, FACEMESH_LEFT_EYE,    { color: '#38ff80',   lineWidth: 2 });
+      drawConnectors(ctx, mirroredLm, FACEMESH_RIGHT_EYE,   { color: '#38ff80',   lineWidth: 2 });
+      drawConnectors(ctx, mirroredLm, FACEMESH_LIPS,        { color: '#ff4070',   lineWidth: 2 });
+
+      detectBlink(lm, now);
+      detectMouth(lm);
+      detectShake(lm);
+    }
+
+    // ── Init ───────────────────────────────────────────────────────
+    const faceMesh = new FaceMesh({
+      locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}`
+    });
+    faceMesh.setOptions({
+      maxNumFaces: 1,
+      refineLandmarks: true,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
+    faceMesh.onResults(onResults);
+
+    const camera = new Camera(videoEl, {
+      onFrame: async () => { await faceMesh.send({ image: videoEl }); },
+      width: 640, height: 480
+    });
+    camera.start().catch(err => {
+      document.getElementById('no-face').style.display = 'block';
+      document.getElementById('no-face').textContent   = '摄像头启动失败：' + err.message;
+    });
+  </script>
+</body>
+</html>
