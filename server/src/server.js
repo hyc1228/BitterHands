@@ -86,10 +86,12 @@ export default class Server {
    * @param {import("partykit/server").ExecutionContext} _ctx
    */
   /**
-   * SPA mode is off (HashRouter), so we only handle:
-   *  - bare `/` → React shell at `/index.html`
-   *  - `/main-scene/index.html` → re-emit with `X-Frame-Options: SAMEORIGIN`, otherwise PartyKit's
-   *    default `DENY` blocks the React route from embedding the prototype as an iframe.
+   * PartyKit static layer always returns existing files (with default `X-Frame-Options: DENY`),
+   * so this handler intercepts paths that DO NOT match a real asset:
+   *  - `/__main-scene` → re-serve `main-scene/index.html` with `X-Frame-Options: SAMEORIGIN`
+   *    so the React shell (`HashRouter`) can embed it as an iframe.
+   *  - `/__app-shell` → unused fallback for future SPA routes that need rewritten headers.
+   * The bare `/` is auto-served by PartyKit static (we use `HashRouter`, no SPA fallback needed).
    * @param {import("partykit/server").Request} req
    * @param {import("partykit/server").FetchLobby} lobby
    * @param {import("partykit/server").ExecutionContext} _ctx
@@ -97,11 +99,9 @@ export default class Server {
   static async onFetch(req, lobby, _ctx) {
     if (req.method !== "GET" && req.method !== "HEAD") return;
     const url = new URL(req.url);
-    if (url.pathname === "/") {
-      const r = await lobby.assets.fetch("/index.html");
-      if (r && r.ok) return _withFrameSameOrigin(r);
-    }
-    if (url.pathname === "/main-scene/index.html" || url.pathname === "/main-scene/") {
+    // `_iframe` lives under `/main-scene/` so the doc's relative URLs (SVG <image href="…">,
+    // <link href="player-id-labels.css">, etc.) still resolve under `/main-scene/`.
+    if (url.pathname === "/main-scene/_iframe") {
       const r = await lobby.assets.fetch("/main-scene/index.html");
       if (r && r.ok) return _withFrameSameOrigin(r);
     }

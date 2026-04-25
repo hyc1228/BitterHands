@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_ROOM_ID, getMainSceneFrameSrc, OB_FACE_SLOTS, OB_LOBBY_SPOTLIGHTS } from "../constants";
-import { dict } from "../i18n";
+import { animalLocalized, dict } from "../i18n";
 import { useMainSceneIframeBridge } from "../hooks/useMainSceneIframeBridge";
 import { postToMainSceneFrame, postItemInboxToFrame, postMainSceneNetToFrame } from "../mainSync/postToMainSceneFrame";
-import type { CameraFrame, PublicPlayer } from "../party/protocol";
+import type { CameraFrame, Lang, PublicPlayer } from "../party/protocol";
 import { usePartyStore, type LogEntry } from "../party/store";
 import { pickObSpotlight } from "../utils/obSpotlight";
 import PlayerRowFace from "../components/PlayerRowFace";
+
+function obAnimalLabel(lang: Lang, animal: PublicPlayer["animal"], unknown: string): string {
+  if (animal == null) return unknown;
+  return animalLocalized[lang][animal] ?? animal;
+}
 
 export default function Ob() {
   const lang = usePartyStore((s) => s.lang);
@@ -145,7 +150,7 @@ export default function Ob() {
             {players.length === 0 ? (
               <div className="muted">—</div>
             ) : (
-              players.map((p) => <ObPlayer key={p.id} player={p} />)
+              players.map((p) => <ObPlayer key={p.id} player={p} lang={lang} />)
             )}
           </div>
         </div>
@@ -186,6 +191,7 @@ export default function Ob() {
                     key={p.id}
                     player={p}
                     frame={cameraFrames.get(p.id) ?? null}
+                    lang={lang}
                   />
                 ))}
               </div>
@@ -200,6 +206,7 @@ export default function Ob() {
                       index={i}
                       player={p}
                       frame={cameraFrames.get(p.id) ?? null}
+                      lang={lang}
                     />
                   ))}
                 </div>
@@ -218,6 +225,7 @@ export default function Ob() {
                     index={i}
                     player={player}
                     frame={player ? cameraFrames.get(player.id) ?? null : null}
+                    lang={lang}
                   />
                 );
               })}
@@ -243,6 +251,7 @@ export default function Ob() {
                     index={i}
                     player={player}
                     frame={player ? cameraFrames.get(player.id) ?? null : null}
+                    lang={lang}
                   />
                 );
               })}
@@ -254,7 +263,17 @@ export default function Ob() {
   );
 }
 
-function ObSpotlightTile({ player, frame }: { player: PublicPlayer; frame: CameraFrame | null }) {
+function ObSpotlightTile({
+  player,
+  frame,
+  lang
+}: {
+  player: PublicPlayer;
+  frame: CameraFrame | null;
+  lang: Lang;
+}) {
+  const t = dict(lang);
+  const animal = obAnimalLabel(lang, player.animal, t.ownAnimalUnknown);
   return (
     <div className="ob-spotlight-tile" data-ob-spotlight={player.id}>
       <div className="ob-spotlight-screen" title={player.name}>
@@ -266,8 +285,13 @@ function ObSpotlightTile({ player, frame }: { player: PublicPlayer; frame: Camer
           </div>
         )}
       </div>
-      <div className="ob-spotlight-name" title={player.name}>
-        {player.name.length > 12 ? `${player.name.slice(0, 11)}…` : player.name}
+      <div className="ob-spotlight-label">
+        <div className="ob-spotlight-name" title={player.name}>
+          {player.name.length > 12 ? `${player.name.slice(0, 11)}…` : player.name}
+        </div>
+        <div className="ob-spotlight-animal" title={animal}>
+          {animal}
+        </div>
       </div>
     </div>
   );
@@ -276,12 +300,16 @@ function ObSpotlightTile({ player, frame }: { player: PublicPlayer; frame: Camer
 function ObFaceSlot({
   index,
   player,
-  frame
+  frame,
+  lang
 }: {
   index: number;
   player: PublicPlayer | null;
   frame: CameraFrame | null;
+  lang: Lang;
 }) {
+  const t = dict(lang);
+  const animal = player ? obAnimalLabel(lang, player.animal, t.ownAnimalUnknown) : null;
   return (
     <div className="ob-face-slot" data-ob-slot={index}>
       <div className="ob-face-circle" title={player?.name ?? undefined}>
@@ -295,8 +323,13 @@ function ObFaceSlot({
         )}
       </div>
       {player ? (
-        <div className="ob-face-name" title={player.name}>
-          {player.name.length > 8 ? `${player.name.slice(0, 7)}…` : player.name}
+        <div className="ob-face-label">
+          <div className="ob-face-name" title={player.name}>
+            {player.name.length > 8 ? `${player.name.slice(0, 7)}…` : player.name}
+          </div>
+          <div className="ob-face-animal" title={animal ?? undefined}>
+            {animal}
+          </div>
         </div>
       ) : (
         <div className="ob-face-name muted"> </div>
@@ -305,12 +338,19 @@ function ObFaceSlot({
   );
 }
 
-function ObPlayer({ player }: { player: PublicPlayer }) {
+function ObPlayer({ player, lang }: { player: PublicPlayer; lang: Lang }) {
+  const t = dict(lang);
+  const animal = obAnimalLabel(lang, player.animal, t.ownAnimalUnknown);
   return (
     <div className="player">
-      <span className="name">
+      <span className="name ob-obname">
         <PlayerRowFace player={player} />
-        <span>{player.name}</span>
+        <span className="ob-obname-col">
+          <span>{player.name}</span>
+          <span className="ob-player-animal" title={animal}>
+            {animal}
+          </span>
+        </span>
       </span>
       <span className="badge">
         {`♥ ${player.lives} · V ${player.violations}`}

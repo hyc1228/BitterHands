@@ -4,11 +4,12 @@ export const DEFAULT_ROOM_ID = "junction";
 /**
  * Iframe page for the in-zoo prototype, relative to the SPA origin. Source of truth: repo
  * root `main scene/` (copied to `public/main-scene` by `server/scripts/sync-main-scene.mjs` on build).
- * Set `VITE_MAIN_SCENE_PATH` in `.env` to override. Synced from repo `main scene/index.html`
- * by `server/scripts/sync-main-scene.mjs`. PartyKit `singlePageApp` is off so nested `*.html`
- * is served directly; the SPA uses HashRouter so the parent app only needs `/`.
+ * Set `VITE_MAIN_SCENE_PATH` in `.env` to override. Production: `/main-scene/_iframe` is
+ * intercepted by `server/src/server.js#onFetch` to re-emit `main-scene/index.html` with
+ * `X-Frame-Options: SAMEORIGIN` (PartyKit static defaults to `DENY` which blocks iframes).
+ * Local Vite dev: `nz-iframe-dev` middleware in `vite.config.ts` serves the same path.
  */
-export const DEFAULT_MAIN_SCENE_PATH = "main-scene/index.html";
+export const DEFAULT_MAIN_SCENE_PATH = "main-scene/_iframe";
 
 /** Max face slots on the OB “camera wall” (matches server room cap). */
 export const OB_FACE_SLOTS = 10;
@@ -22,7 +23,10 @@ export const OB_LOBBY_SPOTLIGHTS = 4;
 export function getMainSceneFrameSrc(): string {
   const rel = import.meta.env.VITE_MAIN_SCENE_PATH?.trim() || DEFAULT_MAIN_SCENE_PATH;
   const base = import.meta.env.BASE_URL;
-  return base.endsWith("/") ? `${base}${rel}` : `${base}/${rel}`;
+  const sep = base.endsWith("/") ? "" : "/";
+  // Absolute path so HashRouter location changes don't shift relative resolution.
+  if (rel.startsWith("/")) return rel;
+  return `${base}${sep}${rel}`;
 }
 
 /** Quirky guest nicknames for the Join screen (one picked at random per visit, English). */

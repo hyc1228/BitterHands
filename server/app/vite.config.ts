@@ -110,6 +110,29 @@ function localAvatarPlugin(): Plugin {
   };
 }
 
+/** Dev: serve `/main-scene/_iframe` from `app/public/main-scene/index.html` to mirror PartyKit `onFetch`. */
+function mainSceneIframeDevPlugin(): Plugin {
+  return {
+    name: "nz-iframe-dev",
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const u = req.url || "";
+        const p = u.split("?")[0] ?? u;
+        if (p === "/main-scene/_iframe" && (req.method === "GET" || req.method === "HEAD")) {
+          const file = path.resolve(appDir, "public/main-scene/index.html");
+          if (fs.existsSync(file)) {
+            res.setHeader("Content-Type", "text/html; charset=utf-8");
+            res.setHeader("Cache-Control", "no-cache");
+            res.end(req.method === "HEAD" ? null : fs.readFileSync(file));
+            return;
+          }
+        }
+        next();
+      });
+    }
+  };
+}
+
 /** `emptyOutDir` is false for PartyKit; drop legacy `nz-scene.*` left over from prior builds. */
 function removeLegacyMainScenePlugin(): Plugin {
   return {
@@ -131,7 +154,7 @@ function removeLegacyMainScenePlugin(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), localAvatarPlugin(), removeLegacyMainScenePlugin()],
+  plugins: [react(), localAvatarPlugin(), mainSceneIframeDevPlugin(), removeLegacyMainScenePlugin()],
   base: "./",
   build: {
     outDir,
