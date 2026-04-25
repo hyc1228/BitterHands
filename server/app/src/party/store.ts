@@ -94,10 +94,14 @@ function partykitHostFromEnv(): string | null {
  * Stable per-browser id used as PartyKit's `?_pk=` connection id, so refreshes / reconnects
  * reuse the same room slot (otherwise every new socket gets a fresh `conn.id`, which
  * eats `MAX_ROOM_PLAYERS` until the platform finally GCs stale slots).
+ *
+ * `mode` matters: same browser opening a player tab AND an OB tab needs DIFFERENT conn.ids
+ * (otherwise the server sees the OB connection as an already-joined player and blocks
+ * `START` with `start_forbidden_player`). We segregate by storing one id per role.
  */
-function stableConnectionId(): string {
+function stableConnectionId(mode: "player" | "ob" = "player"): string {
+  const k = mode === "ob" ? "nz.connId.ob" : "nz.connId";
   try {
-    const k = "nz.connId";
     const v = localStorage.getItem(k);
     if (v && /^[a-zA-Z0-9_-]{8,64}$/.test(v)) return v;
     const fresh =
@@ -115,8 +119,8 @@ function stableConnectionId(): string {
  * `wss` when a deploy host is set (Vercel + PartyKit cloud) or the page is HTTPS; otherwise
  * `ws` for local HTTP (e.g. Vite + PartyKit on localhost).
  */
-function partyUrl(roomId: string): string {
-  const cid = encodeURIComponent(stableConnectionId());
+function partyUrl(roomId: string, mode: "player" | "ob" = "player"): string {
+  const cid = encodeURIComponent(stableConnectionId(mode));
   const host = partykitHostFromEnv();
   if (host) {
     return `wss://${host}/party/${encodeURIComponent(roomId)}?_pk=${cid}`;
@@ -204,8 +208,9 @@ export const usePartyStore = create<PartyStoreState>((set, get) => ({
       connectError: null
     });
 
+    const wsMode: "player" | "ob" = mode === "ob" ? "ob" : "player";
     return new Promise<void>((resolve, reject) => {
-      const ws = new WebSocket(partyUrl(roomId));
+      const ws = new WebSocket(partyUrl(roomId, wsMode));
       // Each ws's listeners must only mutate state when it's still the current ws;
       // a previous-connection close event arrives async after `set({ws})` and would
       // otherwise wipe the new ws (= "joined then instantly disconnected" UX).
