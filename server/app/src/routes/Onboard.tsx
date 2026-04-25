@@ -75,6 +75,13 @@ export default function Onboard() {
     }
   }, [rulesCard, step]);
 
+  // If OB starts the game while this client is still in onboarding, jump in too — the lobby
+  // is the canonical waiting room but we don't want stragglers stuck on Reveal/Check forever.
+  const snapshotStarted = usePartyStore((s) => s.snapshot?.started);
+  useEffect(() => {
+    if (snapshotStarted) nav("/main-scene", { replace: true });
+  }, [snapshotStarted, nav]);
+
   // If answers are in-flight, auto-resubmit once; surface slow state + manual retry.
   useEffect(() => {
     if (step !== "analyzing") {
