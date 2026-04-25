@@ -874,10 +874,13 @@
          letterboxing. */
       .cam-preview {
         position: absolute;
-        right: 14px;
-        bottom: 16px;
-        width: 88px;
-        height: 88px;
+        right: 12px;
+        /* Sit JUST ABOVE the Zoo Keeper Log card so the two never overlap.
+           The log is fixed-height ~142 px + 14 px bottom margin, so 168 px
+           up from the bottom edge clears it. */
+        bottom: 168px;
+        width: 76px;
+        height: 76px;
         border-radius: 50%;
         object-fit: cover;
         border: 2.5px solid #ffffff;
@@ -1768,37 +1771,67 @@
       // =================================================================
       function buildScene() {
         // ---- Fence around the perimeter --------------------------------
-        // We render individual <image> tiles instead of a <pattern>+<rect>
-        // fill — iOS Safari has a bug where PNG images inside SVG patterns
-        // sometimes render as garbled "?" / letter-like shapes. Direct
-        // <image> placement is rock-solid across browsers.
-        const FH = 92;        // fence thickness
-        const FW = 140;       // single tile width (matches PNG aspect)
-        function placeFenceRow(parent, length, y) {
-          for (let x = 0; x < length; x += FW) {
-            parent.appendChild(
-              el("image", {
-                href: "fenceTile.svg",
-                x,
-                y,
-                width: Math.min(FW, length - x),
-                height: FH,
-                preserveAspectRatio: "none",
-              })
-            );
-          }
+        // Procedural fence using only SVG primitives (<rect>) — NO external
+        // image. The previous fenceTile.svg was actually a PNG with an .svg
+        // extension; iOS Safari mis-parses that as SVG and renders garbled
+        // "?" / letter-like tiles at the borders. Pure rect fence is
+        // bulletproof everywhere.
+        const FH = 92;
+        const WOOD = "#6b4520";
+        const WOOD_DARK = "#2a1809";
+        const POST_GAP = 56;
+        const POST_W = 10;
+        // 4 outer beams (one per edge)
+        const beams = [
+          { x: 0,           y: 0,           width: MAP_W, height: FH }, // top
+          { x: 0,           y: MAP_H - FH,  width: MAP_W, height: FH }, // bottom
+          { x: 0,           y: 0,           width: FH,    height: MAP_H }, // left
+          { x: MAP_W - FH,  y: 0,           width: FH,    height: MAP_H }, // right
+        ];
+        for (const b of beams) {
+          layers.fence.appendChild(
+            el("rect", {
+              ...b,
+              fill: WOOD,
+              stroke: WOOD_DARK,
+              "stroke-width": 4,
+            })
+          );
         }
-        // Top + bottom edges, drawn directly into fence layer
-        placeFenceRow(layers.fence, MAP_W, 0);
-        placeFenceRow(layers.fence, MAP_W, MAP_H - FH);
-        // Left + right edges: rotate a horizontal row by 90°, then it lays
-        // down vertically. translate puts the rotated origin at the edge.
-        const leftG = el("g", { transform: `translate(${FH} 0) rotate(90)` });
-        placeFenceRow(leftG, MAP_H, 0);
-        layers.fence.appendChild(leftG);
-        const rightG = el("g", { transform: `translate(${MAP_W} 0) rotate(90)` });
-        placeFenceRow(rightG, MAP_H, 0);
-        layers.fence.appendChild(rightG);
+        // Vertical "posts" peppered along top + bottom edges for character.
+        for (let x = POST_GAP; x < MAP_W - POST_GAP / 2; x += POST_GAP) {
+          layers.fence.appendChild(
+            el("rect", {
+              x: x - POST_W / 2, y: 0,
+              width: POST_W, height: FH,
+              fill: WOOD_DARK,
+            })
+          );
+          layers.fence.appendChild(
+            el("rect", {
+              x: x - POST_W / 2, y: MAP_H - FH,
+              width: POST_W, height: FH,
+              fill: WOOD_DARK,
+            })
+          );
+        }
+        // Horizontal "posts" along left + right edges
+        for (let y = POST_GAP; y < MAP_H - POST_GAP / 2; y += POST_GAP) {
+          layers.fence.appendChild(
+            el("rect", {
+              x: 0, y: y - POST_W / 2,
+              width: FH, height: POST_W,
+              fill: WOOD_DARK,
+            })
+          );
+          layers.fence.appendChild(
+            el("rect", {
+              x: MAP_W - FH, y: y - POST_W / 2,
+              width: FH, height: POST_W,
+              fill: WOOD_DARK,
+            })
+          );
+        }
 
         // ---- Cone (drawn behind everything except background) ----------
         const cone = makeCone();
@@ -1887,6 +1920,76 @@
       }
 
       const alertOverlay = document.getElementById("alertOverlay");
+
+      // ---- Sound manager -------------------------------------------------
+      // One Audio object per effect, replayed by resetting currentTime to 0.
+      // Browsers may block autoplay before any user interaction, but every
+      // SFX trigger here happens after the player has moved / clicked, so
+      // by then audio is unlocked. We swallow the play() promise rejection
+      // silently to avoid console noise.
+      const SOUND_FILES = {
+        alarm:      "../resource/microsammy-clock-alarm-8761.mp3",
+        healthGain: "../resource/addHealth.wav",
+        healthLoss: "../resource/minusHealth.wav",
+      };
+      const sounds = {};
+      for (const [name, src] of Object.entries(SOUND_FILES)) {
+        const a = new Audio(src);
+        a.preload = "auto";
+        a.volume = 0.7;
+        sounds[name] = a;
+      }
+      function playSound(name) {
+        const s = sounds[name];
+        if (!s) return;
+        try {
+          s.currentTime = 0;
+          const p = s.play();
+          if (p && typeof p.catch === "function") p.catch(() => {});
+        } catch (_) {}
+      }
+
+      // Alarm: play a short window of the file (it's longer than we need)
+      // and ease the volume to 0 in the final stretch so it doesn't just
+      // cut off abruptly.
+      function playAlarmSound() {
+        const s = sounds.alarm;
+        if (!s) return;
+        // Cancel any fade timer left over from a previous trigger so the
+        // new playback isn't immediately silenced.
+        if (s._fadeTimer) {
+          clearInterval(s._fadeTimer);
+          s._fadeTimer = null;
+        }
+        const startVol = 0.7;
+        try {
+          s.currentTime = 0;
+          s.volume = startVol;
+          const p = s.play();
+          if (p && typeof p.catch === "function") p.catch(() => {});
+        } catch (_) {
+          return;
+        }
+        const TOTAL_MS = 1400;   // overall ring duration
+        const FADE_MS  = 700;    // last N ms fade volume linearly to 0
+        const TICK_MS  = 40;
+        const FADE_START = TOTAL_MS - FADE_MS;
+        let elapsed = 0;
+        s._fadeTimer = setInterval(() => {
+          elapsed += TICK_MS;
+          if (elapsed >= TOTAL_MS) {
+            clearInterval(s._fadeTimer);
+            s._fadeTimer = null;
+            try { s.pause(); s.currentTime = 0; } catch (_) {}
+            s.volume = startVol; // restore for next trigger
+            return;
+          }
+          if (elapsed >= FADE_START) {
+            const t = (elapsed - FADE_START) / FADE_MS;
+            s.volume = startVol * Math.max(0, 1 - t);
+          }
+        }, TICK_MS);
+      }
 
       function render() {
         updateCamera();
@@ -2102,8 +2205,10 @@
           state.me.lives += 1;
           renderLives();
           flashHeartGain();
+          playSound("healthGain");
         } else if (it.type === "alarm") {
           addLog("闹铃响了…它转过头来。");
+          playAlarmSound();
           if (challenge.active) endChallenge(false);
           state.monitor.mode = "sweep";
           state.monitor.targetId = null;
@@ -2123,9 +2228,11 @@
             state.me.lives += 1;
             renderLives();
             flashHeartGain();
+            playSound("healthGain");
           }
         } else if (e.itemType === "alarm") {
           addLog("闹铃响了…它转过头来。");
+          playAlarmSound();
           if (challenge.active) endChallenge(false);
           state.monitor.mode = "sweep";
           state.monitor.targetId = null;
@@ -2748,6 +2855,7 @@
           chalOverlay.className  = "action-bar action-bar-top active fail";
           state.me.lives = Math.max(0, state.me.lives - 1);
           renderLives();
+          playSound("healthLoss");
           addLog("❌ 未执行守则，扣 1 生命值。", null, { rule: true });
           if (state.me.lives <= 0) { setTimeout(handleDeath, 1400); }
         }
@@ -2990,6 +3098,7 @@
           uChalOverlay.className  = "action-bar action-bar-bottom active fail";
           state.me.lives = Math.max(0, state.me.lives - 1);
           renderLives();
+          playSound("healthLoss");
           addLog("❌ 未执行通用规则，扣 1 生命值。", null, { rule: true });
           if (state.me.lives <= 0) { setTimeout(handleDeath, 1200); }
         }
