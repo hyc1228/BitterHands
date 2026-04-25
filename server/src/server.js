@@ -1,5 +1,7 @@
 import { Animals, ClientMessageTypes, ServerEventTypes } from "./protocol.js";
 import { fnv1a32, pickLooksRoast, similarityPercentFor } from "./photoAnalysis.js";
+import { generateMonitorLine } from "./monitorLines.js";
+import { synthesize as synthesizeVoice, getCachedAudio } from "./voice.js";
 
 /** Max players (JOIN) per room — matches GDD 5–10; hard cap 10. */
 const MAX_ROOM_PLAYERS = 10;
@@ -76,6 +78,9 @@ export default class Server {
     this.mainSceneItemsRemoved = new Set();
     /** @type {Map<string, (typeof MAIN_SCENE_ITEM_DEFS)[0]>} */
     this._mainSceneItemRegistry = new Map(MAIN_SCENE_ITEM_DEFS.map((d) => [d.id, d]));
+
+    /** Monotonic counter for monitor_voice ids when no audio hash is available. */
+    this._monitorVoiceSeq = 0;
   }
 
   /**
@@ -335,6 +340,7 @@ export default class Server {
 
         this._broadcast(ServerEventTypes.SYSTEM, { message: "游戏开始" });
         this._sendRoomSnapshot();
+        void this._dispatchMonitorLine({ kind: "game_started", priority: 8, ttlMs: 9000 });
         return;
       }
 
@@ -366,6 +372,22 @@ export default class Server {
             code: "GIRAFFE_PURIFIED",
             params: { name: player.name },
             message: `${player.name} 的感染似乎被“净化”了（累计违规 3 次）`
+          });
+        }
+
+        if (!player.alive) {
+          void this._dispatchMonitorLine({
+            kind: "eliminated",
+            params: { name: player.name },
+            priority: 9,
+            ttlMs: 9000
+          });
+        } else {
+          void this._dispatchMonitorLine({
+            kind: "violation",
+            params: { name: player.name },
+            priority: 7,
+            ttlMs: 7000
           });
         }
 
@@ -478,6 +500,12 @@ export default class Server {
           byPlayerId: conn.id,
           alarmLured: meta.type === "alarm" ? { x: meta.x, y: meta.y } : null
         });
+        void this._dispatchMonitorLine({
+          kind: meta.type === "alarm" ? "pickup_alarm" : "pickup_heart",
+          params: { name: player.name },
+          priority: meta.type === "alarm" ? 7 : 4,
+          ttlMs: 7000
+        });
         this._sendRoomSnapshot();
         return;
       }
@@ -539,6 +567,19 @@ export default class Server {
   async onRequest(req) {
     const url = new URL(req.url);
     if (url.pathname === "/health") return new Response("ok");
+    if (url.pathname.endsWith("/__nz_voice")) {
+      const id = url.searchParams.get("id");
+      if (!id) return new Response("missing id", { status: 400 });
+      const data = getCachedAudio(id);
+      if (!data) return new Response("not found", { status: 404 });
+      return new Response(data.bytes, {
+        headers: {
+          "Content-Type": data.mime,
+          "Cache-Control": "private, max-age=600",
+          "Access-Control-Allow-Origin": "*"
+        }
+      });
+    }
     if (url.pathname.endsWith("/__nz_avatar")) {
       const id = url.searchParams.get("id");
       if (!id) return new Response("missing id", { status: 400 });
@@ -563,6 +604,60 @@ export default class Server {
     return new Response(`Nocturne Zoo room ${this.party.id}\n`, { status: 200 });
   }
 
+  /**
+   * Generate a Monitor PA line and (best-effort) ElevenLabs audio, then broadcast.
+   * Fire-and-forget — callers don't await.
+   *
+   * `kind` is a stable tag (e.g. "violation", "pickup_alarm") used by the client
+   * for dedup; `priority` is 1–10 (higher preempts lower in the audio queue).
+   *
+   * @param {{ kind: string, params?: Record<string, string|number>, priority?: number, ttlMs?: number }} event
+   */
+  async _dispatchMonitorLine(event) {
+    if (!event || typeof event.kind !== "string") return;
+    const priority = typeof event.priority === "number" ? event.priority : 5;
+    const ttlMs = typeof event.ttlMs === "number" ? event.ttlMs : 8000;
+
+    let line;
+    try {
+      line = await generateMonitorLine({ kind: event.kind, params: event.params || {} });
+    } catch {
+      return;
+    }
+    if (!line) return;
+
+    // Plan A: prefer the pre-recorded MP3 shipped under `server/public/voice/`.
+    // The client just plays the static path; no API call at runtime.
+    let audioUrl = line.audioPath;
+    let voiceId = `${line.kind}_${line.idx}`;
+
+    // Optional fallback: if ELEVENLABS_API_KEY is configured, try live TTS for
+    // the audio side too. Useful when a static file is missing or you want to
+    // A/B compare. Skipped silently when not configured.
+    if (process.env && process.env.ELEVENLABS_API_KEY && process.env.ELEVENLABS_VOICE_ID) {
+      try {
+        const tts = await synthesizeVoice(line.audioText);
+        if (tts.ok && tts.id) {
+          voiceId = tts.id;
+          const rid = encodeURIComponent(this.party.id);
+          audioUrl = `/party/${rid}/__nz_voice?id=${tts.id}`;
+        }
+      } catch {
+        /* keep the static path */
+      }
+    }
+
+    this._broadcast(ServerEventTypes.MONITOR_VOICE, {
+      id: voiceId || `nz-${++this._monitorVoiceSeq}`,
+      kind: event.kind,
+      priority,
+      audioUrl,
+      captions: line.caption,
+      ttlMs,
+      source: line.source
+    });
+  }
+
   _endGame() {
     if (!this.started) return;
     this.started = false;
@@ -577,6 +672,21 @@ export default class Server {
       })),
       owlGuesses: Object.fromEntries(this.owlGuessesByPlayerId.entries())
     });
+
+    const survivors = Array.from(this.players.values()).filter((p) => p.alive);
+    const winner = survivors.length
+      ? survivors.reduce((a, b) => (a.lives >= b.lives ? a : b))
+      : null;
+    if (winner) {
+      void this._dispatchMonitorLine({
+        kind: "winner",
+        params: { name: winner.name },
+        priority: 9,
+        ttlMs: 9000
+      });
+    } else {
+      void this._dispatchMonitorLine({ kind: "game_ended", priority: 8, ttlMs: 9000 });
+    }
   }
 
   _sendRoomSnapshot() {

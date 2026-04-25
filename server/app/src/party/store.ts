@@ -11,6 +11,7 @@ import {
   type MainSceneItemInboxEntry,
   type MainSceneItemTaken,
   type MainScenePeerState,
+  type MonitorVoiceMessage,
   type RulesCard,
   type ServerEnvelope,
   ServerEventTypes
@@ -47,6 +48,9 @@ interface PartyStoreState {
   mainScenePeers: Record<string, MainScenePeerState>;
   mainSceneItemInbox: MainSceneItemInboxEntry[];
   drainMainSceneItemInbox: () => MainSceneItemInboxEntry[];
+  /** Push-only inbox of Monitor PA broadcasts; the audio hook drains this. */
+  monitorVoiceInbox: MonitorVoiceMessage[];
+  drainMonitorVoiceInbox: () => MonitorVoiceMessage[];
   // Actions
   setLang: (lang: Lang) => void;
   setName: (name: string) => void;
@@ -139,10 +143,17 @@ export const usePartyStore = create<PartyStoreState>((set, get) => ({
   connectError: null,
   mainScenePeers: {},
   mainSceneItemInbox: [],
+  monitorVoiceInbox: [],
 
   drainMainSceneItemInbox: () => {
     const q = get().mainSceneItemInbox;
     if (q.length) set({ mainSceneItemInbox: [] });
+    return q;
+  },
+
+  drainMonitorVoiceInbox: () => {
+    const q = get().monitorVoiceInbox;
+    if (q.length) set({ monitorVoiceInbox: [] });
     return q;
   },
 
@@ -266,7 +277,8 @@ export const usePartyStore = create<PartyStoreState>((set, get) => ({
       answersSubmitted: false,
       connectError: null,
       mainScenePeers: {},
-      mainSceneItemInbox: []
+      mainSceneItemInbox: [],
+      monitorVoiceInbox: []
     })
 }));
 
@@ -317,6 +329,16 @@ function handleServerEnvelope(
         { kind: "resync" as const, removedItemIds: d.removedItemIds }
       ]
     }));
+    return;
+  }
+  if (t === ServerEventTypes.MONITOR_VOICE) {
+    const data = msg.data as MonitorVoiceMessage;
+    console.log("[nz-voice] WS recv MONITOR_VOICE", data?.kind, data?.audioUrl);
+    if (!data || typeof data.captions !== "string") {
+      console.warn("[nz-voice] dropped: bad payload", data);
+      return;
+    }
+    set((s) => ({ monitorVoiceInbox: [...s.monitorVoiceInbox, data] }));
     return;
   }
   if (t === ServerEventTypes.MAIN_SCENE_BROADCAST) {

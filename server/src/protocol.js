@@ -20,7 +20,12 @@ export const ServerEventTypes = /** @type {const} */ ({
   MAIN_SCENE_BROADCAST: "main_scene_broadcast",
   MAIN_SCENE_ITEM_TAKEN: "main_scene_item_taken",
   /** Private: client requested an already-taken item — strip local props. */
-  MAIN_SCENE_ITEMS_RESYNC: "main_scene_items_resync"
+  MAIN_SCENE_ITEMS_RESYNC: "main_scene_items_resync",
+  /**
+   * Monitor PA broadcast. Carries audio URL (may be null when TTS is unavailable),
+   * captions, priority, and a kind tag (used for client-side dedup).
+   */
+  MONITOR_VOICE: "monitor_voice"
 });
 
 export const ClientMessageTypes = /** @type {const} */ ({
