@@ -184,9 +184,17 @@
           <h1>Nocturne Zoo · LAN Demo</h1>
           <div class="sub">最小前端：加入房间、聊天、触发违规、看广播/私信。</div>
         </div>
-        <div class="pill">
-          <span class="dot" id="connDot"></span>
-          <span id="connText">未连接</span>
+        <div style="display:flex; gap:12px; align-items:center">
+          <div style="min-width: 140px">
+            <select id="lang" aria-label="Language">
+              <option value="zh">中文</option>
+              <option value="en">English</option>
+            </select>
+          </div>
+          <div class="pill">
+            <span class="dot" id="connDot"></span>
+            <span id="connText">未连接</span>
+          </div>
         </div>
       </div>
 
@@ -308,6 +316,66 @@
       const playersEl = $("players");
       const connDot = $("connDot");
       const connText = $("connText");
+      const langSel = $("lang");
+
+      const I18N = {
+        zh: {
+          connected: "已连接",
+          disconnected: "未连接",
+          connectJoin: "连接 / 加入",
+          startGame: "start（开局）",
+          startOnboard: "开始创建",
+          resetOnboard: "重置/重来",
+          snap: "拍照",
+          useShot: "使用这张",
+          analyzing: "正在分析你…",
+          camStart: "开启摄像头检测",
+          camStop: "关闭检测",
+          send: "发送",
+          clear: "清空",
+          myAnimalUnknown: "未分配",
+          detOff: "未开启",
+          tipLocal: "提示：摄像头识别只在本地跑，不上传视频；识别到违规会自动发 `violation` 到房间。",
+          sys_PLAYER_SUBMITTED_PHOTO: ({ name }) => `${name} 已提交照片`,
+          sys_PLAYER_ENTERED_ZONE: ({ name, animal }) => `${name} 已进入 ${animalEmoji(animal)} 区域`,
+          sys_GIRAFFE_PURIFIED: ({ name }) => `${name} 的感染似乎被“净化”了（累计违规 3 次）`,
+          sys_PLAYER_LEFT: ({ name }) => `${name} 离开了房间`
+        },
+        en: {
+          connected: "Connected",
+          disconnected: "Disconnected",
+          connectJoin: "Connect / Join",
+          startGame: "Start",
+          startOnboard: "Create Character",
+          resetOnboard: "Reset",
+          snap: "Take Photo",
+          useShot: "Use This Photo",
+          analyzing: "Analyzing…",
+          camStart: "Enable Camera Detection",
+          camStop: "Disable Detection",
+          send: "Send",
+          clear: "Clear",
+          myAnimalUnknown: "Unassigned",
+          detOff: "Off",
+          tipLocal: "Note: camera detection runs locally; no video is uploaded. Violations are sent to the room as `violation`.",
+          sys_PLAYER_SUBMITTED_PHOTO: ({ name }) => `${name} submitted a photo`,
+          sys_PLAYER_ENTERED_ZONE: ({ name, animal }) => `${name} entered ${animalEmoji(animal)} zone`,
+          sys_GIRAFFE_PURIFIED: ({ name }) => `${name} seems “purified” (3 violations)`,
+          sys_PLAYER_LEFT: ({ name }) => `${name} left the room`
+        }
+      };
+
+      function getLang() {
+        return langSel?.value === "en" ? "en" : "zh";
+      }
+
+      function t(key, params) {
+        const lang = getLang();
+        const val = I18N[lang]?.[key];
+        if (typeof val === "function") return val(params || {});
+        if (typeof val === "string") return val;
+        return I18N.zh?.[key] ?? key;
+      }
 
       function log(line) {
         const ts = new Date().toLocaleTimeString();
@@ -316,11 +384,15 @@
 
       function setConnected(yes, details = "") {
         connDot.className = "dot " + (yes ? "ok" : "bad");
-        connText.textContent = yes ? "已连接 " + details : "未连接";
+        connText.textContent = yes ? `${t("connected")} ${details}` : t("disconnected");
         $("btnStart").disabled = !yes;
         $("btnAssign").disabled = !yes;
         $("btnViolation").disabled = !yes;
         $("btnChat").disabled = !yes;
+        $("btnCam").disabled = !yes;
+        $("btnCamStop").disabled = !yes;
+        $("btnOnboard").disabled = !yes;
+        $("btnResetOnboard").disabled = !yes;
       }
 
       function animalEmoji(animal) {
@@ -412,7 +484,7 @@
 
       function setMyAnimal(animal) {
         myAnimal = animal;
-        $("myAnimal").textContent = animal ? `${animalEmoji(animal)} ${animal}` : "未分配";
+        $("myAnimal").textContent = animal ? `${animalEmoji(animal)} ${animal}` : t("myAnimalUnknown");
       }
 
       function setDetStatus(text) {
@@ -613,7 +685,7 @@
         faceMesh = null;
         $("btnCam").disabled = false;
         $("btnCamStop").disabled = true;
-        setDetStatus("未开启");
+        setDetStatus(t("detOff"));
         log("摄像头检测已关闭");
       }
 
@@ -736,19 +808,12 @@
           setConnected(true, `(${roomId})`);
           log(`WS open → ${partyUrl(roomId)}`);
           ws.send(JSON.stringify({ type: "join", name }));
-          $("btnCam").disabled = false;
-          $("btnOnboard").disabled = false;
-          $("btnResetOnboard").disabled = false;
         });
 
         ws.addEventListener("close", () => {
           setConnected(false);
           log("WS close");
-          $("btnCam").disabled = true;
-          $("btnCamStop").disabled = true;
           stopCamera();
-          $("btnOnboard").disabled = true;
-          $("btnResetOnboard").disabled = true;
           resetOnboarding();
         });
 
@@ -774,7 +839,13 @@
           if (type === "player_joined" || type === "player_updated") {
             log(`${type}: ${data.name} ${animalEmoji(data.animal)} lives=${data.lives}`);
           } else if (type === "system") {
-            log(`system: ${data.message}`);
+            if (data?.code) {
+              const fn = I18N[getLang()]?.["sys_" + data.code] || I18N.zh?.["sys_" + data.code];
+              if (typeof fn === "function") log(`system: ${fn(data.params || {})}`);
+              else log(`system: ${data.message || data.code}`);
+            } else {
+              log(`system: ${data.message}`);
+            }
           } else if (type === "chat") {
             log(`chat: ${data.playerName}: ${data.text}`);
           } else if (type === "violation_narrative") {
@@ -889,6 +960,29 @@
       $("name").value = "Player-" + Math.floor(Math.random() * 1000);
       setConnected(false);
       setMyAnimal(null);
+
+      function applyLocale() {
+        $("btnConnect").textContent = t("connectJoin");
+        $("btnStart").textContent = t("startGame");
+        $("btnOnboard").textContent = t("startOnboard");
+        $("btnResetOnboard").textContent = t("resetOnboard");
+        $("btnSnap").textContent = t("snap");
+        $("btnUseShot").textContent = t("useShot");
+        $("analyzing").textContent = t("analyzing");
+        $("btnCam").textContent = t("camStart");
+        $("btnCamStop").textContent = t("camStop");
+        $("btnChat").textContent = t("send");
+        $("btnClear").textContent = t("clear");
+        $("detStatus").textContent = detectorEnabled ? $("detStatus").textContent : t("detOff");
+      }
+
+      langSel.addEventListener("change", () => {
+        applyLocale();
+        // Re-render connection label without changing actual state
+        const yes = ws && ws.readyState === WebSocket.OPEN;
+        setConnected(!!yes, currentRoom ? `(${currentRoom})` : "");
+      });
+      applyLocale();
     </script>
   </body>
 </html>

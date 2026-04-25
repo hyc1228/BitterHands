@@ -108,7 +108,11 @@ export default class Server {
         // GDD: client uploads base64 photo; server calls Claude Vision -> "impression"
         // For now we store a placeholder so the rest of the flow can run.
         player.impression = "（外貌印象：待接入 Vision）";
-        this._broadcast(ServerEventTypes.SYSTEM, { message: `${player.name} 已提交照片` });
+        this._broadcast(ServerEventTypes.SYSTEM, {
+          code: "PLAYER_SUBMITTED_PHOTO",
+          params: { name: player.name },
+          message: `${player.name} 已提交照片`
+        });
         this._sendRoomSnapshot();
         return;
       }
@@ -133,6 +137,8 @@ export default class Server {
 
         // Public: broadcast "XX 已进入 🦁 区域" (no rules content)
         this._broadcast(ServerEventTypes.SYSTEM, {
+          code: "PLAYER_ENTERED_ZONE",
+          params: { name: player.name, animal: animal },
           message: `${player.name} 已进入 ${this._animalEmoji(animal)} 区域`
         });
 
@@ -192,6 +198,8 @@ export default class Server {
         // We'll just announce it; detailed win logic can be added later.
         if (player.animal === Animals.GIRAFFE && player.violations >= 3) {
           this._broadcast(ServerEventTypes.SYSTEM, {
+            code: "GIRAFFE_PURIFIED",
+            params: { name: player.name },
             message: `${player.name} 的感染似乎被“净化”了（累计违规 3 次）`
           });
         }
@@ -241,7 +249,11 @@ export default class Server {
     this.players.delete(conn.id);
     this.owlGuessesByPlayerId.delete(conn.id);
 
-    this._broadcast(ServerEventTypes.SYSTEM, { message: `${player.name} 离开了房间` });
+    this._broadcast(ServerEventTypes.SYSTEM, {
+      code: "PLAYER_LEFT",
+      params: { name: player.name },
+      message: `${player.name} 离开了房间`
+    });
     this._sendRoomSnapshot();
   }
 
