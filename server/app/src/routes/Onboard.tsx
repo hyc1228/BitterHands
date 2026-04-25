@@ -265,6 +265,7 @@ export default function Onboard() {
 
       {step === "quiz" && currentQuestion ? (
         <QuizStep
+          key={qIdx}
           step={qIdx + 1}
           total={questions.length}
           question={currentQuestion}
@@ -273,10 +274,18 @@ export default function Onboard() {
       ) : null}
 
       {step === "analyzing" ? (
-        <div className="card stack" style={{ textAlign: "center" }}>
+        <div className="card analyzing-wrap">
+          <span className="nz-sparks" aria-hidden="true">
+            <i /><i /><i /><i /><i /><i /><i /><i />
+          </span>
+          <div className="analyzing-scan" aria-hidden="true">
+            <span className="analyzing-scan-core" />
+          </div>
           <div className="section-title">{t.analyzing}</div>
-          <div className="muted" style={{ fontFamily: "var(--nz-font-serif)", fontStyle: "italic" }}>
-            …
+          <div className="analyzing-dots muted" aria-hidden="true">
+            <span>·</span>
+            <span>·</span>
+            <span>·</span>
           </div>
           {analyzingSlow ? (
             <div className="stack" style={{ marginTop: 14, gap: 10 }}>
@@ -360,7 +369,14 @@ function QuizStep({
 }) {
   return (
     <div className="quiz-wrap">
-      <span className="quiz-step">
+      <div className="quiz-progress" role="presentation" aria-hidden="true">
+        {Array.from({ length: total }, (_, i) => {
+          const cls =
+            i + 1 < step ? "dot is-done" : i + 1 === step ? "dot is-current" : "dot";
+          return <span key={i} className={cls} />;
+        })}
+      </div>
+      <span className="quiz-step" aria-label={`Question ${step} of ${total}`}>
         {step} / {total}
       </span>
       <div className="quiz-text">{question.text}</div>

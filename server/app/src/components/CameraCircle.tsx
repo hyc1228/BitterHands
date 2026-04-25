@@ -1,4 +1,4 @@
-import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 
 export interface CameraCircleHandle {
   /** Returns a (mirrored) JPEG dataURL snapshot of the current video frame, or null if unavailable. */
@@ -19,6 +19,16 @@ const CameraCircle = forwardRef<CameraCircleHandle, Props>(function CameraCircle
 ) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  /** Bumps each time `shotDataUrl` transitions to a fresh non-null value, so the snap-flash
+   *  CSS keyframe re-runs (re-mounting the overlay via `key`). */
+  const [flashKey, setFlashKey] = useState(0);
+  const lastShotRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (shotDataUrl && shotDataUrl !== lastShotRef.current) {
+      setFlashKey((k) => k + 1);
+    }
+    lastShotRef.current = shotDataUrl ?? null;
+  }, [shotDataUrl]);
 
   // Always keep <video> mounted (so the retake flow doesn't lose the stream
   // attachment). We layer the captured photo as an absolutely-positioned
@@ -170,6 +180,9 @@ const CameraCircle = forwardRef<CameraCircleHandle, Props>(function CameraCircle
         </svg>
         <video ref={setVideoEl} autoPlay playsInline muted />
         {shotDataUrl ? <img src={shotDataUrl} alt="snapshot" className="cam-shot" /> : null}
+        {flashKey > 0 && shotDataUrl ? (
+          <span key={flashKey} className="cam-flash" aria-hidden="true" />
+        ) : null}
       </div>
     </div>
   );
