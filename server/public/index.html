@@ -201,6 +201,31 @@
         object-fit: cover;
       }
 
+      .screenTitle {
+        font-weight: 700;
+        margin-bottom: 10px;
+      }
+
+      .stepPills {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin: 8px 0 12px;
+      }
+      .stepPill {
+        font-size: 12px;
+        color: var(--muted);
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        padding: 3px 10px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .stepPill.active {
+        color: var(--text);
+        border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+        background: color-mix(in srgb, var(--accent) 18%, rgba(255, 255, 255, 0.03));
+      }
+
       .modalMask {
         position: fixed;
         inset: 0;
@@ -318,60 +343,50 @@
 
       <div class="grid">
         <div class="card">
-          <div class="row">
-            <div>
-              <label id="labelRoom">房间号</label>
-              <input id="roomId" placeholder="例如：my-room" />
-            </div>
-            <div>
-              <label id="labelName">名字</label>
-              <input id="name" placeholder="例如：Alice" />
-            </div>
+          <div class="stepPills">
+            <span class="stepPill" id="pill1">1 房间</span>
+            <span class="stepPill" id="pill2">2 形象</span>
+            <span class="stepPill" id="pill3">3 问卷</span>
           </div>
 
-          <div style="height: 10px"></div>
-
-          <div class="btnrow">
+          <div id="screenRoom">
+            <div class="screenTitle" id="screenRoomTitle">加入房间</div>
+            <label id="labelRoom">房间号</label>
+            <input id="roomId" placeholder="例如：my-room" />
+            <div style="height: 10px"></div>
             <button class="primary" id="btnConnect">连接 / 加入</button>
-            <button id="btnStart" disabled>start（开局）</button>
-          </div>
-
-          <div style="height: 12px"></div>
-
-          <label id="labelOnboard">创建形象（拍照 + 3 个问题 → 分配角色）</label>
-          <div class="btnrow">
-            <button id="btnOnboard" disabled>开始创建</button>
-            <button id="btnResetOnboard" disabled>重置/重来</button>
-          </div>
-
-          <div style="height: 10px"></div>
-
-          <div id="onboardArea" style="display: none">
-            <div class="muted" id="autoHint" style="font-size:12px;margin-bottom:8px;display:none">
-              已连接，正在自动启动创建角色（如果浏览器阻止摄像头，请点一次“开始创建”重试）。
+            <div class="muted" style="font-size:12px; margin-top:10px" id="roomHint">
+              连接成功后会进入拍照与填写名字。
             </div>
+          </div>
+
+          <div id="screenProfile" style="display:none">
+            <div class="screenTitle" id="screenProfileTitle">拍照 + 名字</div>
+            <label id="labelName">名字</label>
+            <input id="name" placeholder="例如：Alice" />
+            <div style="height: 10px"></div>
             <video id="onboardVideo" class="miniVideo" autoplay playsinline muted></video>
             <canvas id="shotCanvas" style="display:none"></canvas>
-
             <div style="height: 10px"></div>
-
             <div class="btnrow">
               <button id="btnSnap">拍照</button>
-              <button id="btnUseShot" disabled>使用这张</button>
+              <button class="primary" id="btnUseShot" disabled>提交并进入问卷</button>
             </div>
+            <div class="muted" style="font-size:12px; margin-top:10px" id="profileHint">
+              若手机阻止自动开启摄像头，请先允许权限后再点“拍照”。
+            </div>
+          </div>
 
-            <div style="height: 10px"></div>
-
-            <div id="qArea" style="display:none">
-              <div class="muted" style="font-size:12px;margin-bottom:6px">
-                <span id="qStep">Q1/3</span>
-              </div>
-              <div id="qText" style="font-weight:600;margin-bottom:10px"></div>
-              <div style="display:grid; gap:8px">
-                <button class="primary" id="optA">A</button>
-                <button class="primary" id="optB">B</button>
-                <button class="primary" id="optC">C</button>
-              </div>
+          <div id="screenQuiz" style="display:none">
+            <div class="screenTitle" id="screenQuizTitle">问卷</div>
+            <div class="muted" style="font-size:12px;margin-bottom:6px">
+              <span id="qStep">Q1/3</span>
+            </div>
+            <div id="qText" style="font-weight:600;margin-bottom:10px"></div>
+            <div style="display:grid; gap:8px">
+              <button class="primary" id="optA">A</button>
+              <button class="primary" id="optB">B</button>
+              <button class="primary" id="optC">C</button>
             </div>
 
             <div id="analyzing" style="display:none; margin-top:12px" class="muted">
@@ -450,7 +465,11 @@
           phRoom: "例如：my-room",
           labelName: "名字",
           phName: "例如：Alice",
-          labelOnboard: "创建形象（拍照 + 3 个问题 → 分配角色）",
+          screenRoomTitle: "加入房间",
+          screenProfileTitle: "拍照 + 名字",
+          screenQuizTitle: "问卷",
+          roomHint: "连接成功后会进入拍照与填写名字。",
+          profileHint: "若手机阻止自动开启摄像头，请先允许权限后再点“拍照”。",
           labelDetect: "摄像头识别（猫头鹰眨眼 / 长颈鹿甩脖子）",
           labelChat: "聊天",
           phChat: "说点什么…",
@@ -466,10 +485,8 @@
           disconnected: "未连接",
           connectJoin: "连接 / 加入",
           startGame: "start（开局）",
-          startOnboard: "开始创建",
-          resetOnboard: "重置/重来",
           snap: "拍照",
-          useShot: "使用这张",
+          submitProfile: "提交并进入问卷",
           analyzing: "正在分析你…",
           camStart: "开启摄像头检测",
           camStop: "关闭检测",
@@ -490,7 +507,11 @@
           phRoom: "e.g. my-room",
           labelName: "Name",
           phName: "e.g. Alice",
-          labelOnboard: "Create Character (photo + 3 questions → assign role)",
+          screenRoomTitle: "Join room",
+          screenProfileTitle: "Photo + name",
+          screenQuizTitle: "Questionnaire",
+          roomHint: "After connecting, you'll take a photo and enter your name.",
+          profileHint: "If the browser blocks the camera, allow permission first and tap “Take Photo” again.",
           labelDetect: "Camera detection (owl blink / giraffe neck-swing)",
           labelChat: "Chat",
           phChat: "Say something…",
@@ -506,10 +527,8 @@
           disconnected: "Disconnected",
           connectJoin: "Connect / Join",
           startGame: "Start",
-          startOnboard: "Create Character",
-          resetOnboard: "Reset",
           snap: "Take Photo",
-          useShot: "Use This Photo",
+          submitProfile: "Submit & start quiz",
           analyzing: "Analyzing…",
           camStart: "Enable Camera Detection",
           camStop: "Disable Detection",
@@ -551,8 +570,7 @@
         $("btnChat").disabled = !yes;
         $("btnCam").disabled = !yes;
         $("btnCamStop").disabled = !yes;
-        $("btnOnboard").disabled = !yes;
-        $("btnResetOnboard").disabled = !yes;
+        $("btnConnect").disabled = false;
       }
 
       function animalEmoji(animal) {
@@ -862,8 +880,6 @@
           log("请先连接房间，再开始创建形象");
           return;
         }
-        $("onboardArea").style.display = "";
-        $("qArea").style.display = "none";
         $("analyzing").style.display = "none";
         $("reveal").style.display = "none";
         $("btnUseShot").disabled = true;
@@ -874,21 +890,11 @@
 
         const video = $("onboardVideo");
         try {
-          // Prefer a pre-acquired shared stream (camera permission already granted)
-          const base = sharedStream;
-          const hasVideo = !!base?.getVideoTracks?.()?.length;
-          if (base && hasVideo) {
-            onboardStream = base;
-          } else {
-            onboardStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-          }
+          onboardStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
           video.srcObject = onboardStream;
           await video.play();
           log("入场：摄像头已开启（拍照）");
-          $("autoHint").style.display = "none";
         } catch (e) {
-          // iOS/Safari often requires a user gesture
-          $("autoHint").style.display = "";
           log(t("camManualHint"));
           throw e;
         }
@@ -918,7 +924,10 @@
       }
 
       function beginQuestions() {
-        $("qArea").style.display = "";
+        qIdx = 0;
+        answers = {};
+        $("analyzing").style.display = "none";
+        $("reveal").style.display = "none";
         renderQuestion();
       }
 
@@ -949,13 +958,16 @@
         }
         if (!ws || ws.readyState !== WebSocket.OPEN) return;
 
+        // Update name on server
+        const realName = ($("name")?.value || "").trim() || "Player";
+        ws.send(JSON.stringify({ type: "join", name: realName }));
+
         // 1) photo
         ws.send(JSON.stringify({ type: "submit_photo", photoBase64: onboardShotDataUrl }));
 
         // 2) answers
         ws.send(JSON.stringify({ type: "submit_answers", answers }));
 
-        $("qArea").style.display = "none";
         $("analyzing").style.display = "";
         waitingReveal = true;
         log("入场：已提交照片与问卷，等待判定…");
@@ -963,8 +975,6 @@
 
       function resetOnboarding() {
         stopOnboardingCamera();
-        $("onboardArea").style.display = "none";
-        $("qArea").style.display = "none";
         $("analyzing").style.display = "none";
         $("reveal").style.display = "none";
         $("btnUseShot").disabled = true;
@@ -976,7 +986,6 @@
 
       $("btnConnect").addEventListener("click", () => {
         const roomId = $("roomId").value.trim() || "test-room";
-        const name = $("name").value.trim() || "Player";
         currentRoom = roomId;
 
         if (ws) ws.close();
@@ -985,14 +994,8 @@
         ws.addEventListener("open", () => {
           setConnected(true, `(${roomId})`);
           log(`WS open → ${partyUrl(roomId)}`);
-          ws.send(JSON.stringify({ type: "join", name }));
-          // After join: show permission gate first, then go straight to photo+questions.
-          setTimeout(() => {
-            if (myAnimal) return;
-            openPermissionGate().catch(() => {
-              // user cancelled or permission failed; they can click "开始创建" to retry
-            });
-          }, 50);
+          ws.send(JSON.stringify({ type: "join", name: "Guest" }));
+          showScreen("profile");
         });
 
         ws.addEventListener("close", () => {
@@ -1110,29 +1113,14 @@
         stopCamera();
       });
 
-      $("btnOnboard").addEventListener("click", () => {
-        // Manual retry entry: still goes through permission gate to request camera/mic with a gesture
-        openPermissionGate()
-          .then(() => {
-            // show snap step
-            $("qArea").style.display = "none";
-            $("analyzing").style.display = "none";
-            $("reveal").style.display = "none";
-          })
-          .catch((e) => log(`入场摄像头启动失败：${String(e?.message || e)}`));
-      });
-
-      $("btnResetOnboard").addEventListener("click", () => {
-        resetOnboarding();
-        log("入场：已重置");
-      });
+      // legacy onboarding buttons removed in mobile flow
 
       $("btnSnap").addEventListener("click", () => {
         snapPhoto();
       });
 
       $("btnUseShot").addEventListener("click", () => {
-        // after confirm photo, proceed to questions
+        showScreen("quiz");
         beginQuestions();
       });
 
@@ -1150,6 +1138,23 @@
       setConnected(false);
       setMyAnimal(null);
 
+      function showScreen(which) {
+        const room = $("screenRoom");
+        const profile = $("screenProfile");
+        const quiz = $("screenQuiz");
+        room.style.display = which === "room" ? "" : "none";
+        profile.style.display = which === "profile" ? "" : "none";
+        quiz.style.display = which === "quiz" ? "" : "none";
+
+        $("pill1").className = "stepPill" + (which === "room" ? " active" : "");
+        $("pill2").className = "stepPill" + (which === "profile" ? " active" : "");
+        $("pill3").className = "stepPill" + (which === "quiz" ? " active" : "");
+
+        if (which === "profile") {
+          startOnboarding().catch(() => {});
+        }
+      }
+
       function applyLocale() {
         document.documentElement.lang = getLang() === "en" ? "en" : "zh-CN";
         document.title = t("title");
@@ -1161,7 +1166,11 @@
         $("roomId").placeholder = t("phRoom");
         $("labelName").textContent = t("labelName");
         $("name").placeholder = t("phName");
-        $("labelOnboard").textContent = t("labelOnboard");
+        if ($("screenRoomTitle")) $("screenRoomTitle").textContent = t("screenRoomTitle");
+        if ($("screenProfileTitle")) $("screenProfileTitle").textContent = t("screenProfileTitle");
+        if ($("screenQuizTitle")) $("screenQuizTitle").textContent = t("screenQuizTitle");
+        if ($("roomHint")) $("roomHint").textContent = t("roomHint");
+        if ($("profileHint")) $("profileHint").textContent = t("profileHint");
         $("labelDetect").textContent = t("labelDetect");
         $("labelChat").textContent = t("labelChat");
         $("chatText").placeholder = t("phChat");
@@ -1169,14 +1178,11 @@
         $("logTitle").textContent = t("logTitle");
         $("logSubtitle").textContent = t("logSubtitle");
         $("playersTitle").textContent = t("playersTitle");
-        $("autoHint").textContent = t("autoHint");
 
         $("btnConnect").textContent = t("connectJoin");
         $("btnStart").textContent = t("startGame");
-        $("btnOnboard").textContent = t("startOnboard");
-        $("btnResetOnboard").textContent = t("resetOnboard");
         $("btnSnap").textContent = t("snap");
-        $("btnUseShot").textContent = t("useShot");
+        $("btnUseShot").textContent = t("submitProfile");
         $("analyzing").textContent = t("analyzing");
         $("btnCam").textContent = t("camStart");
         $("btnCamStop").textContent = t("camStop");
