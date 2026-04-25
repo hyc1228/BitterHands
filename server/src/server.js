@@ -79,6 +79,21 @@ export default class Server {
   }
 
   /**
+   * SPA static hosting serves the React shell for `*.html` when the file is not matched first.
+   * The main-scene iframe is `nz-scene.html` in the deploy bundle; load it from the asset store.
+   * @param {import("partykit/server").Request} req
+   * @param {import("partykit/server").FetchLobby} lobby
+   * @param {import("partykit/server").ExecutionContext} _ctx
+   */
+  static async onFetch(req, lobby, _ctx) {
+    const url = new URL(req.url);
+    if (url.pathname === "/nz-scene.html" && req.method === "GET") {
+      const r = await lobby.assets.fetch("/nz-scene.html");
+      if (r) return r;
+    }
+  }
+
+  /**
    * @param {import("partykit/server").Connection} conn
    */
   onConnect(conn) {
