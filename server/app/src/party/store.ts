@@ -87,16 +87,38 @@ function partykitHostFromEnv(): string | null {
 }
 
 /**
+ * Stable per-browser id used as PartyKit's `?_pk=` connection id, so refreshes / reconnects
+ * reuse the same room slot (otherwise every new socket gets a fresh `conn.id`, which
+ * eats `MAX_ROOM_PLAYERS` until the platform finally GCs stale slots).
+ */
+function stableConnectionId(): string {
+  try {
+    const k = "nz.connId";
+    const v = localStorage.getItem(k);
+    if (v && /^[a-zA-Z0-9_-]{8,64}$/.test(v)) return v;
+    const fresh =
+      typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID()
+        : `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+    localStorage.setItem(k, fresh);
+    return fresh;
+  } catch {
+    return `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+}
+
+/**
  * `wss` when a deploy host is set (Vercel + PartyKit cloud) or the page is HTTPS; otherwise
  * `ws` for local HTTP (e.g. Vite + PartyKit on localhost).
  */
 function partyUrl(roomId: string): string {
+  const cid = encodeURIComponent(stableConnectionId());
   const host = partykitHostFromEnv();
   if (host) {
-    return `wss://${host}/party/${encodeURIComponent(roomId)}`;
+    return `wss://${host}/party/${encodeURIComponent(roomId)}?_pk=${cid}`;
   }
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${location.host}/party/${encodeURIComponent(roomId)}`;
+  return `${proto}//${location.host}/party/${encodeURIComponent(roomId)}?_pk=${cid}`;
 }
 
 export const usePartyStore = create<PartyStoreState>((set, get) => ({
@@ -173,25 +195,37 @@ export const usePartyStore = create<PartyStoreState>((set, get) => ({
 
     return new Promise<void>((resolve, reject) => {
       const ws = new WebSocket(partyUrl(roomId));
+      // Each ws's listeners must only mutate state when it's still the current ws;
+      // a previous-connection close event arrives async after `set({ws})` and would
+      // otherwise wipe the new ws (= "joined then instantly disconnected" UX).
+      let settled = false;
 
       ws.addEventListener("open", () => {
         set({ ws, conn: "open" });
         if (get().mode === "player" && name) {
           ws.send(JSON.stringify({ type: ClientMessageTypes.JOIN, name, lang }));
         }
+        settled = true;
         resolve();
       });
 
       ws.addEventListener("close", () => {
+        if (get().ws !== ws) return;
         set((s) => ({ conn: "closed", ws: null, connectError: s.connectError }));
       });
 
       ws.addEventListener("error", () => {
-        set({ conn: "error" });
-        reject(new Error("ws_error"));
+        if (get().ws === ws || !settled) {
+          set((s) => (get().ws === ws ? { conn: "error" } : s));
+        }
+        if (!settled) {
+          settled = true;
+          reject(new Error("ws_error"));
+        }
       });
 
       ws.addEventListener("message", (ev) => {
+        if (get().ws && get().ws !== ws) return;
         let msg: ServerEnvelope | null = null;
         try {
           msg = JSON.parse(ev.data);

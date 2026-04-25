@@ -157,6 +157,12 @@ export default class Server {
         }
         const lang = msg?.lang === "zh" ? "zh" : "en";
 
+        // Reap dead slots (CF/PartyKit may not always fire `onClose` if a tab is killed,
+        // a phone backgrounds the page, or the network drops without a TCP FIN). Without
+        // this, MAX_ROOM_PLAYERS gets exhausted and new joiners see `room_full` until the
+        // platform finally GCs.
+        this._reapStaleSlots();
+
         const existing = this.players.get(conn.id);
         if (existing) {
           existing.name = name;
@@ -476,6 +482,36 @@ export default class Server {
       message: `${player.name} 离开了房间`
     });
     this._sendRoomSnapshot();
+  }
+
+  /**
+   * Clears `players` entries whose connection is no longer in `getConnections()`.
+   * Called on every JOIN as a fallback when `onClose` was missed (mobile background,
+   * tab kill, network drop, etc.). Cheap — O(players + connections).
+   */
+  _reapStaleSlots() {
+    if (typeof this.party.getConnections !== "function") return;
+    const live = new Set();
+    for (const c of this.party.getConnections()) live.add(c.id);
+    let changed = false;
+    for (const pid of Array.from(this.players.keys())) {
+      if (live.has(pid)) continue;
+      const p = this.players.get(pid);
+      this.players.delete(pid);
+      this.owlGuessesByPlayerId.delete(pid);
+      this.lastCameraFrameByPlayerId.delete(pid);
+      this._lastMainSceneAt.delete(pid);
+      this._avatarByPlayerId.delete(pid);
+      if (p) {
+        this._broadcast(ServerEventTypes.SYSTEM, {
+          code: "PLAYER_LEFT",
+          params: { name: p.name },
+          message: `${p.name} 离开了房间`
+        });
+        changed = true;
+      }
+    }
+    if (changed) this._sendRoomSnapshot();
   }
 
   async onRequest(req) {
