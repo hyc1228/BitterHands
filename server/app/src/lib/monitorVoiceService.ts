@@ -185,20 +185,22 @@ export function startMonitorVoiceService(): void {
 }
 
 /**
- * Server hands us a path-only URL (`/party/<roomId>/__nz_voice?id=…` for live
- * TTS, or `/voice/<kind>_<idx>.wav` for static MP3). When the SPA is hosted
- * separately from PartyKit (Vercel + cloud deploy with `VITE_PARTYKIT_HOST`),
- * the live-TTS path needs the party host prefix. Static `/voice/...` paths
- * resolve relative to the SPA origin in either setup.
+ * Server hands us a path-only URL — either:
+ *   - `/party/<roomId>/__nz_voice?id=…`  (live ElevenLabs TTS, served by the room)
+ *   - `/voice/<kind>_<idx>.wav`          (static WAV shipped under `server/public/voice/`)
+ *
+ * When SPA + PartyKit live on the same origin (e.g. `*.partykit.dev`), both paths just work
+ * as-is. When the SPA is hosted on a separate origin (Vercel + PartyKit cloud, controlled by
+ * `VITE_PARTYKIT_HOST`), the SPA origin doesn't have these files — we rewrite to PartyKit.
  */
 function resolveAudioUrl(raw: string | null | undefined): string | null {
   if (!raw) return null;
-  if (raw.startsWith("/party/")) {
-    const host = (import.meta.env.VITE_PARTYKIT_HOST as string | undefined)?.trim();
-    if (host) {
-      const cleanHost = host.replace(/^(wss?|https?):\/\//i, "").split("/")[0];
-      return `https://${cleanHost}${raw}`;
-    }
-  }
-  return raw;
+  const needsPartyHost = raw.startsWith("/party/") || raw.startsWith("/voice/");
+  if (!needsPartyHost) return raw;
+  const host = (import.meta.env.VITE_PARTYKIT_HOST as string | undefined)?.trim();
+  if (!host) return raw;
+  const cleanHost = host.replace(/^(wss?|https?):\/\//i, "").split("/")[0];
+  // Same-origin SPA already gets these; the rewrite is only meaningful when SPA host differs.
+  if (typeof window !== "undefined" && window.location.host === cleanHost) return raw;
+  return `https://${cleanHost}${raw}`;
 }
