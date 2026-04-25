@@ -3604,10 +3604,19 @@
       if (_initialHint) _initialHint.textContent = t("hint");
       const _initialLangBtn = document.getElementById("langToggle");
       if (_initialLangBtn) {
-        _initialLangBtn.textContent = currentLang === "zh" ? "EN" : "中";
-        _initialLangBtn.addEventListener("click", () => {
-          setLang(currentLang === "zh" ? "en" : "zh");
-        });
+        // When this scene is embedded inside the React SPA (window.top !== window),
+        // the parent shell's <LangDock /> already provides a language toggle and is
+        // the single source of truth (NZ_PLAYER_SYNC.lang). Hide the in-iframe button
+        // there to avoid two toggles getting out of sync. Standalone tests still see it.
+        const _embedded = window.top !== window;
+        if (_embedded) {
+          _initialLangBtn.style.display = "none";
+        } else {
+          _initialLangBtn.textContent = currentLang === "zh" ? "EN" : "中";
+          _initialLangBtn.addEventListener("click", () => {
+            setLang(currentLang === "zh" ? "en" : "zh");
+          });
+        }
       }
       requestAnimationFrame(frame);
 

@@ -8,7 +8,15 @@ export default function Layout({ children }: PropsWithChildren) {
   const isOb = loc.pathname.startsWith("/ob");
   const isMainScene = loc.pathname.startsWith("/main-scene");
   if (isMainScene) {
-    return <div className="app-shell app-shell--main-scene">{children}</div>;
+    // Keep LangDock floating over the iframe so players can switch language mid-game.
+    // The dock writes to the store; MainScene.tsx's existing `pushToIframe` effect picks
+    // up the new `lang` and forwards it via NZ_PLAYER_SYNC to the iframe's setLang().
+    return (
+      <div className="app-shell app-shell--main-scene">
+        {children}
+        <LangDock />
+      </div>
+    );
   }
   const isOnboard = loc.pathname.startsWith("/onboard");
   const isGame = loc.pathname.startsWith("/game");

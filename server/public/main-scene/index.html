@@ -531,6 +531,13 @@
         }
       }
 
+      /* Open / closed eye state: when the .eye group has class .closed
+         the sclera+pupil hide and a blink lash SVG appears in their
+         place — driven by isEyeClosed() in driveLive2D. */
+      .animal .eye .eye-blink-img { display: none; }
+      .animal .eye.closed .eye-open-part { display: none; }
+      .animal .eye.closed .eye-blink-img { display: block; }
+
       /* Mouth — bbox-centered so face detection can scaleY it for open/close.
          A subtle idle "breathing" animation makes it feel alive until real
          mouth tracking is wired in. */
@@ -873,6 +880,29 @@
         .joystick { display: block; }
       }
 
+      /* Floating language toggle — click to flip zh ↔ en. The parent
+         React app's NZ_PLAYER_SYNC.lang still wins when it arrives. */
+      .lang-toggle {
+        position: absolute;
+        top: 56px;
+        right: 14px;
+        z-index: 28;
+        background: rgba(0, 0, 0, 0.55);
+        color: #fff;
+        border: 1.5px solid rgba(255, 255, 255, 0.45);
+        border-radius: 8px;
+        padding: 3px 10px;
+        font-family: "Patrick Hand", cursive;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+        pointer-events: auto;
+        user-select: none;
+        backdrop-filter: blur(2px);
+        -webkit-backdrop-filter: blur(2px);
+      }
+      .lang-toggle:active { transform: scale(0.94); }
+
       /* ---------- Self-cam preview (bottom-right, local-only) ---------- */
       /* Same <video> element that feeds FaceMesh, just made visible in a
          circular frame. Mirrored so the player sees a natural mirror view.
@@ -1079,7 +1109,7 @@
               <g id="meLayer"></g>
             </g>
           </svg>
-          <div class="hint">WASD 移动 · 点击地面 · 移动端拖左下摇杆</div>
+          <div class="hint" id="moveHint"></div>
         </main>
 
         <footer class="log">
@@ -1111,6 +1141,9 @@
         <!-- Red alert vignette — pulses around the screen edge while a
              challenge (monitor or universal) is active. -->
         <div class="alert-overlay" id="alertOverlay" aria-hidden="true"></div>
+
+        <!-- Language toggle — manual override for zh ↔ en. -->
+        <button class="lang-toggle" id="langToggle" type="button" aria-label="Language">EN</button>
         <!-- Monitor challenge bar (top): when flashlight lands on you. -->
         <div id="challengeOverlay" class="action-bar action-bar-top">
           <div class="bar-fill" id="chal-bar-fill"></div>
@@ -1152,6 +1185,178 @@
       //   VIEW_W / VIEW_H : the SVG viewBox (camera window the player sees)
       //   MAP_W  / MAP_H  : the whole walkable map. Camera follows player.
       // =================================================================
+      // ============================================================
+      // Localization (i18n)
+      // ============================================================
+      // Mirrors server/app/src/i18n.ts: a STRINGS dict per locale, each
+      // value is either a string or a function that returns one.
+      // Lang arrives via NZ_PLAYER_SYNC.lang from the parent React app;
+      // for standalone testing pass ?lang=en (or zh) in the URL.
+      const STRINGS = {
+        en: {
+          hint: "WASD or click ground · drag joystick on mobile",
+
+          // Per-animal action labels (challenge bar)
+          actionBlinkLabel:    "DON'T BLINK 3s!",
+          actionMouthLabel:    "OPEN YOUR MOUTH!",
+          actionShakeLabel:    "SHAKE YOUR HEAD!",
+          // Universal rule labels
+          universalBlinkLabel: "BLINK ONCE!",
+          universalMouthLabel: "OPEN MOUTH!",
+          universalHeadLabel:  "SHAKE OR NOD!",
+          challengeRuleHeader: "Rule",
+          challengeUniHeader:  "Universal",
+
+          // Bar status (small)
+          statusGoNow:         "Go!",
+          statusKeepEyesOpenS: (s) => `Keep eyes open ${s}s…`,
+          statusBlinked:       "You blinked! Stay open…",
+          statusMouthHolding:  "Holding open…",
+          statusMouthOpenCmd:  "Open your mouth!",
+          statusShakeProgress: (n) => `Shake ${n}/2…`,
+          statusUniGo:         "Do it!",
+          statusBlinking:      "Blinking…",
+          statusBlinkPlease:   "Blink!",
+          statusHeadKeep:      "Keep going!",
+          statusHeadDo:        "Shake or nod!",
+          statusSuccess:       "Done!",
+          statusFail:          "Fail! −1♥",
+
+          // Log entries
+          logRuleDone:    "✓ Rule completed.",
+          logRuleFail:    "❌ Failed the rule, −1 ♥.",
+          logUniDone:     "✓ Universal rule completed.",
+          logUniFail:     "❌ Failed the universal rule, −1 ♥.",
+          logAlarmRing:   "Alarm rings… it turns its head.",
+          logRulePrefix:  "「Rule」 ",
+          logWinPrefix:   "「Win」 ",
+          logRosterSync:  (n) => `Synced ${n} player${n === 1 ? "" : "s"} in room.`,
+          logSpotLight:   (name) => `Flashlight on ${name}…`,
+          logDeath:       "💀 HP zero — entering spectator mode.",
+          logMonitorAlert:"⚠ Monitor's watching you — perform the rule!",
+          logUniBlinkAnnounce: "Universal rule: blink.",
+          logUniMouthAnnounce: "Universal rule: open mouth.",
+          logUniHeadAnnounce:  "Universal rule: shake or nod.",
+
+          // Random flavor lines
+          flavor: [
+            "It likes seeing you panicked.",
+            "Park broadcast: keep your animal pose.",
+            "LEO's footsteps stopped too suddenly.",
+            "Something behind you takes notes.",
+            "MIA's neck wobble wasn't quite big enough.",
+            "Tip: alarms briefly distract it.",
+            "It draws a circle on your tile.",
+            "There's an extra hand in the frame, but you don't recognise it.",
+            "Your shadow stands straighter than you.",
+          ],
+          // Pre-populated log when scene boots
+          seedLogs: [
+            { t: "00:08", m: "White lion must low-roar every minute.", rule: true },
+            { t: "00:23", m: "Park broadcast: keep your animal pose." },
+            { t: "01:02", m: "No smiling on camera.", rule: true },
+            { t: "01:30", m: "MIA's shadow lagged half a step." },
+            { t: "02:11", m: "It likes seeing you panicked." },
+            { t: "02:31", m: "You stood still on camera too long." },
+          ],
+        },
+        zh: {
+          hint: "WASD 移动 · 点击地面 · 移动端拖左下摇杆",
+
+          actionBlinkLabel:    "3秒不眨眼！",
+          actionMouthLabel:    "张开嘴巴！",
+          actionShakeLabel:    "摇头晃脑！",
+          universalBlinkLabel: "眨一下眼！",
+          universalMouthLabel: "张开嘴巴！",
+          universalHeadLabel:  "摇头或点头！",
+          challengeRuleHeader: "守则",
+          challengeUniHeader:  "通用",
+
+          statusGoNow:         "快做出动作！",
+          statusKeepEyesOpenS: (s) => `保持睁眼 ${s}s…`,
+          statusBlinked:       "眨眼了！保持睁眼…",
+          statusMouthHolding:  "嘴巴张开中…",
+          statusMouthOpenCmd:  "张开嘴巴！",
+          statusShakeProgress: (n) => `摇头 ${n}/2…`,
+          statusUniGo:         "请执行！",
+          statusBlinking:      "眨眼中…",
+          statusBlinkPlease:   "请眨眼！",
+          statusHeadKeep:      "继续！",
+          statusHeadDo:        "摇头或点头！",
+          statusSuccess:       "完成！",
+          statusFail:          "违规！−1♥",
+
+          logRuleDone:    "✓ 守则完成。",
+          logRuleFail:    "❌ 未执行守则，扣 1 生命值。",
+          logUniDone:     "✓ 通用规则完成。",
+          logUniFail:     "❌ 未执行通用规则，扣 1 生命值。",
+          logAlarmRing:   "闹铃响了…它转过头来。",
+          logRulePrefix:  "「守则」",
+          logWinPrefix:   "「胜利」",
+          logRosterSync:  (n) => `已同步 ${n} 名同房间玩家`,
+          logSpotLight:   (name) => `手电筒照到 ${name}…`,
+          logDeath:       "💀 生命值归零，进入观战模式。",
+          logMonitorAlert:"⚠ 监管者注视你了——执行守则！",
+          logUniBlinkAnnounce: "通用规则：请眨眼。",
+          logUniMouthAnnounce: "通用规则：请张嘴。",
+          logUniHeadAnnounce:  "通用规则：摇头或点头。",
+
+          flavor: [
+            "它喜欢看你慌张的样子。",
+            "园区广播：请保持你的动物姿势。",
+            "LEO 的脚步停得太突然了。",
+            "有什么东西在你身后写下笔记。",
+            "MIA 的甩脖动作不够大。",
+            "提示：闹铃会暂时分散它的注意。",
+            "它在你的格子上画了一个圈。",
+            "镜头里多了一只手，但你不认识它。",
+            "你的影子站得比你直。",
+          ],
+          seedLogs: [
+            { t: "00:08", m: "白狮子每分钟必须低吼。", rule: true },
+            { t: "00:23", m: "园区广播：请保持你的动物姿势。" },
+            { t: "01:02", m: "禁止在镜头里微笑。", rule: true },
+            { t: "01:30", m: "MIA 的影子比她慢了半步。" },
+            { t: "02:11", m: "它喜欢看你慌张的样子。" },
+            { t: "02:31", m: "你在镜头里站得太久了。" },
+          ],
+        },
+      };
+
+      let currentLang = "zh";
+      const _urlLang = new URLSearchParams(location.search).get("lang");
+      if (_urlLang === "en" || _urlLang === "zh") currentLang = _urlLang;
+
+      function t(key, ...args) {
+        const dict = STRINGS[currentLang] || STRINGS.en;
+        const v = dict[key];
+        if (typeof v === "function") return v(...args);
+        if (typeof v === "string") return v;
+        const en = STRINGS.en[key];
+        if (typeof en === "function") return en(...args);
+        if (typeof en === "string") return en;
+        return key;
+      }
+      function tArr(key) {
+        const dict = STRINGS[currentLang] || STRINGS.en;
+        if (Array.isArray(dict[key])) return dict[key];
+        return Array.isArray(STRINGS.en[key]) ? STRINGS.en[key] : [];
+      }
+      function setLang(lang) {
+        if (lang !== "en" && lang !== "zh") return;
+        if (lang === currentLang) return;
+        currentLang = lang;
+        // Re-render the persistent visible labels that don't redraw on
+        // their own. Challenge bars, log entries, etc. are dynamic and
+        // pick up the new lang on next event.
+        const hintEl = document.querySelector(".hint");
+        if (hintEl) hintEl.textContent = t("hint");
+        // Toggle button shows the OTHER language as a hint of what
+        // clicking it will do.
+        const langBtn = document.getElementById("langToggle");
+        if (langBtn) langBtn.textContent = currentLang === "zh" ? "EN" : "中";
+      }
+
       const VIEW_W = 300;
       const VIEW_H = 500;
       const MAP_W = 1080;
@@ -1427,32 +1632,77 @@
           const pupilDxL = e.l.cx < 0 ?  inward : -inward;
           const pupilDxR = e.r.cx < 0 ?  inward : -inward;
 
+          // Closed-eye SVG. blink_left.svg (126×120) has its lash
+          // convergence at the right side; we use it as-is for eye-l and
+          // mirror it horizontally for eye-r.
+          const BLINK_W_RATIO = 2.6;
+          const BLINK_ASPECT = 120 / 126;
+
+          // ---- LEFT eye ---------------------------------------------
           const eyeL = el("g", { class: "eye eye-l" });
+          // Open-state circles (sclera + pupil)
           eyeL.appendChild(
             el("circle", {
               cx: e.l.cx, cy: e.l.cy, r: e.l.scleraR,
               fill: e.sclera,
+              class: "eye-open-part",
             })
           );
           const pupilL = el("circle", {
             cx: e.l.cx + pupilDxL, cy: e.l.cy, r: e.l.pupilR,
             fill: e.pupil,
+            class: "eye-open-part",
           });
           eyeL.appendChild(pupilL);
+          // Closed-state image (blink lashes), hidden by default
+          const blinkLW = e.l.scleraR * BLINK_W_RATIO;
+          const blinkLH = blinkLW * BLINK_ASPECT;
+          eyeL.appendChild(
+            el("image", {
+              href: "blink_left.svg",
+              x: e.l.cx - blinkLW / 2,
+              y: e.l.cy - blinkLH / 2,
+              width: blinkLW,
+              height: blinkLH,
+              preserveAspectRatio: "xMidYMid meet",
+              class: "eye-blink-img",
+            })
+          );
           inner.appendChild(eyeL);
 
+          // ---- RIGHT eye --------------------------------------------
           const eyeR = el("g", { class: "eye eye-r" });
           eyeR.appendChild(
             el("circle", {
               cx: e.r.cx, cy: e.r.cy, r: e.r.scleraR,
               fill: e.sclera,
+              class: "eye-open-part",
             })
           );
           const pupilR = el("circle", {
             cx: e.r.cx + pupilDxR, cy: e.r.cy, r: e.r.pupilR,
             fill: e.pupil,
+            class: "eye-open-part",
           });
           eyeR.appendChild(pupilR);
+          // Mirrored blink image: same SVG, flipped in place via
+          // translate+scale(-1) so the lashes face the other way.
+          const blinkRW = e.r.scleraR * BLINK_W_RATIO;
+          const blinkRH = blinkRW * BLINK_ASPECT;
+          const blinkRX = e.r.cx - blinkRW / 2;
+          const blinkRY = e.r.cy - blinkRH / 2;
+          eyeR.appendChild(
+            el("image", {
+              href: "blink_left.svg",
+              x: blinkRX,
+              y: blinkRY,
+              width: blinkRW,
+              height: blinkRH,
+              preserveAspectRatio: "xMidYMid meet",
+              class: "eye-blink-img",
+              transform: `translate(${2 * blinkRX + blinkRW} 0) scale(-1 1)`,
+            })
+          );
           inner.appendChild(eyeR);
 
           root._pupilL = pupilL;
@@ -1794,27 +2044,40 @@
         // .fence-layer (CSS) further nails the layer to GPU memory.
         const FH = 92;
         const FW = 140;
-        function placeFenceRow(parent, length, y) {
-          for (let x = 0; x < length; x += FW) {
+        // Tiles overlap by this much so the tiny transparent margin in
+        // each fenceTile.svg doesn't leave a visible seam between adjacent
+        // tiles. STEP is the spacing between successive tile origins.
+        const TILE_OVERLAP = 18;
+        const STEP = FW - TILE_OVERLAP;
+
+        function placeFenceRow(parent, startX, endX, y) {
+          for (let x = startX; x < endX; x += STEP) {
             parent.appendChild(
               el("image", {
                 href: "fenceTile.svg",
                 x,
                 y,
-                width: Math.min(FW, length - x),
+                width: FW,
                 height: FH,
                 preserveAspectRatio: "none",
               })
             );
           }
         }
-        placeFenceRow(layers.fence, MAP_W, 0);
-        placeFenceRow(layers.fence, MAP_W, MAP_H - FH);
+
+        // Top + bottom edges SKIP the FH × FH corner squares, so we don't
+        // double up horizontal+vertical tiles at the corners. The vertical
+        // sides own the corners.
+        placeFenceRow(layers.fence, FH, MAP_W - FH, 0);
+        placeFenceRow(layers.fence, FH, MAP_W - FH, MAP_H - FH);
+
+        // Left + right sides cover full height including corners. Drawn
+        // AFTER the horizontals so they sit on top at any seam.
         const leftG = el("g", { transform: `translate(${FH} 0) rotate(90)` });
-        placeFenceRow(leftG, MAP_H, 0);
+        placeFenceRow(leftG, 0, MAP_H, 0);
         layers.fence.appendChild(leftG);
         const rightG = el("g", { transform: `translate(${MAP_W} 0) rotate(90)` });
-        placeFenceRow(rightG, MAP_H, 0);
+        placeFenceRow(rightG, 0, MAP_H, 0);
         layers.fence.appendChild(rightG);
 
         // ---- Cone (drawn behind everything except background) ----------
@@ -2191,7 +2454,7 @@
           flashHeartGain();
           playSound("healthGain");
         } else if (it.type === "alarm") {
-          addLog("闹铃响了…它转过头来。");
+          addLog(t("logAlarmRing"));
           playAlarmSound();
           if (challenge.active) endChallenge(false);
           state.monitor.mode = "sweep";
@@ -2215,7 +2478,7 @@
             playSound("healthGain");
           }
         } else if (e.itemType === "alarm") {
-          addLog("闹铃响了…它转过头来。");
+          addLog(t("logAlarmRing"));
           playAlarmSound();
           if (challenge.active) endChallenge(false);
           state.monitor.mode = "sweep";
@@ -2359,7 +2622,7 @@
               startChallenge();
             } else {
               const name = state.others.find((p) => p.id === pick.id)?.name ?? pick.id;
-              addLog(`手电筒照到 ${name}…`);
+              addLog(t("logSpotLight", name));
             }
           }
         } else if (m.mode === "locked") {
@@ -2382,14 +2645,20 @@
           const desired = Math.atan2(target.y - m.y, target.x - m.x);
           m.aimAngle += clamp(wrapAngle(desired - m.aimAngle), -8 * dt, 8 * dt);
 
-          // Chase target closely
+          // Stalker behaviour: keep a comfortable gap. Full speed when
+          // far, smoothly slow down as we approach the comfort distance
+          // so we don't bump into the player, then hold position. The
+          // flashlight cone reaches ~260 px so 150 still lights them up.
           const dx   = target.x - m.x;
           const dy   = target.y - m.y;
           const dist = Math.hypot(dx, dy);
-          m.moving = dist > 40;
+          const COMFORT  = 150;  // closest the monitor will get
+          const RAMP     = 70;   // ease-in band above COMFORT
+          m.moving = dist > COMFORT;
           if (m.moving) {
-            m.x += (dx / dist) * MON_SPEED * dt;
-            m.y += (dy / dist) * MON_SPEED * dt;
+            const speedFactor = Math.min(1, (dist - COMFORT) / RAMP);
+            m.x += (dx / dist) * MON_SPEED * speedFactor * dt;
+            m.y += (dy / dist) * MON_SPEED * speedFactor * dt;
           }
           m.x = clamp(m.x, BORDER, MAP_W - BORDER);
           m.y = clamp(m.y, BORDER, MAP_H - BORDER);
@@ -2436,7 +2705,7 @@
         universalChallenge.completed = false;
         uChalOverlay.className = "action-bar action-bar-bottom";
         renderLives();
-        addLog("💀 生命值归零，进入观战模式。");
+        addLog(t("logDeath"));
         // Flash the full overlay for 2.5s, then fade out and show small badge
         const overlay = document.getElementById("deathOverlay");
         const badge   = document.getElementById("spectatorBadge");
@@ -2460,14 +2729,7 @@
       // =================================================================
       // Zoo keeper log
       // =================================================================
-      const seedLogs = [
-        { t: "00:08", m: "白狮子每分钟必须低吼。", rule: true },
-        { t: "00:23", m: "园区广播：请保持你的动物姿势。" },
-        { t: "01:02", m: "禁止在镜头里微笑。", rule: true },
-        { t: "01:30", m: "MIA 的影子比她慢了半步。" },
-        { t: "02:11", m: "它喜欢看你慌张的样子。" },
-        { t: "02:31", m: "你在镜头里站得太久了。" },
-      ];
+      // Seed log entries pulled from STRINGS so they switch language.
       const logList = document.getElementById("logList");
       const logBox = document.querySelector(".log");
       function fmtNow() {
@@ -2492,42 +2754,36 @@
         if (logBox) logBox.scrollTop = 0;
       }
       function seedLog() {
+        const seeds = tArr("seedLogs");
         // Append in reverse so the freshest sits on top.
-        for (let i = seedLogs.length - 1; i >= 0; i--) {
-          const e = seedLogs[i];
+        for (let i = seeds.length - 1; i >= 0; i--) {
+          const e = seeds[i];
           addLog(e.m, e.t, { rule: e.rule });
         }
       }
 
-      // Random AI commentary (placeholder for Claude output)
-      const flavorLines = [
-        "它喜欢看你慌张的样子。",
-        "园区广播：请保持你的动物姿势。",
-        "LEO 的脚步停得太突然了。",
-        "有什么东西在你身后写下笔记。",
-        "MIA 的甩脖动作不够大。",
-        "提示：闹铃会暂时分散它的注意。",
-        "它在你的格子上画了一个圈。",
-        "镜头里多了一只手，但你不认识它。",
-        "你的影子站得比你直。",
-      ];
+      // Random AI commentary (placeholder for Claude output) — pulled from
+      // the localized flavor[] each tick so language flips immediately.
       function tickFlavor() {
         if (Math.random() < 0.55) {
-          addLog(flavorLines[Math.floor(Math.random() * flavorLines.length)]);
+          const lines = tArr("flavor");
+          if (lines.length > 0) {
+            addLog(lines[Math.floor(Math.random() * lines.length)]);
+          }
         }
       }
       setInterval(tickFlavor, 6500);
 
       // Periodic new-rule announcements (red, distinct from flavor)
       const UNIVERSAL_RULES = [
-        { id: "u_blink",    icon: "👁️", label: "眨一下眼！",  log: "通用规则：请眨眼。" },
-        { id: "u_mouth",    icon: "😮", label: "张开嘴巴！",  log: "通用规则：请张嘴。" },
-        { id: "u_headmove", icon: "🙂", label: "摇头或点头！", log: "通用规则：摇头或点头。" },
+        { id: "u_blink",    icon: "👁️", labelKey: "universalBlinkLabel", logKey: "logUniBlinkAnnounce" },
+        { id: "u_mouth",    icon: "😮", labelKey: "universalMouthLabel", logKey: "logUniMouthAnnounce" },
+        { id: "u_headmove", icon: "🙂", labelKey: "universalHeadLabel",  logKey: "logUniHeadAnnounce"  },
       ];
       function triggerUniversalRule() {
         if (universalChallenge.active || state.me.dead) return;
         const rule = UNIVERSAL_RULES[Math.floor(Math.random() * UNIVERSAL_RULES.length)];
-        addLog(rule.log, null, { rule: true });
+        addLog(t(rule.logKey), null, { rule: true });
         startUniversalChallenge(rule);
       }
       setInterval(triggerUniversalRule, 15000);
@@ -2788,10 +3044,12 @@
         blink: { since: null },
       };
 
+      // Animal → action map. Labels resolved via t() at startChallenge time
+      // so a mid-game language switch picks up the new copy.
       const ACTION_INFO = {
-        blink: { icon: "👁️", label: "5秒不眨眼！" },
-        mouth: { icon: "😮", label: "张开嘴巴！"  },
-        shake: { icon: "🙂", label: "摇头晃脑！"  },
+        blink: { icon: "👁️", labelKey: "actionBlinkLabel" },
+        mouth: { icon: "😮", labelKey: "actionMouthLabel" },
+        shake: { icon: "🙂", labelKey: "actionShakeLabel" },
       };
 
       function animalToAction(animal) {
@@ -2812,11 +3070,22 @@
         challenge.blink     = { since: null };
         const info = ACTION_INFO[challenge.action];
         chalIcon.textContent   = info.icon;
-        chalLabel.textContent  = info.label;
-        chalStatus.textContent = "快做出动作！";
+        chalLabel.textContent  = t(info.labelKey);
+        chalStatus.textContent = t("statusGoNow");
         chalBarFill.style.width = "100%";
         chalOverlay.className  = "action-bar action-bar-top active";
-        addLog("⚠ 监管者注视你了——执行守则！", null, { rule: true });
+        addLog(t("logMonitorAlert"), null, { rule: true });
+      }
+
+      function reportViolation() {
+        try {
+          if (window !== window.top) {
+            window.parent.postMessage(
+              { type: "NZ_OUT_VIOLATION", source: "nocturne-zoo", payload: {} },
+              "*"
+            );
+          }
+        } catch (e) {}
       }
 
       function endChallenge(success) {
@@ -2830,17 +3099,18 @@
           state.monitor.sweepTimer = 1;
         }
         if (success) {
-          chalStatus.textContent = "守则完成！";
+          chalStatus.textContent = t("statusSuccess");
           chalBarFill.style.width = "100%"; // green snaps full
           chalOverlay.className  = "action-bar action-bar-top active success";
-          addLog("✓ 守则完成。");
+          addLog(t("logRuleDone"));
         } else {
-          chalStatus.textContent = "违规！−1♥";
+          chalStatus.textContent = t("statusFail");
           chalOverlay.className  = "action-bar action-bar-top active fail";
+          reportViolation();
           state.me.lives = Math.max(0, state.me.lives - 1);
           renderLives();
           playSound("healthLoss");
-          addLog("❌ 未执行守则，扣 1 生命值。", null, { rule: true });
+          addLog(t("logRuleFail"), null, { rule: true });
           if (state.me.lives <= 0) { setTimeout(handleDeath, 1400); }
         }
         setTimeout(() => {
@@ -2863,13 +3133,115 @@
       const EAR_CLOSED   = 0.25;
       const MAR_OPEN     = 0.40;
       const SHAKE_THRESH = 0.08;
-      const BLINK_MS     = 5000;
+      const BLINK_MS     = 3000;
 
       function lmDist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
 
       function earVal(lm, idx) {
         const [p1, p2, p3, p4, p5, p6] = idx.map((i) => lm[i]);
         return (lmDist(p2, p6) + lmDist(p3, p5)) / (2 * lmDist(p1, p4));
+      }
+
+      // ============================================================
+      // BLINK / EYE-OPEN DETECTION TUNING
+      // ============================================================
+      // All knobs in one place. If detection feels wrong, change a number
+      // here, refresh, retest. Each knob's effect is described inline.
+      //
+      // The system has 4 stages:
+      //   1. Each frame compute raw EAR (eye aspect ratio) for L and R.
+      //   2. Smooth (moving avg) to kill MediaPipe single-frame jitter.
+      //   3. Feed the smoothed avg into a per-user "open eye" baseline
+      //      (rolling 80th percentile).
+      //   4. Eye is "closed" when smoothed EAR < baseline × closedRatio.
+      const BLINK_TUNING = {
+        // --- Smoothing -----------------------------------------------
+        // Bigger = less jitter but more lag. 2 = one extra frame of lag,
+        // basically imperceptible. Try 3 if blinks still flicker on/off.
+        smoothWindow: 2,
+
+        // --- Baseline ("what does this user's open eye look like") ---
+        // Rolling buffer of recent EAR samples used to learn the user's
+        // own open-eye reference. ~30 fps × 1.5 s ≈ 45 samples.
+        baselineMaxSamples: 45,
+        // Samples below this are discarded so real blinks don't drag the
+        // baseline down. Lower it (e.g. 0.10) only if a user's open-eye
+        // EAR is genuinely below 0.12 (very narrow eyes + bad angle).
+        baselineFilterFloor: 0.12,
+        // Use the 80th percentile of recent samples as the "open" EAR.
+        // Higher (e.g. 0.9) = more conservative open reference, makes
+        // blink threshold higher (easier to trigger).
+        baselinePercentile: 0.80,
+        // Min samples needed before the baseline kicks in. While below
+        // this we use `fallbackThreshold` instead.
+        baselineMinSamples: 8,
+
+        // --- Closed-eye decision (the main sensitivity knob) ---------
+        // Eye is "closed" when SMOOTHED ear < baseline × this ratio.
+        //   0.85 = very sensitive (lots of false-positive blinks)
+        //   0.75 = current default — reliably catches mobile blinks
+        //   0.65 = strict (misses some real blinks on phone cams)
+        closedRatio: 0.75,
+        // Used only before the baseline calibrates (first ~0.3 s of
+        // detection). Forgiving fallback so brand-new sessions work.
+        fallbackThreshold: 0.19,
+
+        // --- Avatar eye visual mapping (Live2D-style scaleY) ---------
+        // Where on the EAR scale the avatar's eye is "fully closed" /
+        // "fully open" for animation purposes. Independent from the
+        // challenge detection above.
+        avatarClosedRatio: 0.40,   // ear < baseline*0.40 → eye flat
+        avatarOpenRatio:   1.00,   // ear ≥ baseline      → eye round
+
+        // --- u_blink (universal "please blink") ---------------------
+        // How many consecutive smoothed-closed frames count as one
+        // blink event. 2 = a quick selfie blink registers. Increase to
+        // 3 if false positives reappear.
+        uBlinkFramesNeeded: 2,
+      };
+
+      // ---------- Implementation ----------
+      // 1) Smoothing (kills MediaPipe ±0.03 frame jitter)
+      const earSmoothBuf = [];
+      function smoothedEar(rawEar) {
+        if (!Number.isFinite(rawEar)) return rawEar;
+        earSmoothBuf.push(rawEar);
+        if (earSmoothBuf.length > BLINK_TUNING.smoothWindow) {
+          earSmoothBuf.shift();
+        }
+        let sum = 0;
+        for (const v of earSmoothBuf) sum += v;
+        return sum / earSmoothBuf.length;
+      }
+
+      // 2) Adaptive baseline
+      const earBaseline = { samples: [], value: null };
+      function recordEar(ear) {
+        if (!Number.isFinite(ear) || ear < BLINK_TUNING.baselineFilterFloor) return;
+        earBaseline.samples.push(ear);
+        if (earBaseline.samples.length > BLINK_TUNING.baselineMaxSamples) {
+          earBaseline.samples.shift();
+        }
+        if (earBaseline.samples.length >= BLINK_TUNING.baselineMinSamples) {
+          const sorted = earBaseline.samples.slice().sort((a, b) => a - b);
+          const idx = Math.floor(sorted.length * BLINK_TUNING.baselinePercentile);
+          earBaseline.value = sorted[idx];
+        }
+      }
+
+      // 3) Decisions
+      function isEyeClosed(ear) {
+        if (!earBaseline.value) return ear < BLINK_TUNING.fallbackThreshold;
+        return ear < earBaseline.value * BLINK_TUNING.closedRatio;
+      }
+      function eyeOpenness(ear) {
+        const baseline = earBaseline.value || 0.25;
+        const closedAt = baseline * BLINK_TUNING.avatarClosedRatio;
+        const openAt   = baseline * BLINK_TUNING.avatarOpenRatio;
+        return Math.max(
+          0.05,
+          Math.min(1, (ear - closedAt) / (openAt - closedAt))
+        );
       }
 
       // Live2D mapping. Translates EAR / MAR / head pose into transforms on
@@ -2898,12 +3270,13 @@
         const me = state.nodes.me;
         if (!me) return;
 
-        // 1) Eye openness 0..1 from EAR (per eye)
+        // 1) Eye openness 0..1 from EAR (per eye), normalised against the
+        //    user's own baseline so phone-camera EAR variations don't
+        //    leave the avatar's eyes always half-shut.
         const earL = earVal(lm, L_EYE_IDX);
         const earR = earVal(lm, R_EYE_IDX);
-        const span = LIVE2D_EAR_OPEN - LIVE2D_EAR_CLOSED;
-        const openL = Math.max(0.05, clamp01((earL - LIVE2D_EAR_CLOSED) / span));
-        const openR = Math.max(0.05, clamp01((earR - LIVE2D_EAR_CLOSED) / span));
+        const openL = eyeOpenness(earL);
+        const openR = eyeOpenness(earR);
 
         // 2) Mouth openness 0..1 from MAR
         const mar = lmDist(lm[13], lm[14]) / (lmDist(lm[61], lm[291]) + 1e-6);
@@ -2927,8 +3300,12 @@
         const fh  = Math.abs(top.y - bot.y) + 1e-6;
         const ny  = (nose.y - fcy) / fh;
 
-        const headRot = clampSym(nx * LIVE2D_SHAKE_GAIN, LIVE2D_SHAKE_MAX);
-        const headDy  = clampSym(ny * LIVE2D_NOD_GAIN,  LIVE2D_NOD_MAX);
+        // Cam preview is mirrored (CSS scaleX(-1)), but MediaPipe sees the
+        // RAW camera frame. Negate both axes so the avatar mirrors the
+        // user the way they SEE themselves on screen — tilt left → tilt
+        // left, chin down → head down.
+        const headRot = clampSym(-nx * LIVE2D_SHAKE_GAIN, LIVE2D_SHAKE_MAX);
+        const headDy  = clampSym(-ny * LIVE2D_NOD_GAIN,  LIVE2D_NOD_MAX);
 
         // 4) Apply. Webcam is mirrored: MediaPipe L_EYE = user's physical
         //    right, R_EYE = user's physical left, so we swap the eye
@@ -2940,13 +3317,22 @@
         const beakL   = me.querySelector(".beak-lower");
         const bobEl   = me.querySelector(".bob");
 
+        // Mirror swap: avatar's eye-l shows what the user SEES on the
+        // left side of their (mirrored) cam preview, which is anatomically
+        // their right eye = MediaPipe's earR.
+        const closedAvatarL = isEyeClosed(earR);
+        const closedAvatarR = isEyeClosed(earL);
         if (eyeLEl) {
           eyeLEl.style.animation = "none";
-          eyeLEl.style.transform = `scaleY(${openR})`;
+          eyeLEl.classList.toggle("closed", closedAvatarL);
+          // Partial scaleY for not-fully-closed states; cleared when the
+          // SVG lash overlay takes over so it isn't squished too.
+          eyeLEl.style.transform = closedAvatarL ? "" : `scaleY(${openR})`;
         }
         if (eyeREl) {
           eyeREl.style.animation = "none";
-          eyeREl.style.transform = `scaleY(${openL})`;
+          eyeREl.classList.toggle("closed", closedAvatarR);
+          eyeREl.style.transform = closedAvatarR ? "" : `scaleY(${openL})`;
         }
 
         // Mouth: beak (two triangles) gets translate; ellipse / triangle
@@ -2974,6 +3360,11 @@
       }
 
       function processFace(lm, now) {
+        // Feed the adaptive EAR baseline first so every downstream
+        // consumer (avatar mapping + challenges) uses the latest value.
+        const avgEar = (earVal(lm, L_EYE_IDX) + earVal(lm, R_EYE_IDX)) / 2;
+        recordEar(avgEar);
+
         driveLive2D(lm);
         if (challenge.active && !challenge.completed)                   processMonitorChallenge(lm, now);
         if (universalChallenge.active && !universalChallenge.completed) processUniversalChallenge(lm, now);
@@ -2983,15 +3374,19 @@
         const act = challenge.action;
 
         if (act === "blink") {
-          const ear = (earVal(lm, L_EYE_IDX) + earVal(lm, R_EYE_IDX)) / 2;
-          if (ear < EAR_CLOSED) {
+          const ear = smoothedEar(
+            (earVal(lm, L_EYE_IDX) + earVal(lm, R_EYE_IDX)) / 2
+          );
+          if (isEyeClosed(ear)) {
             challenge.blink.since  = null;
-            chalStatus.textContent = "眨眼了！保持睁眼…";
+            chalStatus.textContent = t("statusBlinked");
           } else {
             if (!challenge.blink.since) challenge.blink.since = now;
             const elapsed = now - challenge.blink.since;
-            chalStatus.textContent =
-              "保持睁眼 " + Math.max(0, 5 - elapsed / 1000).toFixed(1) + "s…";
+            chalStatus.textContent = t(
+              "statusKeepEyesOpenS",
+              Math.max(0, 3 - elapsed / 1000).toFixed(1)
+            );
             if (elapsed >= BLINK_MS) {
               challenge.completed = true;
               endChallenge(true);
@@ -3002,7 +3397,7 @@
             lmDist(lm[13], lm[14]) / (lmDist(lm[61], lm[291]) + 1e-6);
           if (mar > MAR_OPEN) {
             challenge.mouth.openFrames++;
-            chalStatus.textContent = "嘴巴张开中…";
+            chalStatus.textContent = t("statusMouthHolding");
             if (challenge.mouth.openFrames >= 8) {
               challenge.completed = true;
               endChallenge(true);
@@ -3012,7 +3407,7 @@
               0,
               challenge.mouth.openFrames - 1
             );
-            chalStatus.textContent = "张开嘴巴！";
+            chalStatus.textContent = t("statusMouthOpenCmd");
           }
         } else if (act === "shake") {
           const nose = lm[4], lb = lm[234], rb = lm[454];
@@ -3024,8 +3419,10 @@
             challenge.shake.dir = cur;
             challenge.shake.changes++;
           }
-          chalStatus.textContent =
-            "摇头 " + Math.floor(challenge.shake.changes / 2) + "/2…";
+          chalStatus.textContent = t(
+            "statusShakeProgress",
+            Math.floor(challenge.shake.changes / 2)
+          );
           if (challenge.shake.changes >= 4) {
             challenge.completed = true;
             endChallenge(true);
@@ -3063,8 +3460,8 @@
         universalChallenge.mouth     = { frames: 0 };
         universalChallenge.headmove  = { hDir: 0, hChanges: 0, vDir: 0, vChanges: 0 };
         uChalIcon.textContent    = rule.icon;
-        uChalLabel.textContent   = rule.label;
-        uChalStatus.textContent  = "请执行！";
+        uChalLabel.textContent   = t(rule.labelKey);
+        uChalStatus.textContent  = t("statusUniGo");
         uChalBarFill.style.width = "100%";
         uChalOverlay.className   = "action-bar action-bar-bottom active";
       }
@@ -3073,17 +3470,18 @@
         if (!universalChallenge.active) return;
         universalChallenge.active = false;
         if (success) {
-          uChalStatus.textContent = "完成！";
+          uChalStatus.textContent = t("statusSuccess");
           uChalBarFill.style.width = "100%";
           uChalOverlay.className  = "action-bar action-bar-bottom active success";
-          addLog("✓ 通用规则完成。");
+          addLog(t("logUniDone"));
         } else {
-          uChalStatus.textContent = "违规！−1♥";
+          uChalStatus.textContent = t("statusFail");
           uChalOverlay.className  = "action-bar action-bar-bottom active fail";
+          reportViolation();
           state.me.lives = Math.max(0, state.me.lives - 1);
           renderLives();
           playSound("healthLoss");
-          addLog("❌ 未执行通用规则，扣 1 生命值。", null, { rule: true });
+          addLog(t("logUniFail"), null, { rule: true });
           if (state.me.lives <= 0) { setTimeout(handleDeath, 1200); }
         }
         setTimeout(() => {
@@ -3103,30 +3501,32 @@
         const act = universalChallenge.action;
 
         if (act === "u_blink") {
-          const ear = (earVal(lm, L_EYE_IDX) + earVal(lm, R_EYE_IDX)) / 2;
-          if (ear < EAR_CLOSED) {
+          const ear = smoothedEar(
+            (earVal(lm, L_EYE_IDX) + earVal(lm, R_EYE_IDX)) / 2
+          );
+          if (isEyeClosed(ear)) {
             universalChallenge.blink.frames++;
-            uChalStatus.textContent = "眨眼中…";
-            if (universalChallenge.blink.frames >= 3) {
+            uChalStatus.textContent = t("statusBlinking");
+            if (universalChallenge.blink.frames >= BLINK_TUNING.uBlinkFramesNeeded) {
               universalChallenge.completed = true;
               endUniversalChallenge(true);
             }
           } else {
             universalChallenge.blink.frames = 0;
-            uChalStatus.textContent = "请眨眼！";
+            uChalStatus.textContent = t("statusBlinkPlease");
           }
         } else if (act === "u_mouth") {
           const mar = lmDist(lm[13], lm[14]) / (lmDist(lm[61], lm[291]) + 1e-6);
           if (mar > MAR_OPEN) {
             universalChallenge.mouth.frames++;
-            uChalStatus.textContent = "嘴巴张开中…";
+            uChalStatus.textContent = t("statusMouthHolding");
             if (universalChallenge.mouth.frames >= 8) {
               universalChallenge.completed = true;
               endUniversalChallenge(true);
             }
           } else {
             universalChallenge.mouth.frames = Math.max(0, universalChallenge.mouth.frames - 1);
-            uChalStatus.textContent = "张开嘴！";
+            uChalStatus.textContent = t("statusMouthOpenCmd");
           }
         } else if (act === "u_headmove") {
           const nose = lm[4], lb = lm[234], rb = lm[454];
@@ -3149,7 +3549,7 @@
             universalChallenge.headmove.vChanges++;
           }
           const total = universalChallenge.headmove.hChanges + universalChallenge.headmove.vChanges;
-          uChalStatus.textContent = total > 0 ? "继续！" : "摇头或点头！";
+          uChalStatus.textContent = total > 0 ? t("statusHeadKeep") : t("statusHeadDo");
           if (total >= 2) {
             universalChallenge.completed = true;
             endUniversalChallenge(true);
@@ -3199,6 +3599,25 @@
       seedLog();
       renderLives();
       renderTimer();
+      // Initial render of localized static UI.
+      const _initialHint = document.getElementById("moveHint");
+      if (_initialHint) _initialHint.textContent = t("hint");
+      const _initialLangBtn = document.getElementById("langToggle");
+      if (_initialLangBtn) {
+        // When this scene is embedded inside the React SPA (window.top !== window),
+        // the parent shell's <LangDock /> already provides a language toggle and is
+        // the single source of truth (NZ_PLAYER_SYNC.lang). Hide the in-iframe button
+        // there to avoid two toggles getting out of sync. Standalone tests still see it.
+        const _embedded = window.top !== window;
+        if (_embedded) {
+          _initialLangBtn.style.display = "none";
+        } else {
+          _initialLangBtn.textContent = currentLang === "zh" ? "EN" : "中";
+          _initialLangBtn.addEventListener("click", () => {
+            setLang(currentLang === "zh" ? "en" : "zh");
+          });
+        }
+      }
       requestAnimationFrame(frame);
 
       // -----------------------------------------------------------------
@@ -3206,9 +3625,11 @@
       // -----------------------------------------------------------------
       function applyMainSync(p) {
         if (!p || typeof p !== "object") return;
+        // Adopt the parent app's UI language as soon as it tells us.
+        if (typeof p.lang === "string") setLang(p.lang);
         if (state.spectator) {
-          if (p.ruleText) addLog("「守则」" + String(p.ruleText), null, { rule: true });
-          if (p.winText) addLog("「胜利」" + String(p.winText), null, {});
+          if (p.ruleText) addLog(t("logRulePrefix") + String(p.ruleText), null, { rule: true });
+          if (p.winText) addLog(t("logWinPrefix") + String(p.winText), null, {});
           return;
         }
         var a = p.sceneAnimal;
@@ -3354,7 +3775,7 @@
           layers.others.appendChild(g);
           state.nodes.others.set(q.id, g);
         }
-        if (n > 0) addLog("已同步 " + n + " 名同房间玩家", null, {});
+        if (n > 0) addLog(t("logRosterSync", n), null, {});
         if (
           raw.roomStarted &&
           state.items.length === 0 &&
