@@ -1838,25 +1838,72 @@
 /* Check step (separate page after Reveal) */
 .check-card {
   display: grid;
-  gap: 14px;
+  gap: 12px;
   text-align: center;
   position: relative;
+  padding: 14px;
   animation: nz-pop-in 280ms cubic-bezier(0.2, 1.2, 0.4, 1) both;
 }
 .check-back {
   justify-self: start;
-  min-height: 36px;
-  padding: 0 12px;
+  min-height: 32px;
+  padding: 0 10px;
   font-size: 12px;
   letter-spacing: 0.16em;
 }
 .check-title {
-  letter-spacing: 0.18em;
-  margin-top: 4px;
+  letter-spacing: 0.16em;
+  margin-top: 2px;
+  font-size: clamp(15px, 2.6vw, 18px);
 }
 .check-sub {
-  margin: -2px 0 4px;
-  font-size: 13px;
-  line-height: 1.4;
+  margin: -4px 0 2px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+/* Wider scaffold for the check step (mobile keeps the 460px stack). */
+.onboard-wrap--check {
+  width: min(960px, 100%);
+}
+
+/* Desktop / tablet: side-by-side video + tasks so the whole flow fits one screen. */
+@media (min-width: 760px) {
+  .check-card .gate-wrap {
+    grid-template-columns: minmax(260px, 1fr) minmax(280px, 1fr);
+    grid-template-areas:
+      "top   top"
+      "stage tasks"
+      "stage foot";
+    align-items: stretch;
+    gap: 12px 16px;
+  }
+  .check-card .gate-top   { grid-area: top; }
+  .check-card .gate-stage { grid-area: stage; aspect-ratio: 4 / 3; max-height: 360px; }
+  .check-card .gate-tasks { grid-area: tasks; align-self: start; }
+  .check-card .gate-foot  { grid-area: foot;  align-self: end; }
+}
+
+/* Compact gate on tall mobile so the Enter button is reachable without long scrolls. */
+@media (max-width: 759px) {
+  .check-card .gate-stage {
+    aspect-ratio: 4 / 3;
+    max-height: 38vh;
+  }
+  .check-card .gate-task {
+    padding: 8px 10px;
+  }
+  .check-card .gate-task__icon {
+    width: 28px;
+    height: 28px;
+    font-size: 18px;
+  }
+}
+
+/* Final CTA — stays visible at the bottom of the viewport while the page scrolls. */
+.check-card .reveal-enter {
+  position: sticky;
+  bottom: max(60px, calc(env(safe-area-inset-bottom, 0px) + 56px));
+  z-index: 5;
 }
 

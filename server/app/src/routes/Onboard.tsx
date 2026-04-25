@@ -250,7 +250,7 @@ export default function Onboard() {
   }
 
   return (
-    <div className="onboard-wrap">
+    <div className={"onboard-wrap" + (step === "check" ? " onboard-wrap--check" : "")}>
       {step === "permission" ? (
         <PermissionGate
           open
