@@ -207,10 +207,10 @@
       <div class="top">
         <div>
           <h1>Nocturne Zoo · LAN Demo</h1>
-          <div class="sub">最小前端：加入房间、聊天、触发违规、看广播/私信。</div>
-          <div class="sub">
+          <div class="sub" id="subtitle">最小前端：加入房间、聊天、触发违规、看广播/私信。</div>
+          <div class="sub" id="obLinkWrap">
             <a href="/ob.html" style="color: color-mix(in srgb, var(--accent) 80%, white); text-decoration: none"
-              >OB 视角（横屏展示）</a
+              id="obLink">OB 视角（横屏展示）</a
             >
           </div>
         </div>
@@ -232,11 +232,11 @@
         <div class="card">
           <div class="row">
             <div>
-              <label>房间号</label>
+              <label id="labelRoom">房间号</label>
               <input id="roomId" placeholder="例如：my-room" />
             </div>
             <div>
-              <label>名字</label>
+              <label id="labelName">名字</label>
               <input id="name" placeholder="例如：Alice" />
             </div>
           </div>
@@ -250,7 +250,7 @@
 
           <div style="height: 12px"></div>
 
-          <label>创建形象（拍照 + 3 个问题 → 分配角色）</label>
+          <label id="labelOnboard">创建形象（拍照 + 3 个问题 → 分配角色）</label>
           <div class="btnrow">
             <button id="btnOnboard" disabled>开始创建</button>
             <button id="btnResetOnboard" disabled>重置/重来</button>
@@ -298,7 +298,7 @@
 
           <div style="height: 12px"></div>
 
-          <label>摄像头识别（猫头鹰眨眼 / 长颈鹿甩脖子）</label>
+          <label id="labelDetect">摄像头识别（猫头鹰眨眼 / 长颈鹿甩脖子）</label>
           <div class="btnrow">
             <button id="btnCam" disabled>开启摄像头检测</button>
             <button id="btnCamStop" disabled>关闭检测</button>
@@ -312,7 +312,7 @@
 
           <div style="height: 12px"></div>
 
-          <label>聊天</label>
+          <label id="labelChat">聊天</label>
           <div class="row">
             <input id="chatText" placeholder="说点什么…" />
             <button id="btnChat" disabled>发送</button>
@@ -320,7 +320,7 @@
 
           <div style="height: 16px"></div>
 
-          <div class="muted" style="font-size: 12px">
+          <div class="muted" style="font-size: 12px" id="tipLocal">
             提示：摄像头识别只在本地跑，不上传视频；识别到违规会自动发 `violation` 到房间。
           </div>
         </div>
@@ -328,8 +328,10 @@
         <div class="card">
           <div style="display: flex; justify-content: space-between; align-items: center; gap: 10px">
             <div>
-              <div style="font-weight: 600">事件日志</div>
-              <div class="muted" style="font-size: 12px">public 广播 + private 私信都会显示在这里。</div>
+              <div style="font-weight: 600" id="logTitle">事件日志</div>
+              <div class="muted" style="font-size: 12px" id="logSubtitle">
+                public 广播 + private 私信都会显示在这里。
+              </div>
             </div>
             <button id="btnClear" style="max-width: 140px">清空</button>
           </div>
@@ -337,7 +339,7 @@
           <div class="log" id="log"></div>
 
           <div style="height: 16px"></div>
-          <div style="font-weight: 600">玩家</div>
+          <div style="font-weight: 600" id="playersTitle">玩家</div>
           <div class="players" id="players"></div>
         </div>
       </div>
@@ -353,6 +355,25 @@
 
       const I18N = {
         zh: {
+          title: "Nocturne Zoo · 局域网 Demo",
+          subtitle: "最小前端：加入房间、聊天、触发违规、看广播/私信。",
+          obLink: "OB 视角（横屏展示）",
+          labelRoom: "房间号",
+          phRoom: "例如：my-room",
+          labelName: "名字",
+          phName: "例如：Alice",
+          labelOnboard: "创建形象（拍照 + 3 个问题 → 分配角色）",
+          labelDetect: "摄像头识别（猫头鹰眨眼 / 长颈鹿甩脖子）",
+          labelChat: "聊天",
+          phChat: "说点什么…",
+          tipLocal:
+            "提示：摄像头识别只在本地跑，不上传视频；识别到违规会自动发 `violation` 到房间。",
+          logTitle: "事件日志",
+          logSubtitle: "public 广播 + private 私信都会显示在这里。",
+          playersTitle: "玩家",
+          autoHint:
+            "已连接，正在自动启动创建角色（如果浏览器阻止摄像头，请点一次“开始创建”重试）。",
+          camManualHint: "入场：摄像头权限需要手动触发（请点“开始创建”重试）",
           connected: "已连接",
           disconnected: "未连接",
           connectJoin: "连接 / 加入",
@@ -368,13 +389,31 @@
           clear: "清空",
           myAnimalUnknown: "未分配",
           detOff: "未开启",
-          tipLocal: "提示：摄像头识别只在本地跑，不上传视频；识别到违规会自动发 `violation` 到房间。",
           sys_PLAYER_SUBMITTED_PHOTO: ({ name }) => `${name} 已提交照片`,
           sys_PLAYER_ENTERED_ZONE: ({ name, animal }) => `${name} 已进入 ${animalEmoji(animal)} 区域`,
           sys_GIRAFFE_PURIFIED: ({ name }) => `${name} 的感染似乎被“净化”了（累计违规 3 次）`,
           sys_PLAYER_LEFT: ({ name }) => `${name} 离开了房间`
         },
         en: {
+          title: "Nocturne Zoo · LAN Demo",
+          subtitle: "Minimal client: join room, chat, trigger violations, view public/private events.",
+          obLink: "OB View (landscape)",
+          labelRoom: "Room",
+          phRoom: "e.g. my-room",
+          labelName: "Name",
+          phName: "e.g. Alice",
+          labelOnboard: "Create Character (photo + 3 questions → assign role)",
+          labelDetect: "Camera detection (owl blink / giraffe neck-swing)",
+          labelChat: "Chat",
+          phChat: "Say something…",
+          tipLocal:
+            "Note: camera detection runs locally; no video is uploaded. Violations are sent to the room as `violation`.",
+          logTitle: "Event log",
+          logSubtitle: "Public broadcasts + private messages appear here.",
+          playersTitle: "Players",
+          autoHint:
+            "Connected. Auto-starting character creation (if camera is blocked, tap “Create Character” to retry).",
+          camManualHint: "Onboarding: camera permission needs a user gesture (tap “Create Character” to retry).",
           connected: "Connected",
           disconnected: "Disconnected",
           connectJoin: "Connect / Join",
@@ -390,7 +429,6 @@
           clear: "Clear",
           myAnimalUnknown: "Unassigned",
           detOff: "Off",
-          tipLocal: "Note: camera detection runs locally; no video is uploaded. Violations are sent to the room as `violation`.",
           sys_PLAYER_SUBMITTED_PHOTO: ({ name }) => `${name} submitted a photo`,
           sys_PLAYER_ENTERED_ZONE: ({ name, animal }) => `${name} entered ${animalEmoji(animal)} zone`,
           sys_GIRAFFE_PURIFIED: ({ name }) => `${name} seems “purified” (3 violations)`,
@@ -752,7 +790,7 @@
         } catch (e) {
           // iOS/Safari often requires a user gesture
           $("autoHint").style.display = "";
-          log(`入场：摄像头权限需要手动触发（请点“开始创建”重试）`);
+          log(t("camManualHint"));
           throw e;
         }
       }
@@ -1012,6 +1050,25 @@
       setMyAnimal(null);
 
       function applyLocale() {
+        document.title = t("title");
+        const h1 = document.querySelector("h1");
+        if (h1) h1.textContent = t("title");
+        $("subtitle").textContent = t("subtitle");
+        $("obLink").textContent = t("obLink");
+        $("labelRoom").textContent = t("labelRoom");
+        $("roomId").placeholder = t("phRoom");
+        $("labelName").textContent = t("labelName");
+        $("name").placeholder = t("phName");
+        $("labelOnboard").textContent = t("labelOnboard");
+        $("labelDetect").textContent = t("labelDetect");
+        $("labelChat").textContent = t("labelChat");
+        $("chatText").placeholder = t("phChat");
+        $("tipLocal").textContent = t("tipLocal");
+        $("logTitle").textContent = t("logTitle");
+        $("logSubtitle").textContent = t("logSubtitle");
+        $("playersTitle").textContent = t("playersTitle");
+        $("autoHint").textContent = t("autoHint");
+
         $("btnConnect").textContent = t("connectJoin");
         $("btnStart").textContent = t("startGame");
         $("btnOnboard").textContent = t("startOnboard");
@@ -1031,6 +1088,16 @@
         // Re-render connection label without changing actual state
         const yes = ws && ws.readyState === WebSocket.OPEN;
         setConnected(!!yes, currentRoom ? `(${currentRoom})` : "");
+      });
+      // persist language
+      try {
+        const saved = localStorage.getItem("nz_lang");
+        if (saved === "en" || saved === "zh") langSel.value = saved;
+      } catch {}
+      langSel.addEventListener("change", () => {
+        try {
+          localStorage.setItem("nz_lang", langSel.value);
+        } catch {}
       });
       applyLocale();
     </script>

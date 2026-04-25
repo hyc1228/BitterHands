@@ -168,9 +168,7 @@
       <div class="top">
         <div class="title">
           <h1>Nocturne Zoo · OB</h1>
-          <div class="sub">
-            横屏展示用观察者页面（不参与游戏）。URL 可带 `?room=xxx`。
-          </div>
+          <div class="sub" id="subtitle">横屏展示用观察者页面（不参与游戏）。URL 可带 `?room=xxx`。</div>
         </div>
 
         <div class="controls">
@@ -190,7 +188,7 @@
       <div class="main">
         <div class="card">
           <div style="display:flex; align-items:end; justify-content:space-between; gap:10px">
-            <div style="font-weight:700">Players</div>
+            <div style="font-weight:700" id="playersTitle">Players</div>
             <div class="meta"><span class="badge" id="roomBadge">room: -</span></div>
           </div>
           <div style="height:12px"></div>
@@ -199,7 +197,7 @@
 
         <div class="card">
           <div style="display:flex; align-items:end; justify-content:space-between; gap:10px">
-            <div style="font-weight:700">Events</div>
+            <div style="font-weight:700" id="eventsTitle">Events</div>
             <button id="btnClear" style="max-width:120px">Clear</button>
           </div>
           <div style="height:12px"></div>
@@ -218,11 +216,14 @@
 
       const I18N = {
         zh: {
+          title: "Nocturne Zoo · OB",
+          subtitle: "横屏展示用观察者页面（不参与游戏）。URL 可带 `?room=xxx`。",
+          phRoom: "房间号",
+          playersTitle: "玩家",
+          eventsTitle: "事件",
           connected: "已连接",
           disconnected: "未连接",
           connect: "连接",
-          players: "玩家",
-          events: "事件",
           clear: "清空",
           sys_PLAYER_SUBMITTED_PHOTO: ({ name }) => `${name} 已提交照片`,
           sys_PLAYER_ENTERED_ZONE: ({ name, animal, emoji }) => `${name} 已进入 ${emoji || ""} 区域`,
@@ -230,11 +231,14 @@
           sys_PLAYER_LEFT: ({ name }) => `${name} 离开了房间`
         },
         en: {
+          title: "Nocturne Zoo · OB",
+          subtitle: "Observer page for landscape display (does not play). Use `?room=xxx`.",
+          phRoom: "Room",
+          playersTitle: "Players",
+          eventsTitle: "Events",
           connected: "Connected",
           disconnected: "Disconnected",
           connect: "Connect",
-          players: "Players",
-          events: "Events",
           clear: "Clear",
           sys_PLAYER_SUBMITTED_PHOTO: ({ name }) => `${name} submitted a photo`,
           sys_PLAYER_ENTERED_ZONE: ({ name, animal, emoji }) => `${name} entered ${emoji || ""} zone`,
@@ -357,12 +361,32 @@
       langSel.addEventListener("change", () => {
         $("btnConnect").textContent = I18N[getLang()].connect;
         $("btnClear").textContent = I18N[getLang()].clear;
+        document.title = I18N[getLang()].title;
+        document.querySelector("h1").textContent = I18N[getLang()].title;
+        $("subtitle").textContent = I18N[getLang()].subtitle;
+        $("roomId").placeholder = I18N[getLang()].phRoom;
+        $("playersTitle").textContent = I18N[getLang()].playersTitle;
+        $("eventsTitle").textContent = I18N[getLang()].eventsTitle;
         setConnected(ws && ws.readyState === WebSocket.OPEN, currentRoom ? `(${currentRoom})` : "");
       });
 
       // init
       $("btnConnect").textContent = I18N[getLang()].connect;
       $("btnClear").textContent = I18N[getLang()].clear;
+      document.title = I18N[getLang()].title;
+      $("subtitle").textContent = I18N[getLang()].subtitle;
+      $("roomId").placeholder = I18N[getLang()].phRoom;
+      $("playersTitle").textContent = I18N[getLang()].playersTitle;
+      $("eventsTitle").textContent = I18N[getLang()].eventsTitle;
+      try {
+        const saved = localStorage.getItem("nz_lang");
+        if (saved === "en" || saved === "zh") langSel.value = saved;
+      } catch {}
+      langSel.addEventListener("change", () => {
+        try {
+          localStorage.setItem("nz_lang", langSel.value);
+        } catch {}
+      });
       const params = new URLSearchParams(location.search);
       $("roomId").value = params.get("room") || "test-room";
       setConnected(false);
