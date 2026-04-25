@@ -271,9 +271,16 @@
       }
 
       /* ---------- CRT / REC post-processing ---------- */
-      /* The shake is on the screen wrapper so the whole picture wobbles. */
+      /* The shake is on the screen wrapper so the whole picture wobbles.
+         will-change + translateZ promotes the screen and the rec-fx overlay
+         to their own GPU compositing layers so the transform animations
+         (screenShake / roll / glitch) just do GPU compositing instead of
+         repainting the full viewport each frame. */
       .screen {
         animation: screenShake 0.55s ease-in-out infinite;
+        will-change: transform;
+        /* translateZ omitted — screenShake animation already sets transform
+           every frame; will-change alone promotes the layer. */
       }
       @keyframes screenShake {
         0%, 100% {
@@ -298,6 +305,8 @@
         inset: 0;
         pointer-events: none;
         z-index: 50;
+        will-change: transform;
+        transform: translateZ(0);
         /* Vignette + slight green tint */
         background: radial-gradient(
             130% 95% at 50% 50%,
@@ -325,7 +334,8 @@
         );
         mix-blend-mode: multiply;
         opacity: 0.55;
-        animation: jitter 0.12s steps(2) infinite;
+        /* jitter animation removed — it forced a full repaint of this overlay
+           every 60 ms for almost no visual gain. */
       }
       /* RGB phosphor stripes + slow rolling band (one element with two bgs) */
       .rec-fx::after {
@@ -448,6 +458,15 @@
       /* SVG entity helpers */
       .entity {
         cursor: default;
+        /* Promote each entity to its own GPU compositing layer so the
+           feTurbulence/feDisplacement filters baked into the asset SVGs
+           (and our #rough/#meRing wrappers) are rasterized once and then
+           just GPU-translated each frame, instead of being re-rendered. */
+        will-change: transform;
+      }
+      .flashlight-cone,
+      .flashlight-torch {
+        will-change: transform;
       }
       .leg {
         transform-box: fill-box;
@@ -2497,7 +2516,7 @@
         });
         faceMesh.setOptions({
           maxNumFaces: 1,
-          refineLandmarks: true,
+          refineLandmarks: false,
           minDetectionConfidence: 0.5,
           minTrackingConfidence: 0.5,
         });
