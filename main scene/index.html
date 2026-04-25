@@ -1291,11 +1291,8 @@
           moving: false,
           animal: "owl",
         },
-        others: [
-          { id: "p1", name: "MIA", animal: "lion",    x: cx - 160, y: cy - 270, vx: 0, vy: 0, moving: false },
-          { id: "p2", name: "LEO", animal: "giraffe", x: cx + 200, y: cy + 170, vx: 0, vy: 0, moving: false },
-          { id: "p3", name: "ZOE", animal: "owl",     x: cx - 250, y: cy + 320, vx: 0, vy: 0, moving: false },
-        ],
+        lastMainSyncName: "",
+        others: [],
         monitor: {
           x: cx + 130,
           y: cy - 170,
@@ -1591,6 +1588,7 @@
       function updateOthers(dt) {
         // gentle wandering for visual life (within map bounds)
         for (const p of state.others) {
+          if (p.netRemote) continue;
           if (Math.random() < 0.012) {
             p.vx = (Math.random() - 0.5) * 1.6;
             p.vy = (Math.random() - 0.5) * 1.6;
@@ -2234,6 +2232,98 @@
       renderLives();
       renderTimer();
       requestAnimationFrame(frame);
+
+      // -----------------------------------------------------------------
+      // MainSync: parent React shell (onboarding) sends role + rules here.
+      // -----------------------------------------------------------------
+      function applyMainSync(p) {
+        if (!p || typeof p !== "object") return;
+        var a = p.sceneAnimal;
+        if (a !== "lion" && a !== "owl" && a !== "giraffe") a = "owl";
+        state.me.animal = a;
+        state.lastMainSyncName =
+          typeof p.playerName === "string" ? p.playerName : "";
+        if (typeof p.lives === "number") {
+          state.me.lives = Math.max(0, Math.min(3, Math.floor(p.lives)));
+        }
+        const nm = typeof p.playerName === "string" ? p.playerName : "";
+        if (state.nodes.me && state.nodes.me.parentNode) {
+          state.nodes.me.parentNode.removeChild(state.nodes.me);
+        }
+        const newMe = makeAnimalAvatar({ animal: a, isMe: true, name: nm });
+        layers.me.appendChild(newMe);
+        state.nodes.me = newMe;
+        renderLives();
+        if (p.ruleText) addLog("「守则」" + String(p.ruleText), null, { rule: true });
+        if (p.winText) addLog("「胜利」" + String(p.winText), null, {});
+      }
+      function hash01(s) {
+        var h = 0;
+        for (var i = 0; i < s.length; i++)
+          h = ((h << 5) - h + s.charCodeAt(i)) | 0;
+        return (Math.abs(h) % 1000) / 1000;
+      }
+      function applyRoomPlayers(raw) {
+        if (!raw || typeof raw !== "object") return;
+        var pl = raw.players;
+        if (!Array.isArray(pl)) return;
+        var selfId = raw.selfId || "";
+        var selfName = String(raw.selfName || "");
+        var others = pl.filter(function (q) {
+          if (!q || !q.id) return false;
+          if (selfId) return q.id !== selfId;
+          if (selfName && q.name === selfName) return false;
+          if (!selfId && !selfName && state.lastMainSyncName && q.name === state.lastMainSyncName)
+            return false;
+          return true;
+        });
+        for (var oi = 0; oi < state.others.length; oi++) {
+          var op = state.others[oi];
+          var onode = state.nodes.others.get(op.id);
+          if (onode && onode.parentNode) onode.parentNode.removeChild(onode);
+          state.nodes.others.delete(op.id);
+        }
+        state.others = [];
+        var n = others.length;
+        var wcx = MAP_W / 2;
+        var wcy = MAP_H / 2;
+        for (var j = 0; j < n; j++) {
+          var q = others[j];
+          var an = q.sceneAnimal;
+          if (an !== "lion" && an !== "owl" && an !== "giraffe") an = "owl";
+          var t = (2 * Math.PI * j) / Math.max(n, 1) + hash01(String(q.id)) * 0.4;
+          var r = 220 + 50 * (j % 2);
+          var x = wcx + Math.cos(t) * r;
+          var y = wcy + Math.sin(t) * r;
+          x = clamp(x, BORDER, MAP_W - BORDER);
+          y = clamp(y, BORDER, MAP_H - BORDER);
+          var row = {
+            id: q.id,
+            name: String(q.name || "…"),
+            animal: an,
+            x: x,
+            y: y,
+            vx: 0,
+            vy: 0,
+            moving: false,
+            netRemote: true,
+          };
+          state.others.push(row);
+          var g = makeAnimalAvatar({ animal: an, isMe: false, name: row.name });
+          layers.others.appendChild(g);
+          state.nodes.others.set(q.id, g);
+        }
+        if (n > 0) addLog("已同步 " + n + " 名同房间玩家", null, {});
+      }
+      window.addEventListener("message", function (ev) {
+        var d = ev.data;
+        if (!d || d.source !== "nocturne-zoo" || !d.payload) return;
+        if (d.type === "NZ_PLAYER_SYNC") {
+          applyMainSync(d.payload);
+        } else if (d.type === "NZ_ROOM_PLAYERS") {
+          applyRoomPlayers(d.payload);
+        }
+      });
     </script>
   </body>
 </html>

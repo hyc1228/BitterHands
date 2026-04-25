@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_ROOM_ID, getMainSceneFrameSrc, OB_FACE_SLOTS } from "../constants";
 import { dict } from "../i18n";
+import { postToMainSceneFrame } from "../mainSync/postToMainSceneFrame";
 import type { CameraFrame, PublicPlayer } from "../party/protocol";
 import { usePartyStore, type LogEntry } from "../party/store";
 import PlayerRowFace from "../components/PlayerRowFace";
@@ -9,6 +10,9 @@ export default function Ob() {
   const lang = usePartyStore((s) => s.lang);
   const t = dict(lang);
   const conn = usePartyStore((s) => s.conn);
+  const myName = usePartyStore((s) => s.myName);
+  const myAnimal = usePartyStore((s) => s.myAnimal);
+  const rulesCard = usePartyStore((s) => s.rulesCard);
   const setMode = usePartyStore((s) => s.setMode);
   const connect = usePartyStore((s) => s.connect);
   const disconnect = usePartyStore((s) => s.disconnect);
@@ -27,8 +31,23 @@ export default function Ob() {
     }
   });
   const [error, setError] = useState<string | null>(null);
+  const mainSceneIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const mainSceneSrc = useMemo(() => getMainSceneFrameSrc(), []);
+
+  const pushMainSceneIframe = useCallback(() => {
+    postToMainSceneFrame(mainSceneIframeRef.current?.contentWindow, {
+      myName,
+      myAnimal,
+      rulesCard,
+      lang,
+      snapshot
+    });
+  }, [myName, myAnimal, rulesCard, lang, snapshot]);
+
+  useEffect(() => {
+    pushMainSceneIframe();
+  }, [pushMainSceneIframe]);
 
   useEffect(() => {
     setMode("ob");
@@ -131,7 +150,13 @@ export default function Ob() {
           </div>
 
           <div className="ob-scene-center">
-            <iframe className="ob-scene-iframe" title="Main scene" src={mainSceneSrc} />
+            <iframe
+              ref={mainSceneIframeRef}
+              className="ob-scene-iframe"
+              title="Main scene"
+              src={mainSceneSrc}
+              onLoad={pushMainSceneIframe}
+            />
           </div>
 
           <div className="ob-face-column" aria-label="ob-faces-right">

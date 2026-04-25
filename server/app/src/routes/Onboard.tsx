@@ -239,7 +239,7 @@ export default function Onboard() {
   }
 
   function goToGame() {
-    nav("/game", { replace: true });
+    nav("/main-scene", { replace: true });
   }
 
   return (
