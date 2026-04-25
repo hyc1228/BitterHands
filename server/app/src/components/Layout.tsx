@@ -2,19 +2,18 @@ import type { PropsWithChildren } from "react";
 import { useLocation } from "react-router-dom";
 import Header from "./Header";
 import LangDock from "./LangDock";
-import RecBadge from "./RecBadge";
 
 export default function Layout({ children }: PropsWithChildren) {
   const loc = useLocation();
   const isOb = loc.pathname.startsWith("/ob");
   const isMainScene = loc.pathname.startsWith("/main-scene");
-  // REC/timer: OB only (not /game, not /onboard).
-  const showRec = !isMainScene && isOb;
   if (isMainScene) {
     return <div className="app-shell app-shell--main-scene">{children}</div>;
   }
   const isOnboard = loc.pathname.startsWith("/onboard");
   const isGame = loc.pathname.startsWith("/game");
+  // The REC dot + clock that used to live on `/ob` was removed: the in-game scene already
+  // shows them in its own HUD, so a duplicate at the SPA shell level is just visual noise.
   return (
     <div
       className={
@@ -25,7 +24,6 @@ export default function Layout({ children }: PropsWithChildren) {
       }
     >
       <Header />
-      {showRec ? <RecBadge /> : null}
       <main className="app-main">{children}</main>
       <LangDock />
     </div>

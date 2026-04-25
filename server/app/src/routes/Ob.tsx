@@ -127,6 +127,7 @@ function ObInner() {
   const send = usePartyStore((s) => s.send);
   const snapshot = usePartyStore((s) => s.snapshot);
   const log = usePartyStore((s) => s.log);
+  const obLogLines = useMemo(() => log.slice(0, 5), [log]);
   const cameraFrames = usePartyStore((s) => s.cameraFrames);
   const selfPlayerId = usePartyStore(
     (s) => s.snapshot?.players.find((p) => p.name === s.myName)?.id ?? ""
@@ -302,11 +303,11 @@ function ObInner() {
         </div>
         <div>
           <div className="section-title">{t.events}</div>
-          <div className="log">
-            {log.length === 0 ? (
+          <div className="log ob-log-clip" aria-label="ob-log-recent">
+            {obLogLines.length === 0 ? (
               <div className="muted">—</div>
             ) : (
-              log.map((entry, i) => <ObLogLine key={`${entry.ts}-${i}`} entry={entry} />)
+              obLogLines.map((entry, i) => <ObLogLine key={`${entry.ts}-${i}`} entry={entry} />)
             )}
           </div>
         </div>

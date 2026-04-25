@@ -713,6 +713,12 @@
   }
 }
 
+/* OB: only five lines in DOM; keep a compact, fixed strip (no long scroll) */
+.log.ob-log-clip {
+  max-height: 9.5em;
+  overflow: hidden;
+}
+
 .log-line {
   padding: 4px 0;
   border-bottom: 1px dashed rgba(242, 239, 233, 0.07);
