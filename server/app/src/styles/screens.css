@@ -886,6 +886,8 @@
 
 .ob-scene-center {
   position: relative;
+  display: flex;
+  flex-direction: column;
   min-height: 360px;
   border: 1.5px solid var(--nz-red);
   border-radius: var(--nz-radius);
@@ -894,11 +896,119 @@
   box-shadow: 0 0 0 1px rgba(214, 64, 46, 0.25) inset, var(--nz-shadow-card);
 }
 
-.ob-scene-iframe {
+.ob-cam-bar {
+  flex-shrink: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.55);
+  border-bottom: 1px solid var(--nz-cream-line);
+}
+
+.ob-cam-seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ob-cam-btn {
+  font-family: var(--nz-font-mono);
+  font-size: 11px;
+  padding: 4px 10px;
+  border: 1px solid var(--nz-cream-line);
+  border-radius: 4px;
+  background: var(--nz-black);
+  color: var(--nz-cream-dim);
+  cursor: pointer;
+  letter-spacing: 0.06em;
+}
+
+.ob-cam-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.ob-cam-btn.active {
+  border-color: var(--nz-red);
+  color: var(--nz-cream);
+  box-shadow: 0 0 0 1px rgba(214, 64, 46, 0.35);
+}
+
+.ob-cam-following,
+.ob-cam-hint {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  line-height: 1.3;
+  max-width: 100%;
+}
+
+.ob-spotlight-pick,
+.ob-face-pick {
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ob-spotlight-pick {
   display: block;
   width: 100%;
+  padding: 0;
+  border: 0;
+  background: var(--nz-black);
+  border-radius: var(--nz-radius);
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.ob-face-pick {
+  display: flex;
+  width: 100%;
   height: 100%;
-  min-height: 360px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--nz-black);
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.ob-pick-on.ob-spotlight-tile,
+.ob-pick-on.ob-face-slot {
+  position: relative;
+  border-radius: var(--nz-radius);
+  box-shadow: 0 0 0 2px var(--nz-red);
+}
+
+.ob-pick-on.ob-face-slot {
+  border-radius: 10px;
+  padding: 2px;
+}
+
+.ob-player-picked {
+  box-shadow: 0 0 0 1px var(--nz-red) inset;
+}
+
+.ob-player-face-hit {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  border-radius: 50%;
+  line-height: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.ob-scene-iframe {
+  display: block;
+  flex: 1;
+  min-height: 280px;
+  width: 100%;
   border: 0;
   background: #000;
 }
@@ -909,6 +1019,13 @@
   flex-direction: column;
   gap: 12px;
   min-height: min(50vh, 480px);
+}
+
+.ob-lobby-cam-hint {
+  margin: 0 0 4px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  line-height: 1.45;
 }
 
 .ob-lobby-note {

@@ -2,7 +2,13 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DEFAULT_ROOM_ID, getMainSceneFrameSrc, OB_FACE_SLOTS, OB_LOBBY_SPOTLIGHTS } from "../constants";
 import { animalLocalized, dict } from "../i18n";
 import { useMainSceneIframeBridge } from "../hooks/useMainSceneIframeBridge";
-import { postToMainSceneFrame, postItemInboxToFrame, postMainSceneNetToFrame } from "../mainSync/postToMainSceneFrame";
+import {
+  postItemInboxToFrame,
+  postMainSceneNetToFrame,
+  postObCameraToFrame,
+  postToMainSceneFrame,
+  type ObCameraPayload
+} from "../mainSync/postToMainSceneFrame";
 import type { CameraFrame, Lang, PublicPlayer } from "../party/protocol";
 import { usePartyStore, type LogEntry } from "../party/store";
 import { pickObSpotlight } from "../utils/obSpotlight";
@@ -27,6 +33,19 @@ function obPlayerTileEqual(a: PublicPlayer | null, b: PublicPlayer | null): bool
   if (a === b) return true;
   if (a == null || b == null) return a === b;
   return a.id === b.id && a.name === b.name && a.animal === b.animal;
+}
+
+type ObCamState = { mode: "centroid" | "follow" | "free"; followId: string | null };
+
+function obCameraPayloadFromState(cam: ObCamState): ObCameraPayload {
+  if (cam.mode === "centroid") return { mode: "centroid" };
+  if (cam.mode === "follow" && cam.followId) {
+    return { mode: "follow", followPlayerId: cam.followId };
+  }
+  if (cam.mode === "free") {
+    return { mode: "free" };
+  }
+  return { mode: "centroid" };
 }
 
 export default function Ob() {
@@ -58,6 +77,9 @@ export default function Ob() {
     }
   });
   const [error, setError] = useState<string | null>(null);
+  const [obCam, setObCam] = useState<ObCamState>({ mode: "centroid", followId: null });
+  const obCamRef = useRef(obCam);
+  obCamRef.current = obCam;
   const mainSceneIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const mainSceneSrc = useMemo(() => getMainSceneFrameSrc(), []);
@@ -82,6 +104,14 @@ export default function Ob() {
     if (!gameLive) return;
     pushMainSceneIframe();
   }, [gameLive, pushMainSceneIframe]);
+
+  useEffect(() => {
+    if (!gameLive) return;
+    postObCameraToFrame(
+      mainSceneIframeRef.current?.contentWindow,
+      obCameraPayloadFromState(obCam)
+    );
+  }, [gameLive, obCam]);
 
   useEffect(() => {
     if (conn !== "open" || !gameLive) return;
@@ -138,6 +168,10 @@ export default function Ob() {
   const cams = useMemo(() => Array.from(cameraFrames.values()), [cameraFrames]);
   const liveCount = cams.length;
 
+  const pickObFollow = useCallback((id: string) => {
+    setObCam({ mode: "follow", followId: id });
+  }, []);
+
   return (
     <div className="ob-grid">
       <section className="card stack" aria-label="ob-left">
@@ -166,7 +200,15 @@ export default function Ob() {
             {players.length === 0 ? (
               <div className="muted">—</div>
             ) : (
-              players.map((p) => <ObPlayer key={p.id} player={p} lang={lang} />)
+              players.map((p) => (
+                <ObPlayer
+                  key={p.id}
+                  player={p}
+                  lang={lang}
+                  onPickFollow={gameLive && p.name.toLowerCase() !== "ob" ? () => pickObFollow(p.id) : undefined}
+                  followPicked={obCam.mode === "follow" && obCam.followId === p.id}
+                />
+              ))
             )}
           </div>
         </div>
@@ -195,6 +237,9 @@ export default function Ob() {
         {!gameLive ? (
           <div className="ob-lobby">
             <p className="ob-lobby-note muted">{t.obLobbyNote}</p>
+            {conn === "open" ? (
+              <p className="ob-lobby-cam-hint muted">{t.obCamTapFaceHint}</p>
+            ) : null}
             {spotlightPlayers.length === 0 ? (
               <div className="ob-lobby-empty muted">{t.obLobbyEmpty}</div>
             ) : (
@@ -208,6 +253,9 @@ export default function Ob() {
                     player={p}
                     frame={cameraFrames.get(p.id) ?? null}
                     lang={lang}
+                    onPickPlayer={() => pickObFollow(p.id)}
+                    followSelected={obCam.mode === "follow" && obCam.followId === p.id}
+                    pickable
                   />
                 ))}
               </div>
@@ -223,6 +271,9 @@ export default function Ob() {
                       player={p}
                       frame={cameraFrames.get(p.id) ?? null}
                       lang={lang}
+                      onPickPlayer={() => pickObFollow(p.id)}
+                      followSelected={obCam.mode === "follow" && obCam.followId === p.id}
+                      pickable
                     />
                   ))}
                 </div>
@@ -242,18 +293,84 @@ export default function Ob() {
                     player={player}
                     frame={player ? cameraFrames.get(player.id) ?? null : null}
                     lang={lang}
+                    onPickPlayer={player && player.name.toLowerCase() !== "ob" ? () => pickObFollow(player.id) : undefined}
+                    followSelected={Boolean(player) && obCam.mode === "follow" && obCam.followId === player?.id}
+                    pickable={Boolean(player) && player.name.toLowerCase() !== "ob"}
                   />
                 );
               })}
             </div>
 
             <div className="ob-scene-center">
+              <div className="ob-cam-bar" role="group" aria-label="ob main map camera">
+                <div className="ob-cam-seg">
+                  <button
+                    type="button"
+                    className={obCam.mode === "centroid" ? "ob-cam-btn active" : "ob-cam-btn"}
+                    onClick={() => setObCam({ mode: "centroid", followId: null })}
+                  >
+                    {t.obCamCentroid}
+                  </button>
+                  <button
+                    type="button"
+                    className={obCam.mode === "follow" ? "ob-cam-btn active" : "ob-cam-btn"}
+                    onClick={() => {
+                      if (obCam.followId) {
+                        setObCam({ mode: "follow", followId: obCam.followId });
+                      }
+                    }}
+                    disabled={!obCam.followId}
+                    title={!obCam.followId ? t.obCamTapFaceHint : undefined}
+                  >
+                    {t.obCamFollow}
+                  </button>
+                  <button
+                    type="button"
+                    className={obCam.mode === "free" ? "ob-cam-btn active" : "ob-cam-btn"}
+                    onClick={() => {
+                      setObCam({ mode: "free", followId: null });
+                      queueMicrotask(() => {
+                        postObCameraToFrame(mainSceneIframeRef.current?.contentWindow, {
+                          mode: "free",
+                          initFromCurrent: true
+                        });
+                      });
+                    }}
+                  >
+                    {t.obCamFree}
+                  </button>
+                </div>
+                {obCam.mode === "follow" && obCam.followId ? (
+                  <span className="ob-cam-following muted">
+                    {t.obCamFollowing(players.find((p) => p.id === obCam.followId)?.name ?? "—")}
+                  </span>
+                ) : null}
+                {obCam.mode === "free" ? (
+                  <span className="ob-cam-hint muted">{t.obCamDragHint}</span>
+                ) : (
+                  <span className="ob-cam-hint muted">{t.obCamTapFaceHint}</span>
+                )}
+              </div>
               <iframe
                 ref={mainSceneIframeRef}
                 className="ob-scene-iframe"
                 title="Main scene"
                 src={mainSceneSrc}
-                onLoad={pushMainSceneIframe}
+                onLoad={() => {
+                  pushMainSceneIframe();
+                  const cam = obCamRef.current;
+                  if (cam.mode === "free") {
+                    postObCameraToFrame(mainSceneIframeRef.current?.contentWindow, {
+                      mode: "free",
+                      initFromCurrent: true
+                    });
+                  } else {
+                    postObCameraToFrame(
+                      mainSceneIframeRef.current?.contentWindow,
+                      obCameraPayloadFromState(cam)
+                    );
+                  }
+                }}
               />
             </div>
 
@@ -268,6 +385,9 @@ export default function Ob() {
                     player={player}
                     frame={player ? cameraFrames.get(player.id) ?? null : null}
                     lang={lang}
+                    onPickPlayer={player && player.name.toLowerCase() !== "ob" ? () => pickObFollow(player.id) : undefined}
+                    followSelected={Boolean(player) && obCam.mode === "follow" && obCam.followId === player?.id}
+                    pickable={Boolean(player) && player.name.toLowerCase() !== "ob"}
                   />
                 );
               })}
@@ -283,32 +403,66 @@ const ObSpotlightTile = memo(
   function ObSpotlightTile({
     player,
     frame,
-    lang
+    lang,
+    onPickPlayer,
+    followSelected,
+    pickable
   }: {
     player: PublicPlayer;
     frame: CameraFrame | null;
     lang: Lang;
+    onPickPlayer?: () => void;
+    followSelected?: boolean;
+    pickable?: boolean;
   }) {
     const t = dict(lang);
     const animal = obAnimalLabel(lang, player.animal, t.ownAnimalUnknown);
     return (
-      <div className="ob-spotlight-tile" data-ob-spotlight={player.id}>
-        <div className="ob-spotlight-screen" title={player.name}>
-          {frame ? (
-            <img
-              className="ob-cam-image"
-              src={frame.dataUrl}
-              alt={`${player.name} camera`}
-              width={160}
-              height={90}
-              decoding="async"
-            />
-          ) : (
-            <div className="ob-spotlight-placeholder" aria-hidden>
-              <span className="ob-face-initial">{player.name.charAt(0).toUpperCase()}</span>
-            </div>
-          )}
-        </div>
+      <div
+        className={`ob-spotlight-tile${followSelected ? " ob-pick-on" : ""}`}
+        data-ob-spotlight={player.id}
+      >
+        {pickable && onPickPlayer ? (
+          <button
+            type="button"
+            className="ob-spotlight-screen ob-spotlight-pick"
+            title={player.name}
+            onClick={onPickPlayer}
+            aria-label={t.obCamFollow + ": " + player.name}
+          >
+            {frame ? (
+              <img
+                className="ob-cam-image"
+                src={frame.dataUrl}
+                alt=""
+                width={160}
+                height={90}
+                decoding="async"
+              />
+            ) : (
+              <div className="ob-spotlight-placeholder" aria-hidden>
+                <span className="ob-face-initial">{player.name.charAt(0).toUpperCase()}</span>
+              </div>
+            )}
+          </button>
+        ) : (
+          <div className="ob-spotlight-screen" title={player.name}>
+            {frame ? (
+              <img
+                className="ob-cam-image"
+                src={frame.dataUrl}
+                alt={`${player.name} camera`}
+                width={160}
+                height={90}
+                decoding="async"
+              />
+            ) : (
+              <div className="ob-spotlight-placeholder" aria-hidden>
+                <span className="ob-face-initial">{player.name.charAt(0).toUpperCase()}</span>
+              </div>
+            )}
+          </div>
+        )}
         <div className="ob-spotlight-label">
           <div className="ob-spotlight-name" title={player.name}>
             {player.name.length > 12 ? `${player.name.slice(0, 11)}…` : player.name}
@@ -323,7 +477,10 @@ const ObSpotlightTile = memo(
   (prev, next) =>
     prev.lang === next.lang &&
     obPlayerTileEqual(prev.player, next.player) &&
-    obFrameVisualEqual(prev.frame, next.frame)
+    obFrameVisualEqual(prev.frame, next.frame) &&
+    prev.onPickPlayer === next.onPickPlayer &&
+    prev.followSelected === next.followSelected &&
+    prev.pickable === next.pickable
 );
 
 const ObFaceSlot = memo(
@@ -331,34 +488,60 @@ const ObFaceSlot = memo(
     index,
     player,
     frame,
-    lang
+    lang,
+    onPickPlayer,
+    followSelected,
+    pickable
   }: {
     index: number;
     player: PublicPlayer | null;
     frame: CameraFrame | null;
     lang: Lang;
+    onPickPlayer?: () => void;
+    followSelected?: boolean;
+    pickable?: boolean;
   }) {
     const t = dict(lang);
     const animal = player ? obAnimalLabel(lang, player.animal, t.ownAnimalUnknown) : null;
+    const face = (
+      <>
+        {frame ? (
+          <img
+            className="ob-cam-image"
+            src={frame.dataUrl}
+            alt={player ? `${player.name} face` : "camera"}
+            width={160}
+            height={90}
+            decoding="async"
+          />
+        ) : (
+          <div className="ob-face-placeholder" aria-hidden>
+            {player ? <span className="ob-face-initial">{player.name.charAt(0).toUpperCase()}</span> : null}
+            {!player ? <span className="ob-face-empty">·</span> : null}
+          </div>
+        )}
+      </>
+    );
     return (
-      <div className="ob-face-slot" data-ob-slot={index}>
-        <div className="ob-face-circle" title={player?.name ?? undefined}>
-          {frame ? (
-            <img
-              className="ob-cam-image"
-              src={frame.dataUrl}
-              alt={player ? `${player.name} face` : "camera"}
-              width={160}
-              height={90}
-              decoding="async"
-            />
-          ) : (
-            <div className="ob-face-placeholder" aria-hidden>
-              {player ? <span className="ob-face-initial">{player.name.charAt(0).toUpperCase()}</span> : null}
-              {!player ? <span className="ob-face-empty">·</span> : null}
-            </div>
-          )}
-        </div>
+      <div
+        className={`ob-face-slot${followSelected ? " ob-pick-on" : ""}`}
+        data-ob-slot={index}
+      >
+        {pickable && player && onPickPlayer ? (
+          <button
+            type="button"
+            className="ob-face-circle ob-face-pick"
+            title={player.name}
+            onClick={onPickPlayer}
+            aria-label={t.obCamFollow + ": " + player.name}
+          >
+            {face}
+          </button>
+        ) : (
+          <div className="ob-face-circle" title={player?.name ?? undefined}>
+            {face}
+          </div>
+        )}
         {player ? (
           <div className="ob-face-label">
             <div className="ob-face-name" title={player.name}>
@@ -378,16 +561,40 @@ const ObFaceSlot = memo(
     prev.index === next.index &&
     prev.lang === next.lang &&
     obPlayerTileEqual(prev.player, next.player) &&
-    obFrameVisualEqual(prev.frame, next.frame)
+    obFrameVisualEqual(prev.frame, next.frame) &&
+    prev.onPickPlayer === next.onPickPlayer &&
+    prev.followSelected === next.followSelected &&
+    prev.pickable === next.pickable
 );
 
-function ObPlayer({ player, lang }: { player: PublicPlayer; lang: Lang }) {
+function ObPlayer({
+  player,
+  lang,
+  onPickFollow,
+  followPicked
+}: {
+  player: PublicPlayer;
+  lang: Lang;
+  onPickFollow?: () => void;
+  followPicked?: boolean;
+}) {
   const t = dict(lang);
   const animal = obAnimalLabel(lang, player.animal, t.ownAnimalUnknown);
   return (
-    <div className="player">
+    <div className={`player${followPicked ? " ob-player-picked" : ""}`}>
       <span className="name ob-obname">
-        <PlayerRowFace player={player} />
+        {onPickFollow ? (
+          <button
+            type="button"
+            className="ob-player-face-hit"
+            onClick={onPickFollow}
+            aria-label={t.obCamFollow + ": " + player.name}
+          >
+            <PlayerRowFace player={player} />
+          </button>
+        ) : (
+          <PlayerRowFace player={player} />
+        )}
         <span className="ob-obname-col">
           <span>{player.name}</span>
           <span className="ob-player-animal" title={animal}>

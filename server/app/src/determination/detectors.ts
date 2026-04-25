@@ -5,9 +5,19 @@
 
 import type { Landmarks } from "./types";
 
-// Landmark index groups (MediaPipe Face Mesh)
+// Landmark index groups (MediaPipe Face Mesh).
+//
+// NOTE on naming: the MediaPipe convention is that "LEFT_EYE" indices belong to the SUBJECT's
+// left eye (which appears on the camera's RIGHT side, and on the user-facing mirrored selfie's
+// LEFT side). This codebase historically labeled the constants based on the camera's perspective,
+// so `LEFT_EYE_EAR = [33,…]` is actually the SUBJECT'S RIGHT eye. We keep the legacy names for
+// existing callers (which only use the symmetric average via `averageEar`) and expose the
+// subject-perspective indices below for asymmetric tests like `updateUserLeftEyeClosed`.
 const LEFT_EYE_EAR = [33, 160, 158, 133, 153, 144] as const;
 const RIGHT_EYE_EAR = [362, 385, 387, 263, 373, 380] as const;
+/** SUBJECT-perspective ("the user's") eye indices — preferred for new wink/asymmetric tests. */
+const USER_LEFT_EYE = RIGHT_EYE_EAR;
+const USER_RIGHT_EYE = LEFT_EYE_EAR;
 
 export const DETECTION_DEFAULTS = {
   earClosed: 0.2,
@@ -182,4 +192,33 @@ export function eyesClosedProgress(s: EyesClosedState, now: number): number {
   if (s.done) return 1;
   if (s.since == null) return 0;
   return Math.min(1, (now - s.since) / DETECTION_DEFAULTS.eyesClosedHoldMs);
+}
+
+/**
+ * Wink test: close ONLY the user's left eye for `eyesClosedHoldMs`. Requires asymmetry
+ * (user's right eye must stay open) so a normal blink doesn't accidentally pass. Opening
+ * the left eye, or also closing the right, resets progress.
+ *
+ * Reuses `EyesClosedState` shape so the gate UI can render uniform progress.
+ */
+export function updateUserLeftEyeClosed(
+  lm: Landmarks,
+  s: EyesClosedState,
+  now: number
+): EyesClosedState {
+  if (s.done) return s;
+  const left = earValue(lm, USER_LEFT_EYE);
+  const right = earValue(lm, USER_RIGHT_EYE);
+  // Slight tolerance on the "open" eye so a sleepy face still passes; the asymmetry guard
+  // prevents both-eyes-closed from counting (otherwise it would behave like updateEyesClosed).
+  const leftClosed = left < DETECTION_DEFAULTS.earClosed;
+  const rightOpen = right >= DETECTION_DEFAULTS.earClosed;
+  if (!leftClosed || !rightOpen) {
+    return { done: false, since: null };
+  }
+  const since = s.since ?? now;
+  if (now - since >= DETECTION_DEFAULTS.eyesClosedHoldMs) {
+    return { done: true, since };
+  }
+  return { done: false, since };
 }

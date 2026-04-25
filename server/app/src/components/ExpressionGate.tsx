@@ -10,9 +10,9 @@ import {
   DETECTION_DEFAULTS,
   eyesClosedProgress,
   shakeShakesCount,
-  updateEyesClosed,
   updateMouth,
-  updateShake
+  updateShake,
+  updateUserLeftEyeClosed
 } from "../determination";
 
 interface Props {
@@ -58,7 +58,7 @@ export default function ExpressionGate({ onPassed }: Props) {
     const now = performance.now();
     if (!shakeRef.current.done) shakeRef.current = updateShake(lm, shakeRef.current);
     if (!mouthRef.current.done) mouthRef.current = updateMouth(lm, mouthRef.current);
-    if (!eyesRef.current.done) eyesRef.current = updateEyesClosed(lm, eyesRef.current, now);
+    if (!eyesRef.current.done) eyesRef.current = updateUserLeftEyeClosed(lm, eyesRef.current, now);
     setUiTick((n) => (n + 1) % 1024);
   }, []);
 
@@ -158,7 +158,7 @@ export default function ExpressionGate({ onPassed }: Props) {
       done: eyesDone,
       active: !eyesDone && eyesRef.current.since != null,
       progress: eyesClosedProgress(eyesRef.current, now),
-      icon: "😴",
+      icon: "😉",
       label: t.gateTaskCloseEyes,
       status: eyesDone
         ? t.gateOk

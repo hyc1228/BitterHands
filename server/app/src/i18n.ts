@@ -79,6 +79,18 @@ interface Dict {
   obLobbyEmpty: string;
   /** Row below spotlights: everyone not in the spotlight (optional) */
   obLobbyAllPlayers: string;
+  /** OB main map: camera tracks group center */
+  obCamCentroid: string;
+  /** OB: follow one player on the map */
+  obCamFollow: string;
+  /** OB: drag the map to pan */
+  obCamFree: string;
+  /** Shown when free-cam is active (mobile) */
+  obCamDragHint: string;
+  /** Shown on load next to face strip */
+  obCamTapFaceHint: string;
+  /** e.g. Following: MIA */
+  obCamFollowing: (name: string) => string;
   /** Accessible name for the floating language control */
   langAria: string;
   cameras: string;
@@ -175,6 +187,12 @@ const en: Dict = {
   obLobbyNote: "The main playfield appears here after the game starts.",
   obLobbyEmpty: "No players in the room yet.",
   obLobbyAllPlayers: "All players",
+  obCamCentroid: "All",
+  obCamFollow: "Follow",
+  obCamFree: "Free",
+  obCamDragHint: "Drag the map to pan the view",
+  obCamTapFaceHint: "Tap a face to follow that player on the map",
+  obCamFollowing: (name) => `Following: ${name}`,
   langAria: "Language",
   cameras: "CAMERAS",
   events: "ZOO KEEPER LOG",
@@ -190,10 +208,10 @@ const en: Dict = {
   gateLocked: "Complete the checks to unlock.",
   gateTaskShake: "Shake your head",
   gateTaskMouth: "Open your mouth",
-  gateTaskCloseEyes: "Close eyes for 1.5s",
+  gateTaskCloseEyes: "Wink left eye for 1.5s",
   gateProgressShake: (n, t) => `${n}/${t} shakes`,
   gateProgressMouth: "Hold open…",
-  gateProgressEyesOpen: "Close both eyes…",
+  gateProgressEyesOpen: "Close left eye, keep right open…",
   gateProgressEyesHold: (s) => `Hold ${s}s more…`,
   gateOk: "Done",
   gateWaiting: "Waiting…"
@@ -268,6 +286,12 @@ const zh: Dict = {
   obLobbyNote: "游戏开始之后，对局主场景会出现在中间。",
   obLobbyEmpty: "房间内暂无玩家。",
   obLobbyAllPlayers: "其他玩家",
+  obCamCentroid: "全景",
+  obCamFollow: "跟随",
+  obCamFree: "自由",
+  obCamDragHint: "在画面上拖拽以平移主场景镜头",
+  obCamTapFaceHint: "点击圆环头像，主场景会跟随该玩家",
+  obCamFollowing: (name) => `跟随：${name}`,
   langAria: "界面语言",
   cameras: "摄像头",
   events: "ZOO KEEPER LOG",
@@ -283,10 +307,10 @@ const zh: Dict = {
   gateLocked: "完成所有测试后才能进入。",
   gateTaskShake: "摇摇头",
   gateTaskMouth: "张大嘴",
-  gateTaskCloseEyes: "闭眼 1.5 秒",
+  gateTaskCloseEyes: "闭左眼 1.5 秒",
   gateProgressShake: (n, t) => `${n}/${t} 次`,
   gateProgressMouth: "保持张嘴…",
-  gateProgressEyesOpen: "请闭上双眼…",
+  gateProgressEyesOpen: "闭上左眼，右眼保持睁开…",
   gateProgressEyesHold: (s) => `再保持 ${s} 秒…`,
   gateOk: "完成",
   gateWaiting: "等待…"
