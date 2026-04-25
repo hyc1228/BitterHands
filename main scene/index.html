@@ -548,6 +548,101 @@
           opacity: 1;
         }
       }
+
+      /* ---------- Action challenge overlay ---------- */
+      #challengeOverlay {
+        display: none;
+        position: absolute;
+        left: 50%;
+        top: 40%;
+        transform: translate(-50%, -50%);
+        z-index: 25;
+        background: rgba(4, 4, 4, 0.93);
+        border: 2.5px solid #f0c040;
+        border-radius: 14px;
+        padding: 14px 22px 16px;
+        text-align: center;
+        min-width: 200px;
+        box-shadow: 0 0 30px rgba(240, 192, 64, 0.28);
+        pointer-events: none;
+      }
+      #challengeOverlay.active  { display: block; }
+      #challengeOverlay.success { border-color: #30d080; box-shadow: 0 0 30px rgba(48,208,128,0.32); }
+      #challengeOverlay.fail    { border-color: #ff4444; box-shadow: 0 0 30px rgba(255,68,68,0.32); }
+      #chal-icon  { font-size: 2.2rem; margin-bottom: 4px; }
+      #chal-label {
+        font-family: "Caveat", cursive;
+        font-size: 1.55rem;
+        font-weight: 700;
+        color: #f0c040;
+        margin-bottom: 4px;
+      }
+      #challengeOverlay.success #chal-label { color: #30d080; }
+      #challengeOverlay.fail    #chal-label { color: #ff4444; }
+      #chal-status {
+        font-size: 0.82rem;
+        color: #999;
+        margin-bottom: 10px;
+        font-family: "Patrick Hand", cursive;
+        min-height: 1.2em;
+      }
+      .chal-bar { height: 5px; background: #2a2a2a; border-radius: 3px; overflow: hidden; }
+      #chal-bar-fill {
+        height: 100%;
+        width: 100%;
+        background: #f0c040;
+        border-radius: 3px;
+        transition: width 0.1s linear;
+      }
+      #challengeOverlay.success #chal-bar-fill { background: #30d080; }
+      #challengeOverlay.fail    #chal-bar-fill { background: #ff4444; }
+
+      /* ---------- Universal rule challenge overlay ---------- */
+      #universalOverlay {
+        display: none;
+        position: absolute;
+        left: 50%;
+        bottom: 168px;
+        transform: translateX(-50%);
+        z-index: 24;
+        background: rgba(4, 4, 4, 0.93);
+        border: 2px solid #88aaff;
+        border-radius: 12px;
+        padding: 10px 18px 12px;
+        text-align: center;
+        min-width: 185px;
+        box-shadow: 0 0 20px rgba(136, 170, 255, 0.22);
+        pointer-events: none;
+      }
+      #universalOverlay.active  { display: block; }
+      #universalOverlay.success { border-color: #30d080; box-shadow: 0 0 20px rgba(48,208,128,0.28); }
+      #universalOverlay.fail    { border-color: #ff4444; box-shadow: 0 0 20px rgba(255,68,68,0.28); }
+      #uchal-icon  { font-size: 1.8rem; margin-bottom: 3px; }
+      #uchal-label {
+        font-family: "Caveat", cursive;
+        font-size: 1.35rem;
+        font-weight: 700;
+        color: #88aaff;
+        margin-bottom: 3px;
+      }
+      #universalOverlay.success #uchal-label { color: #30d080; }
+      #universalOverlay.fail    #uchal-label { color: #ff4444; }
+      #uchal-status {
+        font-size: 0.78rem;
+        color: #888;
+        margin-bottom: 8px;
+        font-family: "Patrick Hand", cursive;
+        min-height: 1.1em;
+      }
+      #uchal-bar-fill {
+        height: 100%;
+        width: 100%;
+        background: #88aaff;
+        border-radius: 3px;
+        transition: width 0.1s linear;
+      }
+      #universalOverlay.success #uchal-bar-fill { background: #30d080; }
+      #universalOverlay.fail    #uchal-bar-fill { background: #ff4444; }
     </style>
   </head>
   <body>
@@ -707,9 +802,28 @@
 
         <div class="rec-fx" aria-hidden="true"></div>
         <div class="glitch-band" id="glitchBand" aria-hidden="true"></div>
+
+        <!-- Webcam: hidden input for FaceMesh -->
+        <video id="webcamVideo" playsinline autoplay muted style="display:none"></video>
+        <!-- Action challenge overlay (monitor) -->
+        <div id="challengeOverlay">
+          <div id="chal-icon">👁️</div>
+          <div id="chal-label">守则提示</div>
+          <div id="chal-status">监管者注视着你…</div>
+          <div class="chal-bar"><div id="chal-bar-fill"></div></div>
+        </div>
+        <!-- Universal rule challenge overlay -->
+        <div id="universalOverlay">
+          <div id="uchal-icon">👁️</div>
+          <div id="uchal-label">通用规则</div>
+          <div id="uchal-status">请执行！</div>
+          <div class="chal-bar"><div id="uchal-bar-fill"></div></div>
+        </div>
       </div>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script>
       // =================================================================
       // Coordinates
@@ -1186,8 +1300,13 @@
           x: cx + 130,
           y: cy - 170,
           aimAngle: Math.PI,
+          mode: "sweep",    // 'sweep' | 'locked'
+          sweepDir: 1,
+          sweepTimer: 2,
           targetId: null,
+          lockTimer: 0,     // countdown while locked on a target
           retargetIn: 0,
+          lured: null,
         },
         items: [
           { id: "h1", type: "heart", x: cx - 80, y: cy - 340 },
@@ -1435,9 +1554,11 @@
           flashHeartGain();
         } else if (it.type === "alarm") {
           addLog("闹铃响了…它转过头来。");
-          state.monitor.targetId = "__alarm__";
+          if (challenge.active) endChallenge(false);
+          state.monitor.mode     = "sweep";
+          state.monitor.targetId = null;
+          state.monitor.lured    = { x: it.x, y: it.y };
           state.monitor.retargetIn = 4;
-          state.monitor.lured = { x: it.x, y: it.y };
         }
         // disappear animation, then remove
         const node = state.nodes.items.get(it.id);
@@ -1486,47 +1607,99 @@
         }
       }
 
+      // Returns true if (playerX, playerY) falls inside the flashlight cone.
+      // Cone half-angle ~22 deg, max reach 300 map units.
+      function isInCone(monX, monY, aimAngle, playerX, playerY) {
+        const dx   = playerX - monX;
+        const dy   = playerY - monY;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 50 || dist > 300) return false;
+        return Math.abs(wrapAngle(Math.atan2(dy, dx) - aimAngle)) < 0.38;
+      }
+
       function updateMonitor(dt) {
         const m = state.monitor;
-        m.retargetIn -= dt;
-        if (m.retargetIn <= 0) {
-          m.retargetIn = 5 + Math.random() * 5;
-          // pick a target: any player in flashlight beam, or random
-          const candidates = [
+
+        // --- Alarm lure: point toward lure position, then resume sweep ---
+        if (m.lured) {
+          const desired = Math.atan2(m.lured.y - m.y, m.lured.x - m.x);
+          m.aimAngle += clamp(wrapAngle(desired - m.aimAngle), -4 * dt, 4 * dt);
+          m.retargetIn -= dt;
+          if (m.retargetIn <= 0) {
+            m.lured = null;
+            m.mode  = "sweep";
+            m.sweepTimer = 1;
+          }
+          return;
+        }
+
+        if (m.mode === "sweep") {
+          // Rotate flashlight back and forth
+          m.aimAngle  += m.sweepDir * 0.5 * dt;
+          m.sweepTimer -= dt;
+          if (m.sweepTimer <= 0) {
+            m.sweepTimer = 2 + Math.random() * 3;
+            if (Math.random() < 0.6) m.sweepDir *= -1;
+          }
+          // Slow random drift
+          m.x = clamp(m.x + (Math.random() - 0.5) * 20 * dt, BORDER, MAP_W - BORDER);
+          m.y = clamp(m.y + (Math.random() - 0.5) * 20 * dt, BORDER, MAP_H - BORDER);
+
+          // Check which players are inside the cone
+          const allPlayers = [
             { id: "me", x: state.me.x, y: state.me.y },
             ...state.others.map((p) => ({ id: p.id, x: p.x, y: p.y })),
           ];
-          const pick = candidates[Math.floor(Math.random() * candidates.length)];
-          m.targetId = pick.id;
-          m.lured = null;
-        }
+          const inCone = allPlayers.filter((p) =>
+            isInCone(m.x, m.y, m.aimAngle, p.x, p.y)
+          );
+          // Don't re-target "me" while challenge is on cooldown
+          const eligible = inCone.filter(
+            (p) => !(p.id === "me" && challenge.cooldown > 0)
+          );
+          if (eligible.length > 0) {
+            const pick = eligible[Math.floor(Math.random() * eligible.length)];
+            m.targetId  = pick.id;
+            m.mode      = "locked";
+            m.lockTimer = challenge.MAX_TIME; // lock lasts as long as the challenge window
+            if (pick.id === "me") {
+              startChallenge();
+            } else {
+              const name = state.others.find((p) => p.id === pick.id)?.name ?? pick.id;
+              addLog(`手电筒照到 ${name}…`);
+            }
+          }
+        } else if (m.mode === "locked") {
+          // Count down lock duration; release when expired
+          m.lockTimer -= dt;
+          if (m.lockTimer <= 0) {
+            if (challenge.active && m.targetId === "me") endChallenge(false);
+            m.mode       = "sweep";
+            m.targetId   = null;
+            m.sweepTimer = 1;
+            return;
+          }
+          // Track locked target until challenge resolves
+          const target =
+            m.targetId === "me"
+              ? state.me
+              : state.others.find((p) => p.id === m.targetId);
+          if (!target) { m.mode = "sweep"; m.sweepTimer = 1; return; }
 
-        // Resolve target position
-        let target;
-        if (m.lured) {
-          target = m.lured;
-        } else if (m.targetId === "me") {
-          target = state.me;
-        } else {
-          target = state.others.find((p) => p.id === m.targetId);
-        }
-        if (!target) return;
+          const desired = Math.atan2(target.y - m.y, target.x - m.x);
+          m.aimAngle += clamp(wrapAngle(desired - m.aimAngle), -4 * dt, 4 * dt);
 
-        // Aim angle (smooth — slower than before so the cone doesn't feel jittery)
-        const desired = Math.atan2(target.y - m.y, target.x - m.x);
-        const diff = wrapAngle(desired - m.aimAngle);
-        m.aimAngle += clamp(diff, -3 * dt, 3 * dt);
-
-        // Drift slowly toward target so the monitor "patrols"
-        const dx = target.x - m.x;
-        const dy = target.y - m.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist > 120) {
-          m.x += (dx / dist) * MON_SPEED * dt;
-          m.y += (dy / dist) * MON_SPEED * dt;
+          // Slowly close in on target
+          const dx   = target.x - m.x;
+          const dy   = target.y - m.y;
+          const dist = Math.hypot(dx, dy);
+          if (dist > 120) {
+            m.x += (dx / dist) * MON_SPEED * dt;
+            m.y += (dy / dist) * MON_SPEED * dt;
+          }
+          m.x = clamp(m.x, BORDER, MAP_W - BORDER);
+          m.y = clamp(m.y, BORDER, MAP_H - BORDER);
         }
-        m.x = clamp(m.x, BORDER, MAP_W - BORDER);
-        m.y = clamp(m.y, BORDER, MAP_H - BORDER);
       }
 
       function clamp(v, lo, hi) {
@@ -1621,21 +1794,18 @@
       setInterval(tickFlavor, 6500);
 
       // Periodic new-rule announcements (red, distinct from flavor)
-      const ruleLines = [
-        "新规则：禁止低头。",
-        "新规则：每 30 秒必须张开嘴一次。",
-        "新规则：手不得离开视线。",
-        "新规则：禁止说出'动物园'三个字。",
-        "新规则：眨眼不得超过两次/分钟。",
-        "新规则：原地转一圈，否则视为可疑。",
-        "新规则：被照到时必须保持微笑。",
+      const UNIVERSAL_RULES = [
+        { id: "u_blink",    icon: "👁️", label: "眨一下眼！",  log: "通用规则：请眨眼。" },
+        { id: "u_mouth",    icon: "😮", label: "张开嘴巴！",  log: "通用规则：请张嘴。" },
+        { id: "u_headmove", icon: "🙂", label: "摇头或点头！", log: "通用规则：摇头或点头。" },
       ];
-      function tickRule() {
-        addLog(ruleLines[Math.floor(Math.random() * ruleLines.length)], null, {
-          rule: true,
-        });
+      function triggerUniversalRule() {
+        if (universalChallenge.active) return;
+        const rule = UNIVERSAL_RULES[Math.floor(Math.random() * UNIVERSAL_RULES.length)];
+        addLog(rule.log, null, { rule: true });
+        startUniversalChallenge(rule);
       }
-      setInterval(tickRule, 22000);
+      setInterval(triggerUniversalRule, 15000);
 
       // =================================================================
       // Input
@@ -1709,6 +1879,8 @@
         updatePlayer(dt);
         updateOthers(dt);
         updateMonitor(dt);
+        updateChallenge(dt);
+        updateUniversalChallenge(dt);
         render();
         requestAnimationFrame(frame);
       }
@@ -1736,6 +1908,323 @@
         }, next);
       }
       scheduleGlitch();
+
+      // =================================================================
+      // Action Challenge System + FaceMesh Detection
+      // =================================================================
+
+      const chalOverlay  = document.getElementById("challengeOverlay");
+      const chalIcon     = document.getElementById("chal-icon");
+      const chalLabel    = document.getElementById("chal-label");
+      const chalStatus   = document.getElementById("chal-status");
+      const chalBarFill  = document.getElementById("chal-bar-fill");
+      const webcamVideo  = document.getElementById("webcamVideo");
+      const webcamCanvas = document.getElementById("webcam-canvas");
+
+      // Challenge state
+      const challenge = {
+        active: false,
+        action: null,       // 'blink' | 'mouth' | 'shake'
+        completed: false,
+        timeLeft: 0,
+        cooldown: 0,
+        MAX_TIME: 8,
+        shake: { dir: 0, changes: 0 },
+        mouth: { openFrames: 0 },
+        blink: { since: null },
+      };
+
+      const ACTION_INFO = {
+        blink: { icon: "👁️", label: "5秒不眨眼！" },
+        mouth: { icon: "😮", label: "张开嘴巴！"  },
+        shake: { icon: "🙂", label: "摇头晃脑！"  },
+      };
+
+      function animalToAction(animal) {
+        if (animal === "owl")     return "blink";
+        if (animal === "lion")    return "mouth";
+        if (animal === "giraffe") return "shake";
+        return "shake";
+      }
+
+      function startChallenge() {
+        if (challenge.cooldown > 0) return;
+        challenge.active    = true;
+        challenge.completed = false;
+        challenge.action    = animalToAction(state.me.animal);
+        challenge.timeLeft  = challenge.MAX_TIME;
+        challenge.shake     = { dir: 0, changes: 0 };
+        challenge.mouth     = { openFrames: 0 };
+        challenge.blink     = { since: null };
+        const info = ACTION_INFO[challenge.action];
+        chalIcon.textContent   = info.icon;
+        chalLabel.textContent  = info.label;
+        chalStatus.textContent = "快做出动作！";
+        chalBarFill.style.width = "100%";
+        chalOverlay.className  = "active";
+        addLog("⚠ 监管者注视你了——执行守则！", null, { rule: true });
+      }
+
+      function endChallenge(success) {
+        if (!challenge.active) return;
+        challenge.active   = false;
+        challenge.cooldown = 3;
+        // Release monitor back to sweep mode
+        if (state.monitor.targetId === "me") {
+          state.monitor.mode       = "sweep";
+          state.monitor.targetId   = null;
+          state.monitor.sweepTimer = 1;
+        }
+        if (success) {
+          chalStatus.textContent = "✓ 守则完成！";
+          chalOverlay.className  = "active success";
+          addLog("✓ 守则完成。");
+        } else {
+          chalStatus.textContent = "✗ 违规！−1♥";
+          chalOverlay.className  = "active fail";
+          state.me.lives = Math.max(0, state.me.lives - 1);
+          renderLives();
+          addLog("❌ 未执行守则，扣 1 生命值。", null, { rule: true });
+        }
+        setTimeout(() => { chalOverlay.className = ""; }, 1400);
+      }
+
+      function updateChallenge(dt) {
+        if (challenge.cooldown > 0) challenge.cooldown -= dt;
+        if (!challenge.active) return;
+        challenge.timeLeft -= dt;
+        chalBarFill.style.width =
+          Math.max(0, (challenge.timeLeft / challenge.MAX_TIME) * 100) + "%";
+        if (challenge.timeLeft <= 0) endChallenge(false);
+      }
+
+      // ---------- FaceMesh landmark helpers ----------
+      const L_EYE_IDX    = [33, 160, 158, 133, 153, 144];
+      const R_EYE_IDX    = [362, 385, 387, 263, 373, 380];
+      const EAR_CLOSED   = 0.21;
+      const MAR_OPEN     = 0.40;
+      const SHAKE_THRESH = 0.08;
+      const BLINK_MS     = 5000;
+
+      function lmDist(a, b) { return Math.hypot(a.x - b.x, a.y - b.y); }
+
+      function earVal(lm, idx) {
+        const [p1, p2, p3, p4, p5, p6] = idx.map((i) => lm[i]);
+        return (lmDist(p2, p6) + lmDist(p3, p5)) / (2 * lmDist(p1, p4));
+      }
+
+      function processFace(lm, now) {
+        if (challenge.active && !challenge.completed)                   processMonitorChallenge(lm, now);
+        if (universalChallenge.active && !universalChallenge.completed) processUniversalChallenge(lm, now);
+      }
+
+      function processMonitorChallenge(lm, now) {
+        const act = challenge.action;
+
+        if (act === "blink") {
+          const ear = (earVal(lm, L_EYE_IDX) + earVal(lm, R_EYE_IDX)) / 2;
+          if (ear < EAR_CLOSED) {
+            challenge.blink.since  = null;
+            chalStatus.textContent = "眨眼了！保持睁眼…";
+          } else {
+            if (!challenge.blink.since) challenge.blink.since = now;
+            const elapsed = now - challenge.blink.since;
+            chalStatus.textContent =
+              "保持睁眼 " + Math.max(0, 5 - elapsed / 1000).toFixed(1) + "s…";
+            if (elapsed >= BLINK_MS) {
+              challenge.completed = true;
+              endChallenge(true);
+            }
+          }
+        } else if (act === "mouth") {
+          const mar =
+            lmDist(lm[13], lm[14]) / (lmDist(lm[61], lm[291]) + 1e-6);
+          if (mar > MAR_OPEN) {
+            challenge.mouth.openFrames++;
+            chalStatus.textContent = "嘴巴张开中…";
+            if (challenge.mouth.openFrames >= 8) {
+              challenge.completed = true;
+              endChallenge(true);
+            }
+          } else {
+            challenge.mouth.openFrames = Math.max(
+              0,
+              challenge.mouth.openFrames - 1
+            );
+            chalStatus.textContent = "张开嘴巴！";
+          }
+        } else if (act === "shake") {
+          const nose = lm[4], lb = lm[234], rb = lm[454];
+          const cx   = (lb.x + rb.x) / 2;
+          const fw   = Math.abs(rb.x - lb.x) + 1e-6;
+          const nx   = (nose.x - cx) / fw;
+          const cur  = nx > SHAKE_THRESH ? 1 : nx < -SHAKE_THRESH ? -1 : 0;
+          if (cur !== 0 && cur !== challenge.shake.dir) {
+            challenge.shake.dir = cur;
+            challenge.shake.changes++;
+          }
+          chalStatus.textContent =
+            "摇头 " + Math.floor(challenge.shake.changes / 2) + "/2…";
+          if (challenge.shake.changes >= 4) {
+            challenge.completed = true;
+            endChallenge(true);
+          }
+        }
+      }
+
+      // =================================================================
+      // Universal Rule Challenge System
+      // =================================================================
+
+      const uChalOverlay = document.getElementById("universalOverlay");
+      const uChalIcon    = document.getElementById("uchal-icon");
+      const uChalLabel   = document.getElementById("uchal-label");
+      const uChalStatus  = document.getElementById("uchal-status");
+      const uChalBarFill = document.getElementById("uchal-bar-fill");
+
+      const universalChallenge = {
+        active: false,
+        action: null,
+        completed: false,
+        timeLeft: 0,
+        MAX_TIME: 5,
+        blink:    { frames: 0 },
+        mouth:    { frames: 0 },
+        headmove: { hDir: 0, hChanges: 0, vDir: 0, vChanges: 0 },
+      };
+
+      function startUniversalChallenge(rule) {
+        universalChallenge.active    = true;
+        universalChallenge.completed = false;
+        universalChallenge.action    = rule.id;
+        universalChallenge.timeLeft  = universalChallenge.MAX_TIME;
+        universalChallenge.blink     = { frames: 0 };
+        universalChallenge.mouth     = { frames: 0 };
+        universalChallenge.headmove  = { hDir: 0, hChanges: 0, vDir: 0, vChanges: 0 };
+        uChalIcon.textContent    = rule.icon;
+        uChalLabel.textContent   = rule.label;
+        uChalStatus.textContent  = "请执行！";
+        uChalBarFill.style.width = "100%";
+        uChalOverlay.className   = "active";
+      }
+
+      function endUniversalChallenge(success) {
+        if (!universalChallenge.active) return;
+        universalChallenge.active = false;
+        if (success) {
+          uChalStatus.textContent = "✓ 完成！";
+          uChalOverlay.className  = "active success";
+          addLog("✓ 通用规则完成。");
+        } else {
+          uChalStatus.textContent = "✗ 违规！−1♥";
+          uChalOverlay.className  = "active fail";
+          state.me.lives = Math.max(0, state.me.lives - 1);
+          renderLives();
+          addLog("❌ 未执行通用规则，扣 1 生命值。", null, { rule: true });
+        }
+        setTimeout(() => { uChalOverlay.className = ""; }, 1200);
+      }
+
+      function updateUniversalChallenge(dt) {
+        if (!universalChallenge.active) return;
+        universalChallenge.timeLeft -= dt;
+        uChalBarFill.style.width =
+          Math.max(0, (universalChallenge.timeLeft / universalChallenge.MAX_TIME) * 100) + "%";
+        if (universalChallenge.timeLeft <= 0) endUniversalChallenge(false);
+      }
+
+      function processUniversalChallenge(lm) {
+        const act = universalChallenge.action;
+
+        if (act === "u_blink") {
+          const ear = (earVal(lm, L_EYE_IDX) + earVal(lm, R_EYE_IDX)) / 2;
+          if (ear < EAR_CLOSED) {
+            universalChallenge.blink.frames++;
+            uChalStatus.textContent = "眨眼中…";
+            if (universalChallenge.blink.frames >= 3) {
+              universalChallenge.completed = true;
+              endUniversalChallenge(true);
+            }
+          } else {
+            universalChallenge.blink.frames = 0;
+            uChalStatus.textContent = "请眨眼！";
+          }
+        } else if (act === "u_mouth") {
+          const mar = lmDist(lm[13], lm[14]) / (lmDist(lm[61], lm[291]) + 1e-6);
+          if (mar > MAR_OPEN) {
+            universalChallenge.mouth.frames++;
+            uChalStatus.textContent = "嘴巴张开中…";
+            if (universalChallenge.mouth.frames >= 8) {
+              universalChallenge.completed = true;
+              endUniversalChallenge(true);
+            }
+          } else {
+            universalChallenge.mouth.frames = Math.max(0, universalChallenge.mouth.frames - 1);
+            uChalStatus.textContent = "张开嘴！";
+          }
+        } else if (act === "u_headmove") {
+          const nose = lm[4], lb = lm[234], rb = lm[454];
+          // Lateral shake
+          const faceCX = (lb.x + rb.x) / 2;
+          const faceW  = Math.abs(rb.x - lb.x) + 1e-6;
+          const nx     = (nose.x - faceCX) / faceW;
+          const hCur   = nx > SHAKE_THRESH ? 1 : nx < -SHAKE_THRESH ? -1 : 0;
+          if (hCur !== 0 && hCur !== universalChallenge.headmove.hDir) {
+            universalChallenge.headmove.hDir = hCur;
+            universalChallenge.headmove.hChanges++;
+          }
+          // Vertical nod
+          const faceCY = (lm[10].y + lm[152].y) / 2;
+          const faceH  = Math.abs(lm[10].y - lm[152].y) + 1e-6;
+          const ny     = (nose.y - faceCY) / faceH;
+          const vCur   = ny > 0.08 ? 1 : ny < -0.08 ? -1 : 0;
+          if (vCur !== 0 && vCur !== universalChallenge.headmove.vDir) {
+            universalChallenge.headmove.vDir = vCur;
+            universalChallenge.headmove.vChanges++;
+          }
+          const total = universalChallenge.headmove.hChanges + universalChallenge.headmove.vChanges;
+          uChalStatus.textContent = total > 0 ? "继续！" : "摇头或点头！";
+          if (total >= 2) {
+            universalChallenge.completed = true;
+            endUniversalChallenge(true);
+          }
+        }
+      }
+
+      // ---------- FaceMesh + Camera setup ----------
+      try {
+        const faceMesh = new FaceMesh({
+          locateFile: (f) =>
+            "https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/" + f,
+        });
+        faceMesh.setOptions({
+          maxNumFaces: 1,
+          refineLandmarks: true,
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence: 0.5,
+        });
+        faceMesh.onResults((results) => {
+          if (
+            results.multiFaceLandmarks &&
+            results.multiFaceLandmarks.length > 0
+          ) {
+            processFace(results.multiFaceLandmarks[0], performance.now());
+          }
+        });
+
+        const camStream = new Camera(webcamVideo, {
+          onFrame: async () => {
+            await faceMesh.send({ image: webcamVideo });
+          },
+          width: 320,
+          height: 240,
+        });
+        camStream.start().catch(() => {
+          addLog("摄像头启动失败，动作检测不可用。");
+        });
+      } catch (e) {
+        addLog("动作检测初始化失败：" + e.message);
+      }
 
       // =================================================================
       // Boot
