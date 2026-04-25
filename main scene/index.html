@@ -477,6 +477,39 @@
           transform: rotate(-12deg);
         }
       }
+      /* Live2D-style placeholder blink. Real face detection will override
+         this by setting transform on the .eye groups directly. */
+      .animal .eye {
+        transform-box: fill-box;
+        transform-origin: 50% 50%;
+        animation: blinkLoop 4.5s ease-in-out infinite;
+      }
+      @keyframes blinkLoop {
+        0%, 95%, 100% {
+          transform: scaleY(1);
+        }
+        97% {
+          transform: scaleY(0.05);
+        }
+      }
+
+      /* Mouth — bbox-centered so face detection can scaleY it for open/close.
+         A subtle idle "breathing" animation makes it feel alive until real
+         mouth tracking is wired in. */
+      .animal .mouth {
+        transform-box: fill-box;
+        transform-origin: 50% 50%;
+        animation: mouthIdle 5.5s ease-in-out infinite;
+      }
+      @keyframes mouthIdle {
+        0%, 88%, 100% {
+          transform: scaleY(1);
+        }
+        93% {
+          transform: scaleY(1.6);
+        }
+      }
+
       /* Owl wing flap. Each wing pivots at the edge of its bbox that
          touches the body, so flapping rotates the tip up/down without
          dragging the wing across the body. */
@@ -724,16 +757,34 @@
               >
                 <feGaussianBlur stdDeviation="2.4" />
               </filter>
-              <!-- Tints "me"'s body/legs/wings from white to soft blue
-                   so the local player stands out from other players. -->
-              <filter id="meTint" color-interpolation-filters="sRGB">
-                <feColorMatrix
-                  type="matrix"
-                  values="0.34 0 0 0 0
-                          0 0.78 0 0 0
-                          0 0 1 0 0
-                          0 0 0 1 0"
+              <!-- Outlines "me"'s silhouette in soft blue without changing any
+                   body colors. Works by dilating SourceAlpha by ~3 px, filling
+                   that with blue, and drawing the original body on top so the
+                   blue is only visible at the silhouette edge. -->
+              <filter
+                id="meRing"
+                x="-15%"
+                y="-15%"
+                width="130%"
+                height="130%"
+              >
+                <feMorphology
+                  operator="dilate"
+                  radius="3"
+                  in="SourceAlpha"
+                  result="dilated"
                 />
+                <feFlood flood-color="#5cc9ff" result="blue" />
+                <feComposite
+                  in="blue"
+                  in2="dilated"
+                  operator="in"
+                  result="ring"
+                />
+                <feMerge>
+                  <feMergeNode in="ring" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
               </filter>
               <!-- Tiled grass background -->
               <pattern
@@ -867,83 +918,94 @@
 
       // Per-animal avatar:
       //   - body outline comes from the SVG file ("Owl body.svg" / "lion.svg" /
-      //     "giraffe.svg") embedded as <image>
-      //   - webcam viewport (white circle + scared placeholder face) sits at
-      //     the body's "head" position
-      //   - lion / giraffe get procedural stick legs that swing while walking
-      //   - owl has no legs; it has two wings on the sides that flap while
-      //     walking (wing image = "owl wing.svg")
-      //   - if isMe, the white body/legs/wings get tinted blue via #meTint
-      //     while the webcam viewport (the actual "face" area) stays white.
+      // Per-animal layout. Body comes from the SVG file; eyes and mouth are
+      // generated procedurally so face detection can drive them later
+      // (blink → eye scaleY=0; mouth open → mouth scaleY>1). Lion and
+      // giraffe also get procedural stick legs that swing while walking;
+      // the owl uses two flapping wings on the sides instead of legs.
       const ANIMAL_SPEC = {
         owl: {
           body: "Owl body.svg",
           bodyW: 80,
-          bodyH: 80,
-          viewport: { cx: 0, cy: 0, r: 22 },
-          nameY: -52,
-          wing: { attach: 36, w: 32, h: 28 },
+          bodyH: 96,
+          eyes: {
+            l: { cx: -10, cy: -10, scleraR: 6, pupilR: 4 },
+            r: { cx:  10, cy: -10, scleraR: 6, pupilR: 4 },
+            sclera: "#ffffff",
+            pupil:  "#cf1313",
+          },
+          // Owl beak — inverted triangle pointing down. rx is half-width,
+          // ry is half-height (top edge at cy-ry, bottom point at cy+ry).
+          mouth: { shape: "triangle", cx: 0, cy: 4, rx: 5, ry: 6 },
+          nameY: -56,
+          wing: { attach: 40, w: 36, h: 30, anchorY: -10 },
         },
         lion: {
           body: "lion.svg",
-          bodyW: 80,
-          bodyH: 86,
-          viewport: { cx: 0, cy: 6, r: 22 },
-          nameY: -60,
-          legs: { y: 38, spread: 12 },
+          bodyW: 96,
+          bodyH: 98,
+          eyes: {
+            l: { cx: -10, cy: -3, scleraR: 5, pupilR: 3 },
+            r: { cx:  10, cy: -3, scleraR: 5, pupilR: 3 },
+            sclera: "#ffffff",
+            pupil:  "#cf1313",
+          },
+          mouth: { cx: 0, cy: 8, rx: 8, ry: 4 },
+          legs: { y: 42, spread: 12 },
+          nameY: -56,
         },
         giraffe: {
           body: "giraffe.svg",
           bodyW: 50,
           bodyH: 100,
-          viewport: { cx: 0, cy: -32, r: 14 },
-          nameY: -62,
+          eyes: {
+            l: { cx: -4, cy: -25, scleraR: 3, pupilR: 2 },
+            r: { cx:  4, cy: -25, scleraR: 3, pupilR: 2 },
+            sclera: "#ffffff",
+            pupil:  "#cf1313",
+          },
+          mouth: { cx: 0, cy: -19, rx: 4, ry: 2.5 },
           legs: { y: 46, spread: 8 },
+          nameY: -58,
         },
       };
 
       function makeAnimalAvatar({ animal = "lion", isMe = false, name = "" }) {
         const spec = ANIMAL_SPEC[animal] || ANIMAL_SPEC.lion;
-        const tint = isMe ? "url(#meTint)" : null;
-        const strokeColor = "#ffffff"; // tinted to blue via filter when isMe
 
         const root = el("g", { class: `entity animal ${animal}` });
         const inner = el("g", { class: "bob" });
 
-        // Body outline (the SVG file). Tinted if isMe.
-        const body = el("image", {
-          href: spec.body,
-          x: -spec.bodyW / 2,
-          y: -spec.bodyH / 2,
-          width: spec.bodyW,
-          height: spec.bodyH,
-          preserveAspectRatio: "xMidYMid meet",
-          filter: tint,
-        });
-        inner.appendChild(body);
+        // ---- Silhouette group: body image + wings (owl) OR legs (others). --
+        // The whole group gets the meRing filter when isMe, so the blue
+        // outline traces the union of body + wings/legs as a single
+        // silhouette without recoloring any of the body's interior pixels.
+        const sil = el("g", isMe ? { filter: "url(#meRing)" } : {});
 
-        // Wings (owl) — two stub wings extending OUTWARD from the body sides.
-        //
-        //   The wing.svg has its tip in the upper-LEFT and base in the
-        //   lower-RIGHT. For the LEFT wing we keep the natural orientation
-        //   (tip already points leftward) and just position the image so
-        //   it sits to the LEFT of the body. For the RIGHT wing we flip the
-        //   image content horizontally — but on the *image element itself*
-        //   (with a counter-translate) so the image's local rect stays at
-        //   x=0..w, keeping the inner group's bbox stable for the rotation
-        //   pivot.
-        //
-        //   Pivot lives at body-side edge of each wing (CSS sets origin):
-        //     wing-l  : 100% 50% (right edge of bbox = body side)
-        //     wing-r  :   0% 50% (left  edge of bbox = body side)
+        // Body image
+        sil.appendChild(
+          el("image", {
+            href: spec.body,
+            x: -spec.bodyW / 2,
+            y: -spec.bodyH / 2,
+            width: spec.bodyW,
+            height: spec.bodyH,
+            preserveAspectRatio: "xMidYMid meet",
+          })
+        );
+
         if (animal === "owl") {
+          // Two stub wings on the sides. See earlier turn for the
+          // image-flip logic: each wing's image rect stays at x=0..w in its
+          // inner group so the bbox-relative rotation pivot lines up with
+          // the body-side edge of each wing.
           const w = spec.wing.w;
           const h = spec.wing.h;
+          const ay = spec.wing.anchorY ?? 0;
 
-          // LEFT wing — extends leftward; image positioned to the LEFT of
-          // origin so the wing visibly sits outside the body.
+          // LEFT wing — natural orientation (tip already points leftward)
           const wLG = el("g", {
-            transform: `translate(${-spec.wing.attach} 0)`,
+            transform: `translate(${-spec.wing.attach} ${ay})`,
           });
           const wL = el("g", { class: "owl-wing wing-l" });
           wL.appendChild(
@@ -954,18 +1016,14 @@
               width: w,
               height: h,
               preserveAspectRatio: "xMidYMid meet",
-              filter: tint,
             })
           );
           wLG.appendChild(wL);
-          inner.appendChild(wLG);
+          sil.appendChild(wLG);
 
-          // RIGHT wing — extends rightward; the image element itself has its
-          // content flipped horizontally via "translate(w 0) scale(-1 1)",
-          // which keeps the rendered rect at x=0..w (so bbox is stable) but
-          // the wing's tip now appears on the right of the image.
+          // RIGHT wing — image content flipped in place so tip points right
           const wRG = el("g", {
-            transform: `translate(${spec.wing.attach} 0)`,
+            transform: `translate(${spec.wing.attach} ${ay})`,
           });
           const wR = el("g", { class: "owl-wing wing-r" });
           wR.appendChild(
@@ -976,81 +1034,109 @@
               width: w,
               height: h,
               preserveAspectRatio: "xMidYMid meet",
-              filter: tint,
               transform: `translate(${w} 0) scale(-1 1)`,
             })
           );
           wRG.appendChild(wR);
-          inner.appendChild(wRG);
-        } else {
-          // Lion / giraffe — procedural stick legs that swing via CSS.
+          sil.appendChild(wRG);
+        } else if (spec.legs) {
+          // Procedural stick legs that swing via CSS .walking .leg-{l,r}.
           const ly = spec.legs.y;
           const lx = spec.legs.spread;
-          const legL = el("path", {
-            d: `M${-lx} ${ly} L${-lx - 2} ${ly + 18} L${-lx - 6} ${ly + 19}`,
-            fill: "none",
-            stroke: strokeColor,
-            "stroke-width": 3.6,
-            "stroke-linecap": "round",
-            class: "leg leg-l",
-            filter: tint,
-          });
-          const legR = el("path", {
-            d: `M${lx} ${ly} L${lx + 2} ${ly + 18} L${lx + 6} ${ly + 19}`,
-            fill: "none",
-            stroke: strokeColor,
-            "stroke-width": 3.6,
-            "stroke-linecap": "round",
-            class: "leg leg-r",
-            filter: tint,
-          });
-          inner.appendChild(legL);
-          inner.appendChild(legR);
+          sil.appendChild(
+            el("path", {
+              d: `M${-lx} ${ly} L${-lx - 2} ${ly + 18} L${-lx - 6} ${ly + 19}`,
+              fill: "none",
+              stroke: "#ffffff",
+              "stroke-width": 3.6,
+              "stroke-linecap": "round",
+              class: "leg leg-l",
+            })
+          );
+          sil.appendChild(
+            el("path", {
+              d: `M${lx} ${ly} L${lx + 2} ${ly + 18} L${lx + 6} ${ly + 19}`,
+              fill: "none",
+              stroke: "#ffffff",
+              "stroke-width": 3.6,
+              "stroke-linecap": "round",
+              class: "leg leg-r",
+            })
+          );
         }
 
-        // Webcam viewport (white circle, NOT tinted so the actual webcam
-        // area stays light when wired up later).
-        const viewport = el("circle", {
-          cx: spec.viewport.cx,
-          cy: spec.viewport.cy,
-          r: spec.viewport.r,
-          fill: "#fdfdfd",
-          stroke: "#fdfdfd",
-          "stroke-width": 1,
-        });
-        inner.appendChild(viewport);
+        inner.appendChild(sil);
 
-        // Placeholder "scared" face inside the viewport.
-        const r = spec.viewport.r;
-        const face = el("g");
-        const eyeDx = r * 0.32;
-        const eyeDy = r * -0.18;
-        face.appendChild(
-          el("circle", {
-            cx: spec.viewport.cx - eyeDx,
-            cy: spec.viewport.cy + eyeDy,
-            r: Math.max(1.8, r * 0.1),
-            fill: "#0a0a0a",
-          })
-        );
-        face.appendChild(
-          el("circle", {
-            cx: spec.viewport.cx + eyeDx,
-            cy: spec.viewport.cy + eyeDy,
-            r: Math.max(1.8, r * 0.1),
-            fill: "#0a0a0a",
-          })
-        );
-        face.appendChild(
-          el("ellipse", {
-            cx: spec.viewport.cx,
-            cy: spec.viewport.cy + r * 0.35,
-            rx: Math.max(2.4, r * 0.14),
-            ry: Math.max(3.6, r * 0.22),
-            fill: "#0a0a0a",
-          })
-        );
-        inner.appendChild(face);
+        // ---- Procedural mouth (animatable). ---------------------------
+        //   shape: "ellipse" (default) → <ellipse cx cy rx ry>
+        //   shape: "triangle"          → inverted <polygon> (beak)
+        //
+        // Wrapped in <g class="mouth"> with bbox-centered transform-origin
+        // so face detection can scaleY it for "open mouth" / "closed mouth".
+        if (spec.mouth) {
+          const m = spec.mouth;
+          const mouthG = el("g", { class: "mouth" });
+          let mouthShape;
+          if (m.shape === "triangle") {
+            // Inverted triangle: top-left, top-right, bottom-center
+            const points =
+              `${m.cx - m.rx},${m.cy - m.ry} ` +
+              `${m.cx + m.rx},${m.cy - m.ry} ` +
+              `${m.cx},${m.cy + m.ry}`;
+            mouthShape = el("polygon", { points, fill: "#0a0a0a" });
+          } else {
+            mouthShape = el("ellipse", {
+              cx: m.cx,
+              cy: m.cy,
+              rx: m.rx,
+              ry: m.ry,
+              fill: "#0a0a0a",
+            });
+          }
+          mouthG.appendChild(mouthShape);
+          inner.appendChild(mouthG);
+        }
+
+        // ---- Procedural eyes -------------------------------------------
+        // Wrapped per-eye in a <g class="eye"> so blink animation can scaleY
+        // them independently. Pupils are exposed via root._pupil{L,R} so face
+        // detection can later move them to follow gaze.
+        if (spec.eyes) {
+          const e = spec.eyes;
+
+          const eyeL = el("g", { class: "eye eye-l" });
+          eyeL.appendChild(
+            el("circle", {
+              cx: e.l.cx, cy: e.l.cy, r: e.l.scleraR,
+              fill: e.sclera,
+            })
+          );
+          const pupilL = el("circle", {
+            cx: e.l.cx, cy: e.l.cy, r: e.l.pupilR,
+            fill: e.pupil,
+          });
+          eyeL.appendChild(pupilL);
+          inner.appendChild(eyeL);
+
+          const eyeR = el("g", { class: "eye eye-r" });
+          eyeR.appendChild(
+            el("circle", {
+              cx: e.r.cx, cy: e.r.cy, r: e.r.scleraR,
+              fill: e.sclera,
+            })
+          );
+          const pupilR = el("circle", {
+            cx: e.r.cx, cy: e.r.cy, r: e.r.pupilR,
+            fill: e.pupil,
+          });
+          eyeR.appendChild(pupilR);
+          inner.appendChild(eyeR);
+
+          root._pupilL = pupilL;
+          root._pupilR = pupilR;
+          root._eyeL = e.l;
+          root._eyeR = e.r;
+        }
 
         // Name tag (above body)
         if (name) {
@@ -1071,98 +1157,70 @@
         return root;
       }
 
-      // Monitor character (red-eyed, with flashlight in hand).
+      // ZooKeeper (the monitor) — black bunny silhouette with red outline +
+      // red mouth + red nose, all from ZooKeeper.svg. We add only the EYES
+      // procedurally: a soft red glow halo, a solid red eye, and a small
+      // white pupil that gets translated each frame to track the target.
       function makeMonitor() {
-        const root = el("g", { class: "entity monitor", filter: "url(#rough)" });
+        const root = el("g", { class: "entity zookeeper" });
 
-        // Head (black filled, white outline)
-        const head = el("ellipse", {
-          cx: 0,
-          cy: 0,
-          rx: 38,
-          ry: 36,
-          fill: "#000",
-          stroke: "#fff",
-          "stroke-width": 3.2,
-        });
+        const W = 90;
+        const H = 124;
+        // Round head sits in the lower half of the SVG (below the long ears).
+        // Eyes go in its upper-middle, just above the red triangular nose
+        // (which is at display y≈19-25 from the SVG's nose path).
+        const eyeY = 8;
+        const eyeX = 11;
+        const eyeR = 8;
+        const pupilR = 2.5;
 
-        // Hat brim (small curve on top)
-        const brim = el("path", {
-          d: "M-30 -16 Q0 -28 30 -16",
-          fill: "none",
-          stroke: "#fff",
-          "stroke-width": 3.2,
-          "stroke-linecap": "round",
-        });
-
-        // Red eyes (with glow)
-        const eyeGlowL = el("circle", {
-          cx: -14,
-          cy: -2,
-          r: 8,
-          fill: "#ff2a2a",
-          filter: "url(#redGlow)",
-          opacity: 0.85,
-        });
-        const eyeGlowR = el("circle", {
-          cx: 14,
-          cy: -2,
-          r: 8,
-          fill: "#ff2a2a",
-          filter: "url(#redGlow)",
-          opacity: 0.85,
-        });
-        const eyeL = el("circle", { cx: -14, cy: -2, r: 5.2, fill: "#ff2a2a" });
-        const eyeR = el("circle", { cx: 14, cy: -2, r: 5.2, fill: "#ff2a2a" });
-
-        // White pupils — translated each frame toward target
-        const pupilL = el("circle", { cx: -14, cy: -2, r: 1.9, fill: "#fff" });
-        const pupilR = el("circle", { cx: 14, cy: -2, r: 1.9, fill: "#fff" });
-
-        // Jagged red zigzag mouth
-        const mouth = el("path", {
-          d: "M-17 14 L-12 8 L-6 15 L0 8 L6 15 L12 8 L17 14",
-          fill: "none",
-          stroke: "#ff2a2a",
-          "stroke-width": 3.2,
-          "stroke-linecap": "round",
-          "stroke-linejoin": "round",
-        });
-
-        // Legs
-        const legL = el("path", {
-          d: "M-11 33 L-13 50",
-          fill: "none",
-          stroke: "#fff",
-          "stroke-width": 3.2,
-          "stroke-linecap": "round",
-          class: "leg leg-l",
-        });
-        const legR = el("path", {
-          d: "M11 33 L13 50",
-          fill: "none",
-          stroke: "#fff",
-          "stroke-width": 3.2,
-          "stroke-linecap": "round",
-          class: "leg leg-r",
-        });
-
-        root.append(
-          head,
-          brim,
-          eyeGlowL,
-          eyeGlowR,
-          eyeL,
-          eyeR,
-          pupilL,
-          pupilR,
-          mouth,
-          legL,
-          legR
+        // Body (silhouette, ears, mouth, nose all included in the SVG)
+        root.appendChild(
+          el("image", {
+            href: "ZooKeeper.svg",
+            x: -W / 2,
+            y: -H / 2,
+            width: W,
+            height: H,
+            preserveAspectRatio: "xMidYMid meet",
+          })
         );
-        // Expose pupils for per-frame tracking
+
+        // Soft red glow halos behind the eyes
+        root.appendChild(
+          el("circle", {
+            cx: -eyeX,
+            cy: eyeY,
+            r: eyeR + 2,
+            fill: "#ff2a2a",
+            filter: "url(#redGlow)",
+            opacity: 0.85,
+          })
+        );
+        root.appendChild(
+          el("circle", {
+            cx: eyeX,
+            cy: eyeY,
+            r: eyeR + 2,
+            fill: "#ff2a2a",
+            filter: "url(#redGlow)",
+            opacity: 0.85,
+          })
+        );
+
+        // Solid red eyes
+        root.appendChild(el("circle", { cx: -eyeX, cy: eyeY, r: eyeR, fill: "#ff2a2a" }));
+        root.appendChild(el("circle", { cx: eyeX, cy: eyeY, r: eyeR, fill: "#ff2a2a" }));
+
+        // White pupils — moved each frame to track the current target
+        const pupilL = el("circle", { cx: -eyeX, cy: eyeY, r: pupilR, fill: "#fff" });
+        const pupilR_node = el("circle", { cx: eyeX, cy: eyeY, r: pupilR, fill: "#fff" });
+        root.append(pupilL, pupilR_node);
+
         root._pupilL = pupilL;
-        root._pupilR = pupilR;
+        root._pupilR = pupilR_node;
+        root._eyeX = eyeX;
+        root._eyeY = eyeY;
         return root;
       }
 
@@ -1216,59 +1274,55 @@
       //
       // Local x-axis points along the beam direction; rotation around (0,0)
       // is applied in render().
-      // Cone narrows at x=70 (torch lens position) and fans outward along +x.
+      // Cone uses light range.svg.
+      // The natural SVG has its APEX at (2656.64, 1878.53) — i.e. on the RIGHT
+      // edge of the file, vertically centered — and the curved wide end on the
+      // left. We render the image inside a small rect, then flip it
+      // horizontally IN PLACE (translate(2*x + w 0) scale(-1 1) on the image
+      // element) so the apex appears at the LEFT edge of the rendered rect.
+      // Then we position that rect so its left edge sits at x = APEX_X (the
+      // flashlight's lens position) and the cone fans rightward from there.
+      const CONE_W = 260;
+      const CONE_H = 340;
+      const APEX_X = 80;     // cone apex x (= flashlight lens x)
       function makeCone() {
         const root = el("g", { class: "flashlight-cone" });
-        const halo = el("polygon", {
-          points: "70,-28 330,-200 330,200 70,28",
-          fill: "rgba(173, 162, 70, 0.16)",
-          filter: "url(#rough)",
-        });
-        const cone = el("polygon", {
-          points: "70,-18 300,-160 300,160 70,18",
-          fill: "rgba(173, 162, 70, 0.78)",
-          filter: "url(#rough)",
-        });
-        root.append(halo, cone);
+        root.appendChild(
+          el("image", {
+            href: "light range.svg",
+            x: APEX_X,
+            y: -CONE_H / 2,
+            width: CONE_W,
+            height: CONE_H,
+            preserveAspectRatio: "xMidYMid meet",
+            transform: `translate(${2 * APEX_X + CONE_W} 0) scale(-1 1)`,
+            opacity: 0.78,
+          })
+        );
         return root;
       }
 
-      // Torch = arm + lamp + yellow lens, all in the rotated group.
-      // Body radius is ~38, so we keep the arm starting at x=14 (visible
-      // across the body) and the lamp clearly outside at x=46+.
+      // Torch uses flashlight.svg.
+      // The natural SVG has the yellow LENS on the LEFT side and the round
+      // handle extending to the RIGHT. We flip horizontally in place so the
+      // lens sits on the RIGHT edge of the rendered rect, lining up with the
+      // cone's apex at APEX_X.
+      const TORCH_W = 60;
+      const TORCH_H = 38;
+      const TORCH_X = APEX_X - TORCH_W;  // so lens (right edge) lands at APEX_X
       function makeTorch() {
         const root = el("g", { class: "flashlight-torch" });
-        // Arm: a thick white stick from inside the body out to the lamp,
-        // so it visually reads as "an arm holding the torch".
-        const arm = el("line", {
-          x1: 14,
-          y1: 0,
-          x2: 50,
-          y2: 0,
-          stroke: "#fff",
-          "stroke-width": 6,
-          "stroke-linecap": "round",
-        });
-        // Lamp head: clearly outside the body, big enough to read as a torch.
-        const lamp = el("rect", {
-          x: 46,
-          y: -10,
-          width: 22,
-          height: 20,
-          rx: 2.5,
-          fill: "#fff",
-          stroke: "#fff",
-          "stroke-width": 1.5,
-        });
-        // Yellow lens at the tip (cone starts here).
-        const lens = el("rect", {
-          x: 64,
-          y: -11,
-          width: 6,
-          height: 22,
-          fill: "#fceb6f",
-        });
-        root.append(arm, lamp, lens);
+        root.appendChild(
+          el("image", {
+            href: "flashlight.svg",
+            x: TORCH_X,
+            y: -TORCH_H / 2,
+            width: TORCH_W,
+            height: TORCH_H,
+            preserveAspectRatio: "xMidYMid meet",
+            transform: `translate(${2 * TORCH_X + TORCH_W} 0) scale(-1 1)`,
+          })
+        );
         return root;
       }
 
@@ -1542,16 +1596,15 @@
         // Pupils: shift the white pupil dots inside the red eyes toward target.
         const ux = Math.cos(state.monitor.aimAngle);
         const uy = Math.sin(state.monitor.aimAngle);
-        const PUPIL_OFFSET = 2.4;
-        const pL = state.nodes.monitor._pupilL;
-        const pR = state.nodes.monitor._pupilR;
-        if (pL) {
-          pL.setAttribute("cx", -14 + ux * PUPIL_OFFSET);
-          pL.setAttribute("cy", -2 + uy * PUPIL_OFFSET);
+        const PUPIL_OFFSET = 2.6;
+        const m = state.nodes.monitor;
+        if (m && m._pupilL) {
+          m._pupilL.setAttribute("cx", -m._eyeX + ux * PUPIL_OFFSET);
+          m._pupilL.setAttribute("cy", m._eyeY + uy * PUPIL_OFFSET);
         }
-        if (pR) {
-          pR.setAttribute("cx", 14 + ux * PUPIL_OFFSET);
-          pR.setAttribute("cy", -2 + uy * PUPIL_OFFSET);
+        if (m && m._pupilR) {
+          m._pupilR.setAttribute("cx", m._eyeX + ux * PUPIL_OFFSET);
+          m._pupilR.setAttribute("cy", m._eyeY + uy * PUPIL_OFFSET);
         }
       }
 
@@ -2181,7 +2234,62 @@
         return (lmDist(p2, p6) + lmDist(p3, p5)) / (2 * lmDist(p1, p4));
       }
 
+      // Live2D mapping. Translates EAR (eye aspect ratio) and MAR (mouth
+      // aspect ratio) into transforms on my avatar's SVG groups, so the
+      // animal blinks and opens its mouth in sync with the player's face.
+      //
+      //   EAR  ~0.10 (closed) → ~0.30 (wide open)
+      //   MAR  ~0.05 (closed) → ~0.60 (jaw dropped)
+      //
+      // Tune these if a particular player's face reads too closed/open.
+      const LIVE2D_EAR_CLOSED = 0.10;
+      const LIVE2D_EAR_OPEN   = 0.30;
+      const LIVE2D_MAR_CLOSED = 0.05;
+      const LIVE2D_MAR_OPEN   = 0.60;
+      const LIVE2D_MOUTH_MAX  = 3.0;  // mouth scaleY when MAR is fully open
+
+      const clamp01 = (v) => Math.max(0, Math.min(1, v));
+
+      function driveLive2D(lm) {
+        const me = state.nodes.me;
+        if (!me) return;
+
+        // 1) Eye openness 0..1 from EAR (per eye)
+        const earL = earVal(lm, L_EYE_IDX);
+        const earR = earVal(lm, R_EYE_IDX);
+        const span = LIVE2D_EAR_OPEN - LIVE2D_EAR_CLOSED;
+        const openL = Math.max(0.05, clamp01((earL - LIVE2D_EAR_CLOSED) / span));
+        const openR = Math.max(0.05, clamp01((earR - LIVE2D_EAR_CLOSED) / span));
+
+        // 2) Mouth openness 0..1 from MAR
+        const mar = lmDist(lm[13], lm[14]) / (lmDist(lm[61], lm[291]) + 1e-6);
+        const mouthOpen = clamp01(
+          (mar - LIVE2D_MAR_CLOSED) / (LIVE2D_MAR_OPEN - LIVE2D_MAR_CLOSED)
+        );
+        const mouthScale = 1 + mouthOpen * (LIVE2D_MOUTH_MAX - 1);
+
+        // 3) Apply to my avatar's SVG. Setting `animation: none` overrides
+        //    the placeholder blink/idle animation set in CSS so face data
+        //    takes over once it's flowing.
+        const eyeLEl  = me.querySelector(".eye-l");
+        const eyeREl  = me.querySelector(".eye-r");
+        const mouthEl = me.querySelector(".mouth");
+        if (eyeLEl) {
+          eyeLEl.style.animation = "none";
+          eyeLEl.style.transform = `scaleY(${openL})`;
+        }
+        if (eyeREl) {
+          eyeREl.style.animation = "none";
+          eyeREl.style.transform = `scaleY(${openR})`;
+        }
+        if (mouthEl) {
+          mouthEl.style.animation = "none";
+          mouthEl.style.transform = `scaleY(${mouthScale})`;
+        }
+      }
+
       function processFace(lm, now) {
+        driveLive2D(lm);
         if (challenge.active && !challenge.completed)                   processMonitorChallenge(lm, now);
         if (universalChallenge.active && !universalChallenge.completed) processUniversalChallenge(lm, now);
       }
