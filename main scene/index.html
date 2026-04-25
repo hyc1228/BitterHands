@@ -3244,6 +3244,11 @@
         } else if (state.nodes.me) {
           state.nodes.me.setAttribute("visibility", "visible");
         }
+        // Hide local-player UI for OB / spectator: bottom-right selfie preview is meaningless
+        // (OB has no camera) AND OB already shows every player's webcam in the surrounding
+        // 5-left + 5-right face columns of its own panel.
+        var camEl = document.getElementById("webcamVideo");
+        if (camEl) camEl.style.display = state.spectator ? "none" : "";
       }
       function applyObCamera(p) {
         if (!p || typeof p !== "object" || !state.spectator) return;

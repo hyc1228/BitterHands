@@ -481,6 +481,12 @@
       .flashlight-torch {
         will-change: transform;
       }
+      /* Fence layer: hint a GPU compositing layer so the SVG (with its
+         feTurbulence/displacement filter) is rasterized ONCE and the
+         resulting bitmap is reused every frame. No recomputed noise. */
+      #fenceLayer {
+        will-change: transform;
+      }
       .leg {
         transform-box: fill-box;
         transform-origin: top center;
@@ -1771,67 +1777,45 @@
       // =================================================================
       function buildScene() {
         // ---- Fence around the perimeter --------------------------------
-        // Procedural fence using only SVG primitives (<rect>) — NO external
-        // image. The previous fenceTile.svg was actually a PNG with an .svg
-        // extension; iOS Safari mis-parses that as SVG and renders garbled
-        // "?" / letter-like tiles at the borders. Pure rect fence is
-        // bulletproof everywhere.
+        // Individual <image> tiles referencing fenceTile.svg.
+        //
+        // History note: an earlier version of fenceTile.svg was a PNG with
+        // an .svg extension, which iOS Safari mis-parsed (showed as
+        // garbled "?" / letter tiles). It's now a real SVG, so this works
+        // everywhere. We tile manually rather than via <pattern> because
+        // a few iOS versions still glitch on PNG-via-pattern fills, and
+        // raw <image> tiles render identically across every browser.
+        //
+        // The fenceTile SVG carries a baked-in feTurbulence/displacement
+        // filter for the doodle "rough wood" look. That filter runs once
+        // when the browser rasterizes the SVG at the displayed size — the
+        // resulting bitmap is cached and reused every frame, so the noise
+        // is locked in and does NOT recompute per frame. will-change on
+        // .fence-layer (CSS) further nails the layer to GPU memory.
         const FH = 92;
-        const WOOD = "#6b4520";
-        const WOOD_DARK = "#2a1809";
-        const POST_GAP = 56;
-        const POST_W = 10;
-        // 4 outer beams (one per edge)
-        const beams = [
-          { x: 0,           y: 0,           width: MAP_W, height: FH }, // top
-          { x: 0,           y: MAP_H - FH,  width: MAP_W, height: FH }, // bottom
-          { x: 0,           y: 0,           width: FH,    height: MAP_H }, // left
-          { x: MAP_W - FH,  y: 0,           width: FH,    height: MAP_H }, // right
-        ];
-        for (const b of beams) {
-          layers.fence.appendChild(
-            el("rect", {
-              ...b,
-              fill: WOOD,
-              stroke: WOOD_DARK,
-              "stroke-width": 4,
-            })
-          );
+        const FW = 140;
+        function placeFenceRow(parent, length, y) {
+          for (let x = 0; x < length; x += FW) {
+            parent.appendChild(
+              el("image", {
+                href: "fenceTile.svg",
+                x,
+                y,
+                width: Math.min(FW, length - x),
+                height: FH,
+                preserveAspectRatio: "none",
+              })
+            );
+          }
         }
-        // Vertical "posts" peppered along top + bottom edges for character.
-        for (let x = POST_GAP; x < MAP_W - POST_GAP / 2; x += POST_GAP) {
-          layers.fence.appendChild(
-            el("rect", {
-              x: x - POST_W / 2, y: 0,
-              width: POST_W, height: FH,
-              fill: WOOD_DARK,
-            })
-          );
-          layers.fence.appendChild(
-            el("rect", {
-              x: x - POST_W / 2, y: MAP_H - FH,
-              width: POST_W, height: FH,
-              fill: WOOD_DARK,
-            })
-          );
-        }
-        // Horizontal "posts" along left + right edges
-        for (let y = POST_GAP; y < MAP_H - POST_GAP / 2; y += POST_GAP) {
-          layers.fence.appendChild(
-            el("rect", {
-              x: 0, y: y - POST_W / 2,
-              width: FH, height: POST_W,
-              fill: WOOD_DARK,
-            })
-          );
-          layers.fence.appendChild(
-            el("rect", {
-              x: MAP_W - FH, y: y - POST_W / 2,
-              width: FH, height: POST_W,
-              fill: WOOD_DARK,
-            })
-          );
-        }
+        placeFenceRow(layers.fence, MAP_W, 0);
+        placeFenceRow(layers.fence, MAP_W, MAP_H - FH);
+        const leftG = el("g", { transform: `translate(${FH} 0) rotate(90)` });
+        placeFenceRow(leftG, MAP_H, 0);
+        layers.fence.appendChild(leftG);
+        const rightG = el("g", { transform: `translate(${MAP_W} 0) rotate(90)` });
+        placeFenceRow(rightG, MAP_H, 0);
+        layers.fence.appendChild(rightG);
 
         // ---- Cone (drawn behind everything except background) ----------
         const cone = makeCone();
@@ -3260,6 +3244,11 @@
         } else if (state.nodes.me) {
           state.nodes.me.setAttribute("visibility", "visible");
         }
+        // Hide local-player UI for OB / spectator: bottom-right selfie preview is meaningless
+        // (OB has no camera) AND OB already shows every player's webcam in the surrounding
+        // 5-left + 5-right face columns of its own panel.
+        var camEl = document.getElementById("webcamVideo");
+        if (camEl) camEl.style.display = state.spectator ? "none" : "";
       }
       function applyObCamera(p) {
         if (!p || typeof p !== "object" || !state.spectator) return;
