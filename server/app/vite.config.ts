@@ -128,8 +128,8 @@ function removeMainSceneStrayHtmlPlugin(): Plugin {
           }
         }
       }
-      const legacy = path.join(outDir, "nz-scene.html");
-      if (fs.existsSync(legacy)) fs.rmSync(legacy, { force: true });
+      const legacyDoc = path.join(outDir, "nz-scene.document");
+      if (fs.existsSync(legacyDoc)) fs.rmSync(legacyDoc, { force: true });
     }
   };
 }

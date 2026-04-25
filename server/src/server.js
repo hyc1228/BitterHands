@@ -85,24 +85,19 @@ export default class Server {
    * @param {import("partykit/server").FetchLobby} lobby
    * @param {import("partykit/server").ExecutionContext} _ctx
    */
+  /**
+   * SPA mode is off (we use HashRouter so `/` is the only HTML page the browser requests).
+   * PartyKit static auto-serves `*.html` as text/html; we only need to handle the bare `/`.
+   * @param {import("partykit/server").Request} req
+   * @param {import("partykit/server").FetchLobby} lobby
+   * @param {import("partykit/server").ExecutionContext} _ctx
+   */
   static async onFetch(req, lobby, _ctx) {
-    const url = new URL(req.url);
     if (req.method !== "GET" && req.method !== "HEAD") return;
-    if (url.pathname === "/" || url.pathname === "/index.html") {
+    const url = new URL(req.url);
+    if (url.pathname === "/") {
       const r = await lobby.assets.fetch("/index.html");
       if (r && r.ok) return r;
-    }
-    if (url.pathname === "/nz-scene.document") {
-      const r = await lobby.assets.fetch("/nz-scene.document");
-      if (r && r.ok) {
-        const body = await r.arrayBuffer();
-        return new Response(body, {
-          headers: {
-            "Content-Type": "text/html; charset=utf-8",
-            "Cache-Control": "public, max-age=120"
-          }
-        });
-      }
     }
   }
 

@@ -7,7 +7,7 @@ interface ImportMetaEnv {
    * Example: `nocturne-zoo.yourname.partykit.dev` (no `https://`).
    */
   readonly VITE_PARTYKIT_HOST?: string;
-  /** Optional path for the main-scene iframe (default `nz-scene.document` at Vite public root). */
+  /** Optional path for the main-scene iframe (default `nz-scene.html` at Vite public root). */
   readonly VITE_MAIN_SCENE_PATH?: string;
 }
 
