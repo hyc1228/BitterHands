@@ -386,79 +386,81 @@ function ObInner() {
             </div>
           </div>
         ) : (
-          <div className="ob-scene-layout">
-            <div className="ob-face-column" aria-label="ob-faces-left">
-              {Array.from({ length: 5 }, (_, j) => {
-                const i = j;
-                const player = facePlayers[i] ?? null;
-                return (
-                  <ObFaceSlot
-                    key={player?.id ?? `ob-slot-${i}`}
-                    index={i}
-                    player={player}
-                    frame={player ? cameraFrames.get(player.id) ?? null : null}
-                    lang={lang}
-                    onPickPlayer={player && player.name.toLowerCase() !== "ob" ? () => pickObFollow(player.id) : undefined}
-                    followSelected={Boolean(player) && obCam.mode === "follow" && obCam.followId === player?.id}
-                    pickable={Boolean(player) && player.name.toLowerCase() !== "ob"}
-                  />
-                );
-              })}
+          // New global OB layout: bigger map + horizontal player tab strip on top.
+          // The strip lets the operator switch perspective with one tap; the iframe
+          // (centroid / follow / free pan) takes all remaining vertical space.
+          <div className="ob-stage">
+            <div className="ob-cam-bar" role="group" aria-label="ob main map camera">
+              <div className="ob-cam-seg">
+                <button
+                  type="button"
+                  className={obCam.mode === "centroid" ? "ob-cam-btn active" : "ob-cam-btn"}
+                  onClick={() => setObCam({ mode: "centroid", followId: null })}
+                >
+                  {t.obCamCentroid}
+                </button>
+                <button
+                  type="button"
+                  className={obCam.mode === "follow" ? "ob-cam-btn active" : "ob-cam-btn"}
+                  onClick={() => {
+                    if (obCam.followId) {
+                      setObCam({ mode: "follow", followId: obCam.followId });
+                    }
+                  }}
+                  disabled={!obCam.followId}
+                  title={!obCam.followId ? t.obCamTapFaceHint : undefined}
+                >
+                  {t.obCamFollow}
+                </button>
+                <button
+                  type="button"
+                  className={obCam.mode === "free" ? "ob-cam-btn active" : "ob-cam-btn"}
+                  onClick={() => {
+                    setObCam({ mode: "free", followId: null });
+                    queueMicrotask(() => {
+                      postObCameraToFrame(mainSceneIframeRef.current?.contentWindow, {
+                        mode: "free",
+                        initFromCurrent: true
+                      });
+                    });
+                  }}
+                >
+                  {t.obCamFree}
+                </button>
+              </div>
+              {obCam.mode === "follow" && obCam.followId ? (
+                <span className="ob-cam-following muted">
+                  {t.obCamFollowing(realPlayers.find((p) => p.id === obCam.followId)?.name ?? "—")}
+                </span>
+              ) : null}
+              {obCam.mode === "free" ? (
+                <span className="ob-cam-hint muted">{t.obCamDragHint}</span>
+              ) : (
+                <span className="ob-cam-hint muted">{t.obCamTapFaceHint}</span>
+              )}
             </div>
 
-            <div className="ob-scene-center">
-              <div className="ob-cam-bar" role="group" aria-label="ob main map camera">
-                <div className="ob-cam-seg">
-                  <button
-                    type="button"
-                    className={obCam.mode === "centroid" ? "ob-cam-btn active" : "ob-cam-btn"}
-                    onClick={() => setObCam({ mode: "centroid", followId: null })}
-                  >
-                    {t.obCamCentroid}
-                  </button>
-                  <button
-                    type="button"
-                    className={obCam.mode === "follow" ? "ob-cam-btn active" : "ob-cam-btn"}
-                    onClick={() => {
-                      if (obCam.followId) {
-                        setObCam({ mode: "follow", followId: obCam.followId });
-                      }
-                    }}
-                    disabled={!obCam.followId}
-                    title={!obCam.followId ? t.obCamTapFaceHint : undefined}
-                  >
-                    {t.obCamFollow}
-                  </button>
-                  <button
-                    type="button"
-                    className={obCam.mode === "free" ? "ob-cam-btn active" : "ob-cam-btn"}
-                    onClick={() => {
-                      setObCam({ mode: "free", followId: null });
-                      queueMicrotask(() => {
-                        postObCameraToFrame(mainSceneIframeRef.current?.contentWindow, {
-                          mode: "free",
-                          initFromCurrent: true
-                        });
-                      });
-                    }}
-                  >
-                    {t.obCamFree}
-                  </button>
-                </div>
-                {obCam.mode === "follow" && obCam.followId ? (
-                  <span className="ob-cam-following muted">
-                    {t.obCamFollowing(players.find((p) => p.id === obCam.followId)?.name ?? "—")}
-                  </span>
-                ) : null}
-                {obCam.mode === "free" ? (
-                  <span className="ob-cam-hint muted">{t.obCamDragHint}</span>
-                ) : (
-                  <span className="ob-cam-hint muted">{t.obCamTapFaceHint}</span>
-                )}
-              </div>
+            <div className="ob-tabs" role="tablist" aria-label="ob player tabs">
+              {realPlayers.length === 0 ? (
+                <div className="ob-tabs-empty muted">{t.obLobbyEmpty}</div>
+              ) : (
+                realPlayers.map((p) => (
+                  <ObPlayerTab
+                    key={p.id}
+                    player={p}
+                    frame={cameraFrames.get(p.id) ?? null}
+                    lang={lang}
+                    active={obCam.mode === "follow" && obCam.followId === p.id}
+                    onPick={() => pickObFollow(p.id)}
+                  />
+                ))
+              )}
+            </div>
+
+            <div className="ob-stage-screen">
               <iframe
                 ref={mainSceneIframeRef}
-                className="ob-scene-iframe"
+                className="ob-scene-iframe ob-scene-iframe--full"
                 title="Main scene"
                 src={mainSceneSrc}
                 onLoad={() => {
@@ -478,31 +480,72 @@ function ObInner() {
                 }}
               />
             </div>
-
-            <div className="ob-face-column" aria-label="ob-faces-right">
-              {Array.from({ length: 5 }, (_, j) => {
-                const i = j + 5;
-                const player = facePlayers[i] ?? null;
-                return (
-                  <ObFaceSlot
-                    key={player?.id ?? `ob-slot-${i}`}
-                    index={i}
-                    player={player}
-                    frame={player ? cameraFrames.get(player.id) ?? null : null}
-                    lang={lang}
-                    onPickPlayer={player && player.name.toLowerCase() !== "ob" ? () => pickObFollow(player.id) : undefined}
-                    followSelected={Boolean(player) && obCam.mode === "follow" && obCam.followId === player?.id}
-                    pickable={Boolean(player) && player.name.toLowerCase() !== "ob"}
-                  />
-                );
-              })}
-            </div>
           </div>
         )}
       </section>
     </div>
   );
 }
+
+const ObPlayerTab = memo(
+  function ObPlayerTab({
+    player,
+    frame,
+    lang,
+    active,
+    onPick
+  }: {
+    player: PublicPlayer;
+    frame: CameraFrame | null;
+    lang: Lang;
+    active: boolean;
+    onPick: () => void;
+  }) {
+    const t = dict(lang);
+    const animal = obAnimalLabel(lang, player.animal, t.ownAnimalUnknown);
+    return (
+      <button
+        type="button"
+        role="tab"
+        aria-selected={active}
+        className={"ob-tab" + (active ? " is-active" : "")}
+        onClick={onPick}
+        title={`${player.name} · ${animal}`}
+      >
+        <span className="ob-tab__face">
+          {frame ? (
+            <img
+              className="ob-tab__img"
+              src={frame.dataUrl}
+              alt=""
+              decoding="async"
+              loading="lazy"
+            />
+          ) : (
+            <span className="ob-tab__initial" aria-hidden>
+              {player.name.charAt(0).toUpperCase()}
+            </span>
+          )}
+          {!player.alive ? <span className="ob-tab__skull" aria-hidden>💀</span> : null}
+        </span>
+        <span className="ob-tab__meta">
+          <span className="ob-tab__name">
+            {player.name.length > 9 ? `${player.name.slice(0, 8)}…` : player.name}
+          </span>
+          <span className="ob-tab__animal" title={animal}>
+            {animal}
+          </span>
+        </span>
+      </button>
+    );
+  },
+  (prev, next) =>
+    prev.lang === next.lang &&
+    prev.active === next.active &&
+    prev.onPick === next.onPick &&
+    obPlayerTileEqual(prev.player, next.player) &&
+    obFrameVisualEqual(prev.frame, next.frame)
+);
 
 const ObSpotlightTile = memo(
   function ObSpotlightTile({
