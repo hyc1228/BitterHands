@@ -28,7 +28,9 @@ export const DETECTION_DEFAULTS = {
   shakeChangesNeeded: 4,
   mouthOpenFrames: 8,
   /** Onboard expression gate: hold eyes closed for this long (positive test). */
-  eyesClosedHoldMs: 1500
+  eyesClosedHoldMs: 1500,
+  /** Onboard expression gate: hold eyes OPEN (no blink) for this long (positive test). */
+  gateNoBlinkHoldMs: 2000
 } as const;
 
 function dist(
@@ -200,6 +202,10 @@ export function eyesClosedProgress(s: EyesClosedState, now: number): number {
  * the left eye, or also closing the right, resets progress.
  *
  * Reuses `EyesClosedState` shape so the gate UI can render uniform progress.
+ *
+ * @deprecated Replaced in the onboard gate by `updateNoBlink` (2 s eyes-open hold) — physical
+ * one-eye winks are unreliable for many users, and EAR jitter/head tilt easily resets the
+ * asymmetry timer. Kept exported in case a future game rule wants strict wink detection.
  */
 export function updateUserLeftEyeClosed(
   lm: Landmarks,
@@ -209,8 +215,6 @@ export function updateUserLeftEyeClosed(
   if (s.done) return s;
   const left = earValue(lm, USER_LEFT_EYE);
   const right = earValue(lm, USER_RIGHT_EYE);
-  // Slight tolerance on the "open" eye so a sleepy face still passes; the asymmetry guard
-  // prevents both-eyes-closed from counting (otherwise it would behave like updateEyesClosed).
   const leftClosed = left < DETECTION_DEFAULTS.earClosed;
   const rightOpen = right >= DETECTION_DEFAULTS.earClosed;
   if (!leftClosed || !rightOpen) {
@@ -221,4 +225,35 @@ export function updateUserLeftEyeClosed(
     return { done: true, since };
   }
   return { done: false, since };
+}
+
+/**
+ * Generic no-blink hold: keep eyes OPEN (avg EAR ≥ threshold) continuously for `holdMs`.
+ * Any blink (avg EAR < threshold) resets the timer. Reuses `BlinkHoldState`.
+ *
+ * Same logic family as `updateBlinkHold` but with caller-provided duration so the onboard
+ * gate (2 s) and the OWL game rule (5 s default) can share one implementation.
+ */
+export function updateNoBlink(
+  lm: Landmarks,
+  s: BlinkHoldState,
+  now: number,
+  holdMs: number
+): BlinkHoldState {
+  if (s.done) return s;
+  const avg = (earValue(lm, LEFT_EYE_EAR) + earValue(lm, RIGHT_EYE_EAR)) / 2;
+  if (avg < DETECTION_DEFAULTS.earClosed) {
+    return { done: false, since: null };
+  }
+  const since = s.since ?? now;
+  if (now - since >= holdMs) {
+    return { done: true, since };
+  }
+  return { done: false, since };
+}
+
+export function noBlinkProgress(s: BlinkHoldState, now: number, holdMs: number): number {
+  if (s.done) return 1;
+  if (s.since == null) return 0;
+  return Math.min(1, (now - s.since) / holdMs);
 }

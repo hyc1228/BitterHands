@@ -4,15 +4,15 @@ import { usePartyStore } from "../party/store";
 import { useCameraStream } from "../hooks/useCameraStream";
 import { useFaceMesh } from "../hooks/useFaceMesh";
 import {
-  createEyesClosedState,
+  createBlinkHoldState,
   createMouthState,
   createShakeState,
   DETECTION_DEFAULTS,
-  eyesClosedProgress,
+  noBlinkProgress,
   shakeShakesCount,
   updateMouth,
-  updateShake,
-  updateUserLeftEyeClosed
+  updateNoBlink,
+  updateShake
 } from "../determination";
 
 interface Props {
@@ -45,7 +45,7 @@ export default function ExpressionGate({ onPassed }: Props) {
 
   const shakeRef = useRef(createShakeState());
   const mouthRef = useRef(createMouthState());
-  const eyesRef = useRef(createEyesClosedState());
+  const noBlinkRef = useRef(createBlinkHoldState());
 
   // Keep video element wired up to the stream (mirrors selfie).
   useEffect(() => {
@@ -58,7 +58,14 @@ export default function ExpressionGate({ onPassed }: Props) {
     const now = performance.now();
     if (!shakeRef.current.done) shakeRef.current = updateShake(lm, shakeRef.current);
     if (!mouthRef.current.done) mouthRef.current = updateMouth(lm, mouthRef.current);
-    if (!eyesRef.current.done) eyesRef.current = updateUserLeftEyeClosed(lm, eyesRef.current, now);
+    if (!noBlinkRef.current.done) {
+      noBlinkRef.current = updateNoBlink(
+        lm,
+        noBlinkRef.current,
+        now,
+        DETECTION_DEFAULTS.gateNoBlinkHoldMs
+      );
+    }
     setUiTick((n) => (n + 1) % 1024);
   }, []);
 
@@ -69,7 +76,7 @@ export default function ExpressionGate({ onPassed }: Props) {
   });
 
   const allDone =
-    shakeRef.current.done && mouthRef.current.done && eyesRef.current.done;
+    shakeRef.current.done && mouthRef.current.done && noBlinkRef.current.done;
 
   // Notify parent whenever pass-state flips.
   const lastPass = useRef(false);
@@ -100,7 +107,7 @@ export default function ExpressionGate({ onPassed }: Props) {
   const handleStart = useCallback(async () => {
     shakeRef.current = createShakeState();
     mouthRef.current = createMouthState();
-    eyesRef.current = createEyesClosedState();
+    noBlinkRef.current = createBlinkHoldState();
     lastPass.current = false;
     onPassed(false);
     const s = await start();
@@ -110,7 +117,7 @@ export default function ExpressionGate({ onPassed }: Props) {
   const handleRetry = useCallback(() => {
     shakeRef.current = createShakeState();
     mouthRef.current = createMouthState();
-    eyesRef.current = createEyesClosedState();
+    noBlinkRef.current = createBlinkHoldState();
     lastPass.current = false;
     onPassed(false);
     setUiTick((n) => (n + 1) % 1024);
@@ -121,7 +128,7 @@ export default function ExpressionGate({ onPassed }: Props) {
   const now = performance.now();
   const shakeDone = shakeRef.current.done;
   const mouthDone = mouthRef.current.done;
-  const eyesDone = eyesRef.current.done;
+  const noBlinkDone = noBlinkRef.current.done;
   const tasks = {
     shake: {
       key: "shake" as TaskKey,
@@ -155,19 +162,19 @@ export default function ExpressionGate({ onPassed }: Props) {
     },
     eyes: {
       key: "eyes" as TaskKey,
-      done: eyesDone,
-      active: !eyesDone && eyesRef.current.since != null,
-      progress: eyesClosedProgress(eyesRef.current, now),
-      icon: "😉",
-      label: t.gateTaskCloseEyes,
-      status: eyesDone
+      done: noBlinkDone,
+      active: !noBlinkDone && noBlinkRef.current.since != null,
+      progress: noBlinkProgress(noBlinkRef.current, now, DETECTION_DEFAULTS.gateNoBlinkHoldMs),
+      icon: "👀",
+      label: t.gateTaskNoBlink,
+      status: noBlinkDone
         ? t.gateOk
-        : eyesRef.current.since == null
-          ? t.gateProgressEyesOpen
-          : t.gateProgressEyesHold(
+        : noBlinkRef.current.since == null
+          ? t.gateProgressNoBlinkStart
+          : t.gateProgressNoBlinkHold(
               Math.max(
                 0,
-                (DETECTION_DEFAULTS.eyesClosedHoldMs - (now - eyesRef.current.since)) / 1000
+                (DETECTION_DEFAULTS.gateNoBlinkHoldMs - (now - noBlinkRef.current.since)) / 1000
               ).toFixed(1)
             )
     }

@@ -108,11 +108,11 @@ interface Dict {
   gateLocked: string;
   gateTaskShake: string;
   gateTaskMouth: string;
-  gateTaskCloseEyes: string;
+  gateTaskNoBlink: string;
   gateProgressShake: (n: number, t: number) => string;
   gateProgressMouth: string;
-  gateProgressEyesOpen: string;
-  gateProgressEyesHold: (secondsLeft: string) => string;
+  gateProgressNoBlinkStart: string;
+  gateProgressNoBlinkHold: (secondsLeft: string) => string;
   gateOk: string;
   gateWaiting: string;
 }
@@ -208,11 +208,11 @@ const en: Dict = {
   gateLocked: "Complete the checks to unlock.",
   gateTaskShake: "Shake your head",
   gateTaskMouth: "Open your mouth",
-  gateTaskCloseEyes: "Wink left eye for 1.5s",
+  gateTaskNoBlink: "Don't blink for 2s",
   gateProgressShake: (n, t) => `${n}/${t} shakes`,
   gateProgressMouth: "Hold open…",
-  gateProgressEyesOpen: "Close left eye, keep right open…",
-  gateProgressEyesHold: (s) => `Hold ${s}s more…`,
+  gateProgressNoBlinkStart: "Keep both eyes wide open…",
+  gateProgressNoBlinkHold: (s) => `Hold ${s}s more…`,
   gateOk: "Done",
   gateWaiting: "Waiting…"
 };
@@ -307,11 +307,11 @@ const zh: Dict = {
   gateLocked: "完成所有测试后才能进入。",
   gateTaskShake: "摇摇头",
   gateTaskMouth: "张大嘴",
-  gateTaskCloseEyes: "闭左眼 1.5 秒",
+  gateTaskNoBlink: "2 秒不眨眼",
   gateProgressShake: (n, t) => `${n}/${t} 次`,
   gateProgressMouth: "保持张嘴…",
-  gateProgressEyesOpen: "闭上左眼，右眼保持睁开…",
-  gateProgressEyesHold: (s) => `再保持 ${s} 秒…`,
+  gateProgressNoBlinkStart: "睁大双眼，保持不眨…",
+  gateProgressNoBlinkHold: (s) => `再坚持 ${s} 秒…`,
   gateOk: "完成",
   gateWaiting: "等待…"
 };
