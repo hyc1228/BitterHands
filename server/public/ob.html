@@ -7,12 +7,16 @@
     <style>
       :root {
         color-scheme: dark;
-        --bg: #070710;
-        --panel: rgba(255, 255, 255, 0.04);
-        --text: #eaeaf6;
-        --muted: #a7a7c4;
-        --border: rgba(255, 255, 255, 0.12);
-        --accent: #8b5cf6;
+        --bg: #07070b;
+        --grid: rgba(255, 255, 255, 0.08);
+        --panel: rgba(255, 255, 255, 0.06);
+        --text: #f2f2ff;
+        --muted: rgba(242, 242, 255, 0.72);
+        --border: rgba(255, 255, 255, 0.14);
+        --accent: #6d5bff;
+        --accent2: #2dd4bf;
+        --danger: #ff3b30;
+        --spot: rgba(205, 199, 64, 0.36);
       }
       html,
       body {
@@ -20,10 +24,37 @@
       }
       body {
         margin: 0;
-        background: radial-gradient(1200px 600px at 20% 0%, rgba(139, 92, 246, 0.18), transparent),
-          radial-gradient(900px 500px at 90% 10%, rgba(20, 184, 166, 0.14), transparent), var(--bg);
+        background:
+          linear-gradient(var(--grid) 1px, transparent 1px),
+          linear-gradient(90deg, var(--grid) 1px, transparent 1px),
+          radial-gradient(900px 480px at 18% 6%, rgba(109, 91, 255, 0.22), transparent 70%),
+          radial-gradient(900px 520px at 86% 10%, rgba(45, 212, 191, 0.18), transparent 70%),
+          var(--bg);
+        background-size: 44px 44px, 44px 44px, auto, auto, auto;
         color: var(--text);
-        font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+        font-family: ui-rounded, ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica,
+          Arial;
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background: conic-gradient(
+          from 160deg at 0% 38%,
+          transparent 0deg,
+          var(--spot) 38deg,
+          transparent 78deg
+        );
+        opacity: 0.8;
+        mix-blend-mode: screen;
+      }
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        pointer-events: none;
+        background: radial-gradient(900px 600px at 50% 110%, rgba(0, 0, 0, 0.65), transparent 60%);
       }
       .wrap {
         height: 100%;
@@ -76,8 +107,8 @@
       input,
       select,
       button {
-        border-radius: 10px;
-        border: 1px solid var(--border);
+        border-radius: 12px;
+        border: 2px solid color-mix(in srgb, #fff 18%, var(--border));
         background: rgba(255, 255, 255, 0.04);
         color: var(--text);
         padding: 10px 10px;
@@ -85,7 +116,21 @@
       }
       button {
         cursor: pointer;
-        border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+        background: linear-gradient(
+          180deg,
+          rgba(255, 255, 255, 0.12),
+          rgba(255, 255, 255, 0.04)
+        );
+        box-shadow:
+          0 10px 0 rgba(0, 0, 0, 0.35),
+          0 18px 26px rgba(0, 0, 0, 0.35);
+        transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+      }
+      button:active {
+        transform: translateY(6px);
+        box-shadow:
+          0 4px 0 rgba(0, 0, 0, 0.35),
+          0 10px 20px rgba(0, 0, 0, 0.25);
       }
       .main {
         display: grid;
@@ -93,12 +138,16 @@
         gap: 12px;
         padding: 12px;
       }
+      .main.game {
+        grid-template-columns: 1fr 360px;
+      }
       .card {
-        background: color-mix(in srgb, var(--panel) 90%, transparent);
-        border: 1px solid var(--border);
-        border-radius: 16px;
+        background: color-mix(in srgb, var(--panel) 88%, transparent);
+        border: 2px solid color-mix(in srgb, #fff 22%, var(--border));
+        border-radius: 18px;
         padding: 14px;
         backdrop-filter: blur(8px);
+        box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
         min-height: 0;
       }
       .players {
@@ -153,6 +202,104 @@
         flex-wrap: wrap;
         justify-content: flex-end;
       }
+      .map {
+        height: 100%;
+        min-height: 0;
+        border-radius: 16px;
+        border: 1px solid var(--border);
+        background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent),
+          radial-gradient(900px 700px at 20% 30%, rgba(139, 92, 246, 0.14), transparent),
+          radial-gradient(800px 500px at 80% 20%, rgba(20, 184, 166, 0.12), transparent);
+        position: relative;
+        overflow: hidden;
+      }
+      .map::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background-image: linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+        background-size: 64px 64px;
+        opacity: 0.35;
+        pointer-events: none;
+      }
+      .mapHud {
+        position: absolute;
+        left: 14px;
+        top: 14px;
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 10px 12px;
+        backdrop-filter: blur(8px);
+        display: grid;
+        gap: 4px;
+        max-width: min(520px, calc(100% - 28px));
+      }
+      .mapTitle {
+        font-weight: 800;
+        letter-spacing: 0.2px;
+      }
+      .mapSub {
+        font-size: 12px;
+        color: var(--muted);
+      }
+      .cams {
+        display: grid;
+        gap: 10px;
+        align-content: start;
+        height: 100%;
+        overflow: auto;
+      }
+      .camCard {
+        border: 1px solid var(--border);
+        border-radius: 16px;
+        overflow: hidden;
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .camMeta {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        padding: 10px 10px 8px;
+        font-size: 12px;
+        color: var(--muted);
+        align-items: center;
+      }
+      .camName {
+        color: var(--text);
+        font-weight: 700;
+        font-size: 13px;
+      }
+      .camImg {
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        object-fit: cover;
+        display: block;
+        background: rgba(0, 0, 0, 0.35);
+      }
+      .statusRow {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .statusItem {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 10px;
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 10px 12px;
+        background: rgba(255, 255, 255, 0.03);
+      }
+      .k {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .v {
+        font-size: 12px;
+      }
       @media (max-width: 1024px) {
         .main {
           grid-template-columns: 1fr;
@@ -187,33 +334,68 @@
       </div>
 
       <div class="main">
-        <div class="card">
-          <div style="display:flex; align-items:end; justify-content:space-between; gap:10px">
-            <div style="font-weight:700" id="playersTitle">Players</div>
-            <div class="meta"><span class="badge" id="roomBadge">room: -</span></div>
+        <div class="card" id="leftPanel">
+          <div id="lobbyWrap">
+            <div class="statusRow">
+              <div class="statusItem">
+                <div class="k" id="kLobby">大厅服务器</div>
+                <div class="v" id="lobbyStatus">-</div>
+              </div>
+              <div class="statusItem">
+                <div class="k" id="kRoom">房间状态</div>
+                <div class="v" id="roomStatus">-</div>
+              </div>
+            </div>
+
+            <div style="display:flex; align-items:end; justify-content:space-between; gap:10px">
+              <div style="font-weight:700" id="playersTitle">Players</div>
+              <div class="meta"><span class="badge" id="roomBadge">room: -</span></div>
+            </div>
+            <div style="height:12px"></div>
+            <div class="players" id="players"></div>
           </div>
-          <div style="height:12px"></div>
-          <div class="players" id="players"></div>
+
+          <div id="mapWrap" style="display:none; height:100%; min-height:0">
+            <div class="map" id="map">
+              <div class="mapHud">
+                <div class="mapTitle" id="mapTitle">大地图（横屏观战）</div>
+                <div class="mapSub" id="mapSub">游戏进行中 · 右侧为玩家摄像头</div>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div class="card">
-          <div style="display:flex; align-items:end; justify-content:space-between; gap:10px">
+        <div id="rightPanel" class="card">
+          <div id="panelHeader" style="display:flex; align-items:end; justify-content:space-between; gap:10px">
             <div style="font-weight:700" id="eventsTitle">Events</div>
             <button id="btnClear" style="max-width:120px">Clear</button>
           </div>
           <div style="height:12px"></div>
-          <div class="log" id="log"></div>
+          <div id="eventsWrap" class="log"></div>
+          <div id="camsWrap" style="display:none; height:100%; min-height:0">
+            <div class="cams" id="cams"></div>
+          </div>
         </div>
       </div>
     </div>
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const logEl = $("log");
+      const eventsWrap = $("eventsWrap");
       const playersEl = $("players");
       const connDot = $("connDot");
       const connText = $("connText");
       const langSel = $("lang");
+      const mainEl = document.querySelector(".main");
+      const lobbyStatusEl = $("lobbyStatus");
+      const roomStatusEl = $("roomStatus");
+      const rightPanelEl = $("rightPanel");
+      const leftPanelEl = $("leftPanel");
+      const lobbyWrapEl = $("lobbyWrap");
+      const mapWrapEl = $("mapWrap");
+      const camsWrapEl = $("camsWrap");
+      const camsEl = $("cams");
+      const mapSubEl = $("mapSub");
 
       const I18N = {
         zh: {
@@ -222,6 +404,10 @@
           phRoom: "房间号",
           playersTitle: "玩家",
           eventsTitle: "事件",
+          mapTitle: "大地图（横屏观战）",
+          mapSub: "游戏进行中 · 右侧为玩家摄像头",
+          lobbyServer: "大厅服务器",
+          roomServer: "房间状态",
           connected: "已连接",
           disconnected: "未连接",
           connect: "连接",
@@ -237,6 +423,10 @@
           phRoom: "Room",
           playersTitle: "Players",
           eventsTitle: "Events",
+          mapTitle: "World map (OB)",
+          mapSub: "Game in progress · player cameras on the right",
+          lobbyServer: "Lobby server",
+          roomServer: "Room",
           connected: "Connected",
           disconnected: "Disconnected",
           connect: "Connect",
@@ -261,7 +451,7 @@
 
       function log(line) {
         const ts = new Date().toLocaleTimeString();
-        logEl.textContent = `[${ts}] ${line}\n` + logEl.textContent;
+        eventsWrap.textContent = `[${ts}] ${line}\n` + eventsWrap.textContent;
       }
 
       function setConnected(yes, details = "") {
@@ -281,7 +471,8 @@
           left.innerHTML = `<span style="font-size:18px">${animalEmoji(p.animal)}</span><span>${p.name}</span>`;
           const right = document.createElement("div");
           right.className = "meta";
-          right.innerHTML = `<span class="badge">♥ ${p.lives}</span><span class="badge">V ${p.violations}</span>`;
+          const entered = p.animal ? "entered" : "lobby";
+          right.innerHTML = `<span class="badge">${entered}</span><span class="badge">♥ ${p.lives}</span><span class="badge">V ${p.violations}</span>`;
           div.appendChild(left);
           div.appendChild(right);
           playersEl.appendChild(div);
@@ -295,6 +486,70 @@
 
       let ws = null;
       let currentRoom = null;
+      let lastSnapshot = null;
+      const camCardsByPlayerId = new Map();
+
+      function setMode(started) {
+        if (!mainEl) return;
+        if (started) {
+          mainEl.classList.add("game");
+          // In game mode: map fills left, cams on right.
+          lobbyWrapEl.style.display = "none";
+          mapWrapEl.style.display = "";
+          camsWrapEl.style.display = "";
+          $("panelHeader").style.display = "none";
+          eventsWrap.style.display = "none";
+          rightPanelEl.style.padding = "14px";
+        } else {
+          mainEl.classList.remove("game");
+          lobbyWrapEl.style.display = "";
+          mapWrapEl.style.display = "none";
+          camsWrapEl.style.display = "none";
+          $("panelHeader").style.display = "";
+          eventsWrap.style.display = "";
+        }
+      }
+
+      function upsertCamCard({ playerId, playerName, dataUrl, ts }) {
+        if (!playerId) return;
+        let card = camCardsByPlayerId.get(playerId);
+        if (!card) {
+          const wrap = document.createElement("div");
+          wrap.className = "camCard";
+          const meta = document.createElement("div");
+          meta.className = "camMeta";
+          const name = document.createElement("div");
+          name.className = "camName";
+          name.textContent = playerName || playerId.slice(0, 6);
+          const time = document.createElement("div");
+          time.className = "badge";
+          time.textContent = "-";
+          meta.appendChild(name);
+          meta.appendChild(time);
+          const img = document.createElement("img");
+          img.className = "camImg";
+          img.alt = "camera";
+          img.decoding = "async";
+          img.loading = "lazy";
+          wrap.appendChild(meta);
+          wrap.appendChild(img);
+          camsEl.appendChild(wrap);
+          card = { wrap, name, time, img };
+          camCardsByPlayerId.set(playerId, card);
+        }
+        if (playerName) card.name.textContent = playerName;
+        if (typeof dataUrl === "string" && dataUrl.startsWith("data:image/")) card.img.src = dataUrl;
+        if (typeof ts === "number") card.time.textContent = new Date(ts).toLocaleTimeString();
+      }
+
+      async function pollLobbyHealth() {
+        try {
+          const r = await fetch("/health", { cache: "no-store" });
+          lobbyStatusEl.textContent = r.ok ? "ok" : `bad (${r.status})`;
+        } catch {
+          lobbyStatusEl.textContent = "offline";
+        }
+      }
 
       function connect() {
         const roomId = $("roomId").value.trim() || "test-room";
@@ -325,7 +580,14 @@
           }
           const { type, data } = msg;
           if (type === "room_snapshot") {
+            lastSnapshot = data;
             renderPlayers(data.players || []);
+            roomStatusEl.textContent = data.started ? "started" : "lobby";
+            setMode(!!data.started);
+            return;
+          }
+          if (type === "camera_frame") {
+            upsertCamCard(data || {});
             return;
           }
           if (type === "system") {
@@ -348,17 +610,20 @@
           }
           if (type === "game_started") {
             log(`game_started: ${Math.round((data.durationMs || 0) / 1000)}s`);
+            roomStatusEl.textContent = "started";
+            setMode(true);
             return;
           }
           if (type === "game_ended") {
             log(`game_ended`);
+            roomStatusEl.textContent = "ended";
             return;
           }
         });
       }
 
       $("btnConnect").addEventListener("click", connect);
-      $("btnClear").addEventListener("click", () => (logEl.textContent = ""));
+      $("btnClear").addEventListener("click", () => (eventsWrap.textContent = ""));
       langSel.addEventListener("change", () => {
         $("btnConnect").textContent = I18N[getLang()].connect;
         $("btnClear").textContent = I18N[getLang()].clear;
@@ -368,6 +633,10 @@
         $("roomId").placeholder = I18N[getLang()].phRoom;
         $("playersTitle").textContent = I18N[getLang()].playersTitle;
         $("eventsTitle").textContent = I18N[getLang()].eventsTitle;
+        $("kLobby").textContent = I18N[getLang()].lobbyServer;
+        $("kRoom").textContent = I18N[getLang()].roomServer;
+        $("mapTitle").textContent = I18N[getLang()].mapTitle;
+        mapSubEl.textContent = I18N[getLang()].mapSub;
         $("langDebug").textContent = `lang=${getLang()}`;
         setConnected(ws && ws.readyState === WebSocket.OPEN, currentRoom ? `(${currentRoom})` : "");
       });
@@ -380,6 +649,10 @@
       $("roomId").placeholder = I18N[getLang()].phRoom;
       $("playersTitle").textContent = I18N[getLang()].playersTitle;
       $("eventsTitle").textContent = I18N[getLang()].eventsTitle;
+      $("kLobby").textContent = I18N[getLang()].lobbyServer;
+      $("kRoom").textContent = I18N[getLang()].roomServer;
+      $("mapTitle").textContent = I18N[getLang()].mapTitle;
+      mapSubEl.textContent = I18N[getLang()].mapSub;
       try {
         const qs = new URLSearchParams(location.search);
         const forced = qs.get("lang");
@@ -397,6 +670,11 @@
       const params = new URLSearchParams(location.search);
       $("roomId").value = params.get("room") || "test-room";
       setConnected(false);
+      lobbyStatusEl.textContent = "-";
+      roomStatusEl.textContent = "-";
+      setMode(false);
+      pollLobbyHealth();
+      setInterval(pollLobbyHealth, 2000);
       connect();
     </script>
   </body>
