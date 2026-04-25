@@ -9,7 +9,7 @@ import { dict, animalLocalized } from "../i18n";
 import { ClientMessageTypes, type Lang } from "../party/protocol";
 import { usePartyStore } from "../party/store";
 
-type Step = "permission" | "photo" | "quiz" | "analyzing" | "reveal";
+type Step = "permission" | "photo" | "quiz" | "analyzing" | "reveal" | "check";
 
 export default function Onboard() {
   const lang = usePartyStore((s) => s.lang);
@@ -239,8 +239,14 @@ export default function Onboard() {
     })();
   }
 
+  function goToCheck() {
+    setStep("check");
+  }
   function goToGame() {
     nav("/main-scene", { replace: true });
+  }
+  function backToReveal() {
+    setStep("reveal");
   }
 
   return (
@@ -308,8 +314,12 @@ export default function Onboard() {
           verdict={rulesCard.verdict}
           similarityPercent={rulesCard.similarityPercent}
           looksRoast={rulesCard.looksRoast}
-          onContinue={goToGame}
+          onContinue={goToCheck}
         />
+      ) : null}
+
+      {step === "check" && rulesCard ? (
+        <CheckStep onPassed={goToGame} onBack={backToReveal} />
       ) : null}
 
       {error ? <div style={{ color: "#ff9a8a" }}>{error}</div> : null}
@@ -410,7 +420,6 @@ function RevealStep({
 }) {
   const lang = usePartyStore((s) => s.lang);
   const t = dict(lang);
-  const [gatePassed, setGatePassed] = useState(false);
   return (
     <div className="card reveal-card">
       <div className="emoji-big" aria-hidden>
@@ -431,10 +440,39 @@ function RevealStep({
           <p className="reveal-roast">{looksRoast}</p>
         </>
       ) : null}
+      <button className="primary reveal-enter" onClick={onContinue}>
+        {t.revealContinue}
+      </button>
+    </div>
+  );
+}
+
+function CheckStep({
+  onPassed,
+  onBack
+}: {
+  onPassed: () => void;
+  onBack: () => void;
+}) {
+  const lang = usePartyStore((s) => s.lang);
+  const t = dict(lang);
+  const [gatePassed, setGatePassed] = useState(false);
+  return (
+    <div className="card check-card">
+      <button
+        type="button"
+        className="ghost check-back"
+        onClick={onBack}
+        aria-label={t.checkBackAria}
+      >
+        ← {t.checkBack}
+      </button>
+      <h2 className="section-title check-title">{t.gateTitle}</h2>
+      <p className="muted check-sub">{t.gateHint}</p>
       <ExpressionGate onPassed={setGatePassed} />
       <button
         className="primary reveal-enter"
-        onClick={onContinue}
+        onClick={onPassed}
         disabled={!gatePassed}
         aria-disabled={!gatePassed}
       >

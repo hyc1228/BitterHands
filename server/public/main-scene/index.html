@@ -32,6 +32,10 @@
         user-select: none;
         -webkit-user-select: none;
         -webkit-tap-highlight-color: transparent;
+        /* Mobile: prevent double-tap zoom and pinch zoom from interfering
+           with tap-to-move. The world SVG has its own touch-action: none
+           for stricter control. */
+        touch-action: manipulation;
       }
 
       /* ---------- Phone frame (desktop preview) ---------- */
@@ -43,6 +47,10 @@
         position: relative;
         width: 100vw;
         height: 100vh;
+        /* iOS Safari: 100vh includes URL bar area, leaving content cut off
+           at the bottom. dvh (dynamic viewport height) shrinks/grows with
+           the URL bar; svh is the smallest possible. Either is safe. */
+        height: 100dvh;
         max-width: 100vw;
         background: #000;
         overflow: hidden;
@@ -153,6 +161,11 @@
         width: 100%;
         height: 100%;
         cursor: crosshair;
+        /* Mobile: stop the browser from intercepting taps as scroll/zoom. */
+        touch-action: none;
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        user-select: none;
       }
       .hint {
         position: absolute;
@@ -520,6 +533,30 @@
         transform-origin: 50% 50%;
         animation: mouthIdle 5.5s ease-in-out infinite;
       }
+      /* Beak: don't scale the wrapper (the diamond would breathe weirdly).
+         Each half has its own translateY animation so the closed diamond
+         "clicks" briefly into an open beak as a placeholder. */
+      .animal .mouth.beak {
+        animation: none;
+      }
+      .animal .beak-upper,
+      .animal .beak-lower {
+        transform-box: fill-box;
+      }
+      .animal .beak-upper {
+        animation: beakUpperIdle 5.5s ease-in-out infinite;
+      }
+      .animal .beak-lower {
+        animation: beakLowerIdle 5.5s ease-in-out infinite;
+      }
+      @keyframes beakUpperIdle {
+        0%, 88%, 100% { transform: translateY(0); }
+        93%           { transform: translateY(-2px); }
+      }
+      @keyframes beakLowerIdle {
+        0%, 88%, 100% { transform: translateY(0); }
+        93%           { transform: translateY(2px); }
+      }
       @keyframes mouthIdle {
         0%, 88%, 100% {
           transform: scaleY(1);
@@ -527,6 +564,15 @@
         93% {
           transform: scaleY(1.6);
         }
+      }
+
+      /* Head pose carrier. Face detection rotates (.bob) for shake and
+         translates Y for nod. transform-origin: 50% 50% with fill-box
+         pivots the rotation around the body's bbox center, which is
+         approximately the avatar's head center. */
+      .animal .bob {
+        transform-box: fill-box;
+        transform-origin: 50% 50%;
       }
 
       /* Owl wing flap. Each wing pivots at the edge of its bbox that
@@ -696,6 +742,93 @@
       }
       #universalOverlay.success #uchal-bar-fill { background: #30d080; }
       #universalOverlay.fail    #uchal-bar-fill { background: #ff4444; }
+
+      /* ---------- Death / spectator overlay ---------- */
+      /* Full-screen flash shown briefly on death, then shrinks to badge */
+      #deathOverlay {
+        display: none;
+        position: absolute;
+        inset: 0;
+        z-index: 40;
+        background: rgba(0, 0, 0, 0.82);
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        pointer-events: none;
+        transition: opacity 0.6s ease;
+      }
+      #deathOverlay.active { display: flex; opacity: 1; }
+      #deathOverlay.fading { opacity: 0; }
+      #deathOverlay .death-icon { font-size: 3rem; }
+      #deathOverlay .death-title {
+        font-family: "Caveat", cursive;
+        font-size: 2rem;
+        font-weight: 700;
+        color: #ff4444;
+        letter-spacing: 2px;
+      }
+      #deathOverlay .death-sub {
+        font-size: 0.82rem;
+        color: #888;
+        font-family: "Patrick Hand", cursive;
+        letter-spacing: 1px;
+      }
+      /* Small corner badge that persists after the overlay fades */
+      #spectatorBadge {
+        display: none;
+        position: absolute;
+        top: 8px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 38;
+        background: rgba(0,0,0,0.72);
+        border: 1.5px solid #ff4444;
+        border-radius: 20px;
+        padding: 3px 12px;
+        font-size: 0.72rem;
+        color: #ff6666;
+        font-family: "Patrick Hand", cursive;
+        letter-spacing: 1px;
+        pointer-events: none;
+      }
+      #spectatorBadge.active { display: block; }
+
+      /* ---------- Virtual joystick (touch-only) ---------- */
+      .joystick {
+        position: absolute;
+        left: 18px;
+        bottom: 200px; /* sit above the zoo keeper log */
+        width: 110px;
+        height: 110px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.10);
+        border: 2px solid rgba(255, 255, 255, 0.35);
+        z-index: 30;
+        touch-action: none;
+        display: none;
+        backdrop-filter: blur(2px);
+        -webkit-backdrop-filter: blur(2px);
+      }
+      .joystick-handle {
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        width: 48px;
+        height: 48px;
+        margin: -24px 0 0 -24px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.55);
+        pointer-events: none;
+        transition: background 0.15s;
+      }
+      .joystick.active .joystick-handle {
+        background: rgba(92, 201, 255, 0.78);
+      }
+      /* Show on touch devices (no hover, coarse pointer = phone/tablet). */
+      @media (hover: none) and (pointer: coarse) {
+        .joystick { display: block; }
+      }
     </style>
   </head>
   <body>
@@ -732,7 +865,7 @@
         <main class="world" id="world">
           <svg
             class="world-svg"
-            viewBox="0 0 360 600"
+            viewBox="0 0 300 500"
             preserveAspectRatio="xMidYMid meet"
             id="worldSvg"
           >
@@ -821,22 +954,10 @@
                   preserveAspectRatio="none"
                 />
               </pattern>
-              <!-- Tiled fence (horizontal). Original is 627x413. Scaled to ~140x92. -->
-              <pattern
-                id="fenceTileH"
-                width="140"
-                height="92"
-                patternUnits="userSpaceOnUse"
-              >
-                <image
-                  href="fenceTile.svg"
-                  x="0"
-                  y="0"
-                  width="140"
-                  height="92"
-                  preserveAspectRatio="none"
-                />
-              </pattern>
+              <!-- (fenceTileH pattern removed — fence is now rendered as
+                   individual <image> tiles in buildScene to avoid an iOS
+                   Safari bug where PNG-in-SVG-pattern garbles into
+                   "?" / letter-like artifacts.) -->
             </defs>
 
             <!-- Camera group: translated each frame so player stays centered -->
@@ -863,7 +984,7 @@
               <g id="meLayer"></g>
             </g>
           </svg>
-          <div class="hint">WASD 移动 · 也可点击地面走动</div>
+          <div class="hint">WASD 移动 · 点击地面 · 移动端拖左下摇杆</div>
         </main>
 
         <footer class="log">
@@ -873,6 +994,11 @@
 
         <div class="rec-fx" aria-hidden="true"></div>
         <div class="glitch-band" id="glitchBand" aria-hidden="true"></div>
+
+        <!-- Virtual joystick (only visible on touch devices via @media). -->
+        <div class="joystick" id="joystick" aria-label="movement joystick">
+          <div class="joystick-handle" id="joystickHandle"></div>
+        </div>
 
         <!-- Webcam: hidden input for FaceMesh -->
         <video id="webcamVideo" playsinline autoplay muted style="display:none"></video>
@@ -890,6 +1016,14 @@
           <div id="uchal-status">请执行！</div>
           <div class="chal-bar"><div id="uchal-bar-fill"></div></div>
         </div>
+        <!-- Death flash overlay (auto-dismisses) -->
+        <div id="deathOverlay">
+          <div class="death-icon">💀</div>
+          <div class="death-title">你已出局</div>
+          <div class="death-sub">观战模式</div>
+        </div>
+        <!-- Persistent spectator badge -->
+        <div id="spectatorBadge">💀 观战中</div>
       </div>
     </div>
 
@@ -901,8 +1035,8 @@
       //   VIEW_W / VIEW_H : the SVG viewBox (camera window the player sees)
       //   MAP_W  / MAP_H  : the whole walkable map. Camera follows player.
       // =================================================================
-      const VIEW_W = 360;
-      const VIEW_H = 600;
+      const VIEW_W = 300;
+      const VIEW_H = 500;
       const MAP_W = 1080;
       const MAP_H = 1500;
       // Legacy aliases (kept so existing maths reads naturally inside callers)
@@ -947,45 +1081,58 @@
           body: "Owl body.svg",
           bodyW: 80,
           bodyH: 96,
+          // The body SVG was re-exported with a drop shadow, so its viewBox
+          // gained ~28 px of padding on the right/bottom. assetShift
+          // compensates by translating the silhouette group so the content
+          // center lands back at (0, 0) — keeps eyes/mouth in alignment.
+          assetShift: { x: 1.66, y: 1.67 },
           eyes: {
-            l: { cx: -10, cy: -10, scleraR: 6, pupilR: 4 },
-            r: { cx:  10, cy: -10, scleraR: 6, pupilR: 4 },
+            l: { cx: -13, cy: -10, scleraR: 9, pupilR: 6 },
+            r: { cx:  13, cy: -10, scleraR: 9, pupilR: 6 },
             sclera: "#ffffff",
             pupil:  "#cf1313",
+            pupilInward: 1.5,  // cute cross-eye: pupils nudge toward nose
           },
-          // Owl beak — inverted triangle pointing down. rx is half-width,
-          // ry is half-height (top edge at cy-ry, bottom point at cy+ry).
-          mouth: { shape: "triangle", cx: 0, cy: 4, rx: 5, ry: 6 },
+          // Owl beak — two triangles meeting in the middle so closed they
+          // form a vertical diamond ◊. Driver pushes the upper triangle up
+          // and the lower one down to open the beak like a real bird.
+          mouth: { shape: "beak", cx: 0, cy: 4, rx: 4, ry: 5 },
           nameY: -56,
           wing: { attach: 40, w: 36, h: 30, anchorY: -10 },
         },
         lion: {
           body: "lion.svg",
-          bodyW: 96,
-          bodyH: 98,
+          bodyW: 110,
+          bodyH: 112,
+          assetShift: { x: 1.69, y: 1.47 },
           eyes: {
-            l: { cx: -10, cy: -3, scleraR: 5, pupilR: 3 },
-            r: { cx:  10, cy: -3, scleraR: 5, pupilR: 3 },
+            l: { cx: -15, cy: -4, scleraR: 8.5, pupilR: 5.5 },
+            r: { cx:  15, cy: -4, scleraR: 8.5, pupilR: 5.5 },
             sclera: "#ffffff",
             pupil:  "#cf1313",
+            pupilInward: 1.5,
           },
-          mouth: { cx: 0, cy: 8, rx: 8, ry: 4 },
-          legs: { y: 42, spread: 12 },
-          nameY: -56,
+          // Mouth pushed well below the SVG's central black oval (which the
+          // user reads as the nose) so it stops covering the nose area.
+          mouth: { cx: 0, cy: 22, rx: 10, ry: 5 },
+          legs: { y: 48, spread: 14 },
+          nameY: -64,
         },
         giraffe: {
           body: "giraffe.svg",
-          bodyW: 50,
-          bodyH: 100,
+          bodyW: 60,
+          bodyH: 120,
+          assetShift: { x: 0.32, y: 1.47 },
           eyes: {
-            l: { cx: -4, cy: -25, scleraR: 3, pupilR: 2 },
-            r: { cx:  4, cy: -25, scleraR: 3, pupilR: 2 },
+            l: { cx: -7, cy: -32, scleraR: 6.5, pupilR: 5 },
+            r: { cx:  7, cy: -32, scleraR: 6.5, pupilR: 5 },
             sclera: "#ffffff",
             pupil:  "#cf1313",
+            pupilInward: 1,
           },
-          mouth: { cx: 0, cy: -19, rx: 4, ry: 2.5 },
-          legs: { y: 46, spread: 8 },
-          nameY: -58,
+          mouth: { cx: 0, cy: -17, rx: 6, ry: 4.5 },
+          legs: { y: 55, spread: 10 },
+          nameY: -68,
         },
       };
 
@@ -999,7 +1146,15 @@
         // The whole group gets the meRing filter when isMe, so the blue
         // outline traces the union of body + wings/legs as a single
         // silhouette without recoloring any of the body's interior pixels.
-        const sil = el("g", isMe ? { filter: "url(#meRing)" } : {});
+        // assetShift compensates for SVG drop-shadow padding so the body's
+        // visible content lines up with the procedural eyes/mouth at (0, 0).
+        const silAttrs = {};
+        if (isMe) silAttrs.filter = "url(#meRing)";
+        const aS = spec.assetShift;
+        if (aS && (aS.x || aS.y)) {
+          silAttrs.transform = `translate(${aS.x || 0} ${aS.y || 0})`;
+        }
+        const sil = el("g", silAttrs);
 
         // Body image
         sil.appendChild(
@@ -1087,32 +1242,58 @@
         inner.appendChild(sil);
 
         // ---- Procedural mouth (animatable). ---------------------------
-        //   shape: "ellipse" (default) → <ellipse cx cy rx ry>
-        //   shape: "triangle"          → inverted <polygon> (beak)
-        //
-        // Wrapped in <g class="mouth"> with bbox-centered transform-origin
-        // so face detection can scaleY it for "open mouth" / "closed mouth".
+        //   shape: "ellipse" (default) → <ellipse>, animated via scaleY
+        //   shape: "triangle"          → single inverted <polygon>
+        //   shape: "beak"              → TWO triangles meeting at (cx, cy);
+        //                                upper / lower translate apart to
+        //                                open like a bird mandible
         if (spec.mouth) {
           const m = spec.mouth;
-          const mouthG = el("g", { class: "mouth" });
-          let mouthShape;
-          if (m.shape === "triangle") {
-            // Inverted triangle: top-left, top-right, bottom-center
-            const points =
-              `${m.cx - m.rx},${m.cy - m.ry} ` +
-              `${m.cx + m.rx},${m.cy - m.ry} ` +
-              `${m.cx},${m.cy + m.ry}`;
-            mouthShape = el("polygon", { points, fill: "#0a0a0a" });
-          } else {
-            mouthShape = el("ellipse", {
-              cx: m.cx,
-              cy: m.cy,
-              rx: m.rx,
-              ry: m.ry,
+          const isBeak = m.shape === "beak";
+          const mouthG = el("g", {
+            class: "mouth" + (isBeak ? " beak" : ""),
+          });
+          if (isBeak) {
+            // Upper triangle: tip at top (cx, cy-ry), base at middle
+            const upper = el("polygon", {
+              points:
+                `${m.cx},${m.cy - m.ry} ` +
+                `${m.cx - m.rx},${m.cy} ` +
+                `${m.cx + m.rx},${m.cy}`,
               fill: "#0a0a0a",
+              class: "beak-upper",
             });
+            // Lower triangle: base at middle, tip at bottom (cx, cy+ry)
+            const lower = el("polygon", {
+              points:
+                `${m.cx - m.rx},${m.cy} ` +
+                `${m.cx + m.rx},${m.cy} ` +
+                `${m.cx},${m.cy + m.ry}`,
+              fill: "#0a0a0a",
+              class: "beak-lower",
+            });
+            mouthG.append(upper, lower);
+          } else if (m.shape === "triangle") {
+            mouthG.appendChild(
+              el("polygon", {
+                points:
+                  `${m.cx - m.rx},${m.cy - m.ry} ` +
+                  `${m.cx + m.rx},${m.cy - m.ry} ` +
+                  `${m.cx},${m.cy + m.ry}`,
+                fill: "#0a0a0a",
+              })
+            );
+          } else {
+            mouthG.appendChild(
+              el("ellipse", {
+                cx: m.cx,
+                cy: m.cy,
+                rx: m.rx,
+                ry: m.ry,
+                fill: "#0a0a0a",
+              })
+            );
           }
-          mouthG.appendChild(mouthShape);
           inner.appendChild(mouthG);
         }
 
@@ -1122,6 +1303,12 @@
         // detection can later move them to follow gaze.
         if (spec.eyes) {
           const e = spec.eyes;
+          // Cross-eye nudge: pupils shift toward face center for a cuter
+          // look. e.pupilInward is the amount in display units; sign flips
+          // per eye so left pupil shifts right, right pupil shifts left.
+          const inward = e.pupilInward || 0;
+          const pupilDxL = e.l.cx < 0 ?  inward : -inward;
+          const pupilDxR = e.r.cx < 0 ?  inward : -inward;
 
           const eyeL = el("g", { class: "eye eye-l" });
           eyeL.appendChild(
@@ -1131,7 +1318,7 @@
             })
           );
           const pupilL = el("circle", {
-            cx: e.l.cx, cy: e.l.cy, r: e.l.pupilR,
+            cx: e.l.cx + pupilDxL, cy: e.l.cy, r: e.l.pupilR,
             fill: e.pupil,
           });
           eyeL.appendChild(pupilL);
@@ -1145,7 +1332,7 @@
             })
           );
           const pupilR = el("circle", {
-            cx: e.r.cx, cy: e.r.cy, r: e.r.pupilR,
+            cx: e.r.cx + pupilDxR, cy: e.r.cy, r: e.r.pupilR,
             fill: e.pupil,
           });
           eyeR.appendChild(pupilR);
@@ -1189,16 +1376,21 @@
         // Eyes go in its upper-middle, just above the red triangular nose
         // (which is at display y≈19-25 from the SVG's nose path).
         const eyeY = 8;
-        const eyeX = 11;
+        const eyeX = 15;     // wider apart — old 11 felt cramped
         const eyeR = 8;
         const pupilR = 2.5;
+        // Compensate for SVG drop-shadow padding (viewBox grew from 723x992
+        // to 755x1023). The body image is shifted right/down so its visible
+        // content lines up with the procedural eyes at (0, 0).
+        const SHIFT_X = 1.91;
+        const SHIFT_Y = 1.88;
 
         // Body (silhouette, ears, mouth, nose all included in the SVG)
         root.appendChild(
           el("image", {
             href: "ZooKeeper.svg",
-            x: -W / 2,
-            y: -H / 2,
+            x: -W / 2 + SHIFT_X,
+            y: -H / 2 + SHIFT_Y,
             width: W,
             height: H,
             preserveAspectRatio: "xMidYMid meet",
@@ -1362,8 +1554,15 @@
           vy: 0,
           color: "#5cc9ff",
           lives: 3,
+          dead: false,
           moving: false,
-          animal: "owl",
+          // Random animal each session for solo testing. When real peers
+          // join via PartyKit they bring their own assignment.
+          animal: ((arr) => arr[Math.floor(Math.random() * arr.length)])([
+            "owl",
+            "lion",
+            "giraffe",
+          ]),
         },
         lastMainSyncName: "",
         /** OB: hide local avatar, camera follows everyone. */
@@ -1371,7 +1570,13 @@
         roomStarted: false,
         netSelfId: "",
         _pickupReq: typeof Set !== "undefined" ? new Set() : null,
-        others: [],
+        // Default NPCs — visible when testing solo (no PartyKit peers).
+        // applyRoomPlayers() wipes this list when real peers arrive.
+        others: [
+          { id: "_local_p1", name: "MIA", animal: "lion",    x: cx - 240, y: cy - 280, vx: 0, vy: 0, moving: false },
+          { id: "_local_p2", name: "LEO", animal: "giraffe", x: cx + 260, y: cy + 180, vx: 0, vy: 0, moving: false },
+          { id: "_local_p3", name: "ZOE", animal: "owl",     x: cx - 280, y: cy + 320, vx: 0, vy: 0, moving: false },
+        ],
         monitor: {
           x: cx + 130,
           y: cy - 170,
@@ -1396,6 +1601,8 @@
           { id: "a3", type: "alarm", x: cx + 320, y: cy - 260 },
         ],
         keys: { up: false, down: false, left: false, right: false },
+        joyX: 0,    // virtual joystick analog input, -1..1
+        joyY: 0,
         tap: null, // world coordinates
         timer: 2 * 60 + 43,
         cam: { x: 0, y: 0 },
@@ -1441,56 +1648,36 @@
       // =================================================================
       function buildScene() {
         // ---- Fence around the perimeter --------------------------------
-        // fenceTile = 627 x 413 horizontal fence segment; we tile it via
-        // SVG patterns. For the vertical sides, we rotate the same tile.
-        const FH = 92; // fence thickness
-        // Top edge
-        layers.fence.appendChild(
-          el("rect", {
-            x: 0,
-            y: 0,
-            width: MAP_W,
-            height: FH,
-            fill: "url(#fenceTileH)",
-          })
-        );
-        // Bottom edge
-        layers.fence.appendChild(
-          el("rect", {
-            x: 0,
-            y: MAP_H - FH,
-            width: MAP_W,
-            height: FH,
-            fill: "url(#fenceTileH)",
-          })
-        );
-        // Left edge: rotated copy of the horizontal fence pattern
-        const leftG = el("g", {
-          transform: `translate(${FH} 0) rotate(90)`,
-        });
-        leftG.appendChild(
-          el("rect", {
-            x: 0,
-            y: 0,
-            width: MAP_H,
-            height: FH,
-            fill: "url(#fenceTileH)",
-          })
-        );
+        // We render individual <image> tiles instead of a <pattern>+<rect>
+        // fill — iOS Safari has a bug where PNG images inside SVG patterns
+        // sometimes render as garbled "?" / letter-like shapes. Direct
+        // <image> placement is rock-solid across browsers.
+        const FH = 92;        // fence thickness
+        const FW = 140;       // single tile width (matches PNG aspect)
+        function placeFenceRow(parent, length, y) {
+          for (let x = 0; x < length; x += FW) {
+            parent.appendChild(
+              el("image", {
+                href: "fenceTile.svg",
+                x,
+                y,
+                width: Math.min(FW, length - x),
+                height: FH,
+                preserveAspectRatio: "none",
+              })
+            );
+          }
+        }
+        // Top + bottom edges, drawn directly into fence layer
+        placeFenceRow(layers.fence, MAP_W, 0);
+        placeFenceRow(layers.fence, MAP_W, MAP_H - FH);
+        // Left + right edges: rotate a horizontal row by 90°, then it lays
+        // down vertically. translate puts the rotated origin at the edge.
+        const leftG = el("g", { transform: `translate(${FH} 0) rotate(90)` });
+        placeFenceRow(leftG, MAP_H, 0);
         layers.fence.appendChild(leftG);
-        // Right edge
-        const rightG = el("g", {
-          transform: `translate(${MAP_W} 0) rotate(90)`,
-        });
-        rightG.appendChild(
-          el("rect", {
-            x: 0,
-            y: 0,
-            width: MAP_H,
-            height: FH,
-            fill: "url(#fenceTileH)",
-          })
-        );
+        const rightG = el("g", { transform: `translate(${MAP_W} 0) rotate(90)` });
+        placeFenceRow(rightG, MAP_H, 0);
         layers.fence.appendChild(rightG);
 
         // ---- Cone (drawn behind everything except background) ----------
@@ -1644,29 +1831,45 @@
         const me = state.me;
         let dx = 0,
           dy = 0;
-        if (state.keys.up) dy -= 1;
-        if (state.keys.down) dy += 1;
-        if (state.keys.left) dx -= 1;
-        if (state.keys.right) dx += 1;
 
-        // Tap-to-move target (world coords)
-        if (!dx && !dy && state.tap) {
-          const ddx = state.tap.x - me.x;
-          const ddy = state.tap.y - me.y;
-          const d = Math.hypot(ddx, ddy);
-          if (d < 4) {
-            state.tap = null;
-          } else {
-            dx = ddx / d;
-            dy = ddy / d;
-          }
-        } else if (dx || dy) {
+        // 1) Virtual joystick (touch). Analog input — magnitude controls
+        //    how fast we move, so a small push = slow walk.
+        const joyMag = Math.hypot(state.joyX, state.joyY);
+        if (joyMag > 0.05) {
+          dx = state.joyX;
+          dy = state.joyY;
           state.tap = null;
+        } else {
+          // 2) Keyboard (desktop)
+          if (state.keys.up) dy -= 1;
+          if (state.keys.down) dy += 1;
+          if (state.keys.left) dx -= 1;
+          if (state.keys.right) dx += 1;
+
+          // 3) Tap-to-move (fallback for desktop click)
+          if (!dx && !dy && state.tap) {
+            const ddx = state.tap.x - me.x;
+            const ddy = state.tap.y - me.y;
+            const d = Math.hypot(ddx, ddy);
+            if (d < 4) {
+              state.tap = null;
+            } else {
+              dx = ddx / d;
+              dy = ddy / d;
+            }
+          } else if (dx || dy) {
+            state.tap = null;
+          }
         }
 
-        const len = Math.hypot(dx, dy) || 1;
-        dx /= len;
-        dy /= len;
+        // Normalize to unit length so diagonal isn't faster than cardinal.
+        // Joystick analog already gives <=1, so we only normalize when
+        // magnitude exceeds 1.
+        const len = Math.hypot(dx, dy);
+        if (len > 1) {
+          dx /= len;
+          dy /= len;
+        }
         me.moving = dx !== 0 || dy !== 0;
         if (me.moving) {
           me.x = clamp(me.x + dx * SPEED * dt, BORDER, MAP_W - BORDER);
@@ -1956,6 +2159,31 @@
         }
       }
 
+      function handleDeath() {
+        if (state.me.dead) return;
+        state.me.dead = true;
+        state.spectator = true;
+        if (state.nodes.me) state.nodes.me.setAttribute("visibility", "hidden");
+        challenge.active = false;
+        challenge.completed = false;
+        chalOverlay.className = "";
+        universalChallenge.active = false;
+        universalChallenge.completed = false;
+        uChalOverlay.className = "";
+        addLog("💀 生命值归零，进入观战模式。");
+        // Flash the full overlay for 2.5s, then fade out and show small badge
+        const overlay = document.getElementById("deathOverlay");
+        const badge   = document.getElementById("spectatorBadge");
+        overlay.className = "active";
+        setTimeout(() => {
+          overlay.classList.add("fading");
+          overlay.addEventListener("transitionend", () => {
+            overlay.className = "";
+            badge.className   = "active";
+          }, { once: true });
+        }, 2500);
+      }
+
       function renderTimer() {
         const m = Math.floor(state.timer / 60);
         const s = state.timer % 60;
@@ -2031,7 +2259,7 @@
         { id: "u_headmove", icon: "🙂", label: "摇头或点头！", log: "通用规则：摇头或点头。" },
       ];
       function triggerUniversalRule() {
-        if (universalChallenge.active) return;
+        if (universalChallenge.active || state.me.dead) return;
         const rule = UNIVERSAL_RULES[Math.floor(Math.random() * UNIVERSAL_RULES.length)];
         addLog(rule.log, null, { rule: true });
         startUniversalChallenge(rule);
@@ -2062,6 +2290,53 @@
         const k = KEYMAP[e.key];
         if (k) state.keys[k] = false;
       });
+
+      // ---------- Virtual joystick (touch) ----------
+      // Drag the inner handle within the outer ring; magnitude maps to
+      // analog walk speed (0..1). Releases zero out velocity instantly.
+      const joystickEl = document.getElementById("joystick");
+      const joystickHandleEl = document.getElementById("joystickHandle");
+      const JOY_LIMIT = 35; // max handle offset in px
+      let joyPointerId = null;
+      function joyMove(ev) {
+        if (ev.pointerId !== joyPointerId) return;
+        const r = joystickEl.getBoundingClientRect();
+        const cxp = r.left + r.width / 2;
+        const cyp = r.top + r.height / 2;
+        let hx = ev.clientX - cxp;
+        let hy = ev.clientY - cyp;
+        const d = Math.hypot(hx, hy);
+        if (d > JOY_LIMIT) {
+          hx = (hx / d) * JOY_LIMIT;
+          hy = (hy / d) * JOY_LIMIT;
+        }
+        joystickHandleEl.style.transform = `translate(${hx}px, ${hy}px)`;
+        state.joyX = hx / JOY_LIMIT;
+        state.joyY = hy / JOY_LIMIT;
+      }
+      function joyEnd(ev) {
+        if (ev.pointerId !== joyPointerId) return;
+        try {
+          joystickEl.releasePointerCapture(ev.pointerId);
+        } catch (e) {}
+        joyPointerId = null;
+        joystickEl.classList.remove("active");
+        joystickHandleEl.style.transform = "translate(0px, 0px)";
+        state.joyX = 0;
+        state.joyY = 0;
+      }
+      if (joystickEl && joystickHandleEl) {
+        joystickEl.addEventListener("pointerdown", (ev) => {
+          ev.preventDefault();
+          joyPointerId = ev.pointerId;
+          joystickEl.setPointerCapture(ev.pointerId);
+          joystickEl.classList.add("active");
+          joyMove(ev);
+        });
+        joystickEl.addEventListener("pointermove", joyMove);
+        joystickEl.addEventListener("pointerup", joyEnd);
+        joystickEl.addEventListener("pointercancel", joyEnd);
+      }
 
       // Tap-to-move: convert pointer position → SVG viewport → world coords
       // (world = viewport + camera offset).
@@ -2208,7 +2483,7 @@
       }
 
       function startChallenge() {
-        if (challenge.cooldown > 0) return;
+        if (challenge.cooldown > 0 || state.me.dead) return;
         challenge.active    = true;
         challenge.completed = false;
         challenge.action    = animalToAction(state.me.animal);
@@ -2245,6 +2520,7 @@
           state.me.lives = Math.max(0, state.me.lives - 1);
           renderLives();
           addLog("❌ 未执行守则，扣 1 生命值。", null, { rule: true });
+          if (state.me.lives <= 0) { setTimeout(handleDeath, 1400); }
         }
         setTimeout(() => { chalOverlay.className = ""; }, 1400);
       }
@@ -2261,7 +2537,7 @@
       // ---------- FaceMesh landmark helpers ----------
       const L_EYE_IDX    = [33, 160, 158, 133, 153, 144];
       const R_EYE_IDX    = [362, 385, 387, 263, 373, 380];
-      const EAR_CLOSED   = 0.21;
+      const EAR_CLOSED   = 0.25;
       const MAR_OPEN     = 0.40;
       const SHAKE_THRESH = 0.08;
       const BLINK_MS     = 5000;
@@ -2273,21 +2549,27 @@
         return (lmDist(p2, p6) + lmDist(p3, p5)) / (2 * lmDist(p1, p4));
       }
 
-      // Live2D mapping. Translates EAR (eye aspect ratio) and MAR (mouth
-      // aspect ratio) into transforms on my avatar's SVG groups, so the
-      // animal blinks and opens its mouth in sync with the player's face.
+      // Live2D mapping. Translates EAR / MAR / head pose into transforms on
+      // my avatar's SVG groups, so the animal blinks, opens its mouth, and
+      // shakes / nods in sync with the player's face.
       //
-      //   EAR  ~0.10 (closed) → ~0.30 (wide open)
-      //   MAR  ~0.05 (closed) → ~0.60 (jaw dropped)
-      //
-      // Tune these if a particular player's face reads too closed/open.
+      //   EAR    ~0.10 (closed) → ~0.30 (wide open)        → eye scaleY 0..1
+      //   MAR    ~0.05 (closed) → ~0.60 (jaw dropped)      → mouth scaleY 1..3
+      //   nx     -0.5 (head turned left)  → +0.5 (right)   → body rotate ±deg
+      //   ny     -0.5 (chin up)           → +0.5 (chin down) → body translateY ±px
       const LIVE2D_EAR_CLOSED = 0.10;
       const LIVE2D_EAR_OPEN   = 0.30;
       const LIVE2D_MAR_CLOSED = 0.05;
       const LIVE2D_MAR_OPEN   = 0.60;
-      const LIVE2D_MOUTH_MAX  = 3.0;  // mouth scaleY when MAR is fully open
+      const LIVE2D_MOUTH_MAX  = 3.0;
+      const LIVE2D_BEAK_MAX   = 4;     // px each half travels apart when wide open
+      const LIVE2D_SHAKE_GAIN = 70;    // nx → degrees of rotation
+      const LIVE2D_SHAKE_MAX  = 25;    // clamp ±deg
+      const LIVE2D_NOD_GAIN   = 36;    // ny → px translateY
+      const LIVE2D_NOD_MAX    = 12;    // clamp ±px
 
       const clamp01 = (v) => Math.max(0, Math.min(1, v));
+      const clampSym = (v, lim) => Math.max(-lim, Math.min(lim, v));
 
       function driveLive2D(lm) {
         const me = state.nodes.me;
@@ -2307,14 +2589,34 @@
         );
         const mouthScale = 1 + mouthOpen * (LIVE2D_MOUTH_MAX - 1);
 
-        // 3) Apply to my avatar's SVG. Setting `animation: none` overrides
-        //    the placeholder blink/idle animation set in CSS so face data
-        //    takes over once it's flowing.
+        // 3) Head pose. Nose offset / face span gives a normalized
+        //    -0.5..0.5 reading per axis.
+        const nose = lm[4];
+        const lb   = lm[234];
+        const rb   = lm[454];
+        const fcx  = (lb.x + rb.x) / 2;
+        const fw   = Math.abs(rb.x - lb.x) + 1e-6;
+        const nx   = (nose.x - fcx) / fw;
+
+        const top = lm[10];
+        const bot = lm[152];
+        const fcy = (top.y + bot.y) / 2;
+        const fh  = Math.abs(top.y - bot.y) + 1e-6;
+        const ny  = (nose.y - fcy) / fh;
+
+        const headRot = clampSym(nx * LIVE2D_SHAKE_GAIN, LIVE2D_SHAKE_MAX);
+        const headDy  = clampSym(ny * LIVE2D_NOD_GAIN,  LIVE2D_NOD_MAX);
+
+        // 4) Apply. Webcam is mirrored: MediaPipe L_EYE = user's physical
+        //    right, R_EYE = user's physical left, so we swap the eye
+        //    targets to keep the avatar matching the player.
         const eyeLEl  = me.querySelector(".eye-l");
         const eyeREl  = me.querySelector(".eye-r");
         const mouthEl = me.querySelector(".mouth");
-        // Webcam is mirrored: MediaPipe L_EYE = user's physical right,
-        // R_EYE = user's physical left. Swap so avatar matches the player.
+        const beakU   = me.querySelector(".beak-upper");
+        const beakL   = me.querySelector(".beak-lower");
+        const bobEl   = me.querySelector(".bob");
+
         if (eyeLEl) {
           eyeLEl.style.animation = "none";
           eyeLEl.style.transform = `scaleY(${openR})`;
@@ -2323,9 +2625,28 @@
           eyeREl.style.animation = "none";
           eyeREl.style.transform = `scaleY(${openL})`;
         }
-        if (mouthEl) {
+
+        // Mouth: beak (two triangles) gets translate; ellipse / triangle
+        // gets scaleY.
+        if (beakU && beakL) {
+          const off = mouthOpen * LIVE2D_BEAK_MAX;
+          beakU.style.animation = "none";
+          beakL.style.animation = "none";
+          beakU.style.transform = `translateY(${-off}px)`;
+          beakL.style.transform = `translateY(${off}px)`;
+          // Make sure the wrapper isn't animating either (it shouldn't be
+          // for shape:beak, but defensive in case spec changed at runtime).
+          if (mouthEl) mouthEl.style.animation = "none";
+        } else if (mouthEl) {
           mouthEl.style.animation = "none";
           mouthEl.style.transform = `scaleY(${mouthScale})`;
+        }
+
+        // Head pose: rotate (shake) + translate Y (nod) on the inner .bob.
+        // Order matters: rotate first (around bbox center), then translate.
+        if (bobEl) {
+          bobEl.style.transform =
+            `translateY(${headDy}px) rotate(${headRot}deg)`;
         }
       }
 
@@ -2438,6 +2759,7 @@
           state.me.lives = Math.max(0, state.me.lives - 1);
           renderLives();
           addLog("❌ 未执行通用规则，扣 1 生命值。", null, { rule: true });
+          if (state.me.lives <= 0) { setTimeout(handleDeath, 1200); }
         }
         setTimeout(() => { uChalOverlay.className = ""; }, 1200);
       }

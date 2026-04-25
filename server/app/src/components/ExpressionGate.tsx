@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { dict } from "../i18n";
 import { usePartyStore } from "../party/store";
 import { useCameraStream } from "../hooks/useCameraStream";
@@ -116,62 +116,62 @@ export default function ExpressionGate({ onPassed }: Props) {
     setUiTick((n) => (n + 1) % 1024);
   }, [onPassed]);
 
-  const tasks = useMemo(() => {
-    const now = performance.now();
-    const shakeDone = shakeRef.current.done;
-    const mouthDone = mouthRef.current.done;
-    const eyesDone = eyesRef.current.done;
-    return {
-      shake: {
-        key: "shake" as TaskKey,
-        done: shakeDone,
-        active: !shakeDone && shakeRef.current.changes > 0,
-        progress: shakeDone
-          ? 1
-          : Math.min(1, shakeRef.current.changes / DETECTION_DEFAULTS.shakeChangesNeeded),
-        icon: "🙂",
-        label: t.gateTaskShake,
-        status: shakeDone
-          ? t.gateOk
-          : shakeRef.current.changes > 0
-            ? t.gateProgressShake(shakeShakesCount(shakeRef.current), SHAKE_TARGET)
-            : t.gateWaiting
-      },
-      mouth: {
-        key: "mouth" as TaskKey,
-        done: mouthDone,
-        active: !mouthDone && mouthRef.current.openFrames > 0,
-        progress: mouthDone
-          ? 1
-          : Math.min(1, mouthRef.current.openFrames / DETECTION_DEFAULTS.mouthOpenFrames),
-        icon: "😮",
-        label: t.gateTaskMouth,
-        status: mouthDone
-          ? t.gateOk
-          : mouthRef.current.openFrames > 0
-            ? t.gateProgressMouth
-            : t.gateWaiting
-      },
-      eyes: {
-        key: "eyes" as TaskKey,
-        done: eyesDone,
-        active: !eyesDone && eyesRef.current.since != null,
-        progress: eyesClosedProgress(eyesRef.current, now),
-        icon: "😴",
-        label: t.gateTaskCloseEyes,
-        status: eyesDone
-          ? t.gateOk
-          : eyesRef.current.since == null
-            ? t.gateProgressEyesOpen
-            : t.gateProgressEyesHold(
-                Math.max(
-                  0,
-                  (DETECTION_DEFAULTS.eyesClosedHoldMs - (now - eyesRef.current.since)) / 1000
-                ).toFixed(1)
-              )
-      }
-    } as const;
-  }, [t]);
+  // Plain (non-memoized) compute — refs mutate in onLandmarks; we re-render via setUiTick,
+  // so we rebuild the view-model every render to read the latest ref state.
+  const now = performance.now();
+  const shakeDone = shakeRef.current.done;
+  const mouthDone = mouthRef.current.done;
+  const eyesDone = eyesRef.current.done;
+  const tasks = {
+    shake: {
+      key: "shake" as TaskKey,
+      done: shakeDone,
+      active: !shakeDone && shakeRef.current.changes > 0,
+      progress: shakeDone
+        ? 1
+        : Math.min(1, shakeRef.current.changes / DETECTION_DEFAULTS.shakeChangesNeeded),
+      icon: "🙂",
+      label: t.gateTaskShake,
+      status: shakeDone
+        ? t.gateOk
+        : shakeRef.current.changes > 0
+          ? t.gateProgressShake(shakeShakesCount(shakeRef.current), SHAKE_TARGET)
+          : t.gateWaiting
+    },
+    mouth: {
+      key: "mouth" as TaskKey,
+      done: mouthDone,
+      active: !mouthDone && mouthRef.current.openFrames > 0,
+      progress: mouthDone
+        ? 1
+        : Math.min(1, mouthRef.current.openFrames / DETECTION_DEFAULTS.mouthOpenFrames),
+      icon: "😮",
+      label: t.gateTaskMouth,
+      status: mouthDone
+        ? t.gateOk
+        : mouthRef.current.openFrames > 0
+          ? t.gateProgressMouth
+          : t.gateWaiting
+    },
+    eyes: {
+      key: "eyes" as TaskKey,
+      done: eyesDone,
+      active: !eyesDone && eyesRef.current.since != null,
+      progress: eyesClosedProgress(eyesRef.current, now),
+      icon: "😴",
+      label: t.gateTaskCloseEyes,
+      status: eyesDone
+        ? t.gateOk
+        : eyesRef.current.since == null
+          ? t.gateProgressEyesOpen
+          : t.gateProgressEyesHold(
+              Math.max(
+                0,
+                (DETECTION_DEFAULTS.eyesClosedHoldMs - (now - eyesRef.current.since)) / 1000
+              ).toFixed(1)
+            )
+    }
+  } as const;
 
   const overallProgress =
     (Number(tasks.shake.done) + Number(tasks.mouth.done) + Number(tasks.eyes.done)) / 3;

@@ -83,7 +83,10 @@ interface Dict {
   langAria: string;
   cameras: string;
   events: string;
-  /** Reveal-screen "expression gate" before Enter the Zoo */
+  /** Reveal-screen → next page is the "expression gate" before Enter the Zoo */
+  revealContinue: string;
+  checkBack: string;
+  checkBackAria: string;
   gateTitle: string;
   gateHint: string;
   gateEnable: string;
@@ -175,6 +178,9 @@ const en: Dict = {
   langAria: "Language",
   cameras: "CAMERAS",
   events: "ZOO KEEPER LOG",
+  revealContinue: "Continue",
+  checkBack: "Back",
+  checkBackAria: "Back to reveal",
   gateTitle: "Final check",
   gateHint: "Pass three quick face tests to enter the zoo.",
   gateEnable: "Start face check",
@@ -265,6 +271,9 @@ const zh: Dict = {
   langAria: "界面语言",
   cameras: "摄像头",
   events: "ZOO KEEPER LOG",
+  revealContinue: "继续",
+  checkBack: "返回",
+  checkBackAria: "返回角色页",
   gateTitle: "入园前自检",
   gateHint: "通过三关面部测试，才能进入动物园。",
   gateEnable: "开启自检",

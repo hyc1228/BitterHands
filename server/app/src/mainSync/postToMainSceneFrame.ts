@@ -6,6 +6,7 @@ import {
   NZ_MSG_TYPE_ITEM,
   NZ_MSG_TYPE_MS_VIEW,
   NZ_MSG_TYPE_NET,
+  NZ_MSG_TYPE_OB_CAM,
   NZ_MSG_TYPE_ROOM,
   NZ_MSG_TYPE_SYNC
 } from "./protocol";
@@ -96,6 +97,24 @@ export function postMainSceneNetToFrame(
       source: NZ_MSG_SOURCE,
       payload: { peers, selfId }
     },
+    "*"
+  );
+}
+
+export type ObCameraPayload = {
+  mode: "centroid" | "follow" | "free";
+  followPlayerId?: string | null;
+  /** Optional explicit free-cam center in world space. */
+  freeCenter?: { x: number; y: number } | null;
+  /** If true, copy current view center (centroid/follow) into free target before applying mode. */
+  initFromCurrent?: boolean;
+};
+
+/** OB-only: set how the main map camera behaves inside the main-scene iframe. */
+export function postObCameraToFrame(w: Window | null | undefined, payload: ObCameraPayload): void {
+  if (!w) return;
+  w.postMessage(
+    { type: NZ_MSG_TYPE_OB_CAM, source: NZ_MSG_SOURCE, payload },
     "*"
   );
 }
