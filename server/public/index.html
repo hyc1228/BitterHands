@@ -362,6 +362,37 @@
         height: 18px;
         accent-color: var(--accent);
       }
+
+      .titleBar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+      .titleBtn {
+        appearance: none;
+        border: 2px solid rgba(255, 255, 255, 0.22);
+        border-radius: 18px;
+        padding: 10px 14px;
+        background: linear-gradient(180deg, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0.06));
+        box-shadow: 0 10px 0 rgba(0, 0, 0, 0.35), 0 18px 26px rgba(0, 0, 0, 0.30),
+          inset 0 1px 0 rgba(255, 255, 255, 0.18);
+        color: var(--text);
+        font-weight: 900;
+        letter-spacing: 0.3px;
+        line-height: 1;
+        display: inline-flex;
+        gap: 10px;
+        align-items: center;
+      }
+      .titleBadge {
+        font-size: 11px;
+        padding: 3px 10px;
+        border-radius: 999px;
+        color: rgba(8, 14, 30, 0.92);
+        background: linear-gradient(180deg, #ffd34a, #ff9f0a);
+        border: 2px solid rgba(255, 255, 255, 0.20);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+      }
     </style>
   </head>
   <body>
@@ -400,10 +431,15 @@
     <div class="wrap">
       <div class="top">
         <div>
-          <div class="rec" aria-hidden="true" style="margin-bottom:6px">
-            <span class="recDot"></span><span>REC</span>
+          <div class="titleBar">
+            <div class="rec" aria-hidden="true">
+              <span class="recDot"></span><span>REC</span>
+            </div>
+            <button class="titleBtn" type="button" aria-label="Nocturne Zoo">
+              <span class="titleBadge">RARE+</span>
+              <span id="titleText">NOCTURNE ZOO</span>
+            </button>
           </div>
-          <h1>Nocturne Zoo · LAN Demo</h1>
           <div class="sub" id="subtitle">最小前端：加入房间、聊天、触发违规、看广播/私信。</div>
           <div class="sub" id="obLinkWrap">
             <a href="/ob.html" style="color: color-mix(in srgb, var(--accent) 80%, white); text-decoration: none"
@@ -722,6 +758,7 @@
       let qIdx = 0;
       let answers = {};
       let waitingReveal = false;
+      let profileSubmitted = false;
 
       // --- Camera detectors (MediaPipe FaceMesh) ---
       let faceMesh = null;
@@ -1063,27 +1100,18 @@
         answers[q.id] = letter;
         qIdx += 1;
         if (qIdx >= QUESTIONS.length) {
-          submitOnboarding();
+          submitAnswers();
         } else {
           renderQuestion();
         }
       }
 
-      function submitOnboarding() {
-        if (!onboardShotDataUrl) {
-          log("入场：还没有拍照");
+      function submitAnswers() {
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        if (!profileSubmitted) {
+          log("入场：请先在第 2 步提交拍照与名字");
           return;
         }
-        if (!ws || ws.readyState !== WebSocket.OPEN) return;
-
-        // Update name on server
-        const realName = ($("name")?.value || "").trim() || "Player";
-        ws.send(JSON.stringify({ type: "join", name: realName }));
-
-        // 1) photo
-        ws.send(JSON.stringify({ type: "submit_photo", photoBase64: onboardShotDataUrl }));
-
-        // 2) answers
         ws.send(JSON.stringify({ type: "submit_answers", answers }));
 
         $("analyzing").style.display = "";
@@ -1238,6 +1266,22 @@
       });
 
       $("btnUseShot").addEventListener("click", () => {
+        if (!onboardShotDataUrl) {
+          log("入场：还没有拍照");
+          return;
+        }
+        const realName = ($("name")?.value || "").trim();
+        if (!realName) {
+          log("入场：请先输入名字");
+          return;
+        }
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+
+        // Step 2 submit: update name + submit photo
+        ws.send(JSON.stringify({ type: "join", name: realName }));
+        ws.send(JSON.stringify({ type: "submit_photo", photoBase64: onboardShotDataUrl }));
+        profileSubmitted = true;
+
         showScreen("quiz");
         beginQuestions();
       });
@@ -1270,14 +1314,14 @@
 
         if (which === "profile") {
           startOnboarding().catch(() => {});
+          profileSubmitted = false;
         }
       }
 
       function applyLocale() {
         document.documentElement.lang = getLang() === "en" ? "en" : "zh-CN";
         document.title = t("title");
-        const h1 = document.querySelector("h1");
-        if (h1) h1.textContent = t("title");
+        $("titleText").textContent = getLang() === "en" ? "NOCTURNE ZOO" : "深夜动物园";
         $("subtitle").textContent = t("subtitle");
         $("obLink").textContent = t("obLink");
         $("labelRoom").textContent = t("labelRoom");
