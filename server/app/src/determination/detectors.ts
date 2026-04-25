@@ -30,7 +30,14 @@ export const DETECTION_DEFAULTS = {
   /** Onboard expression gate: hold eyes closed for this long (positive test). */
   eyesClosedHoldMs: 1500,
   /** Onboard expression gate: hold eyes OPEN (no blink) for this long (positive test). */
-  gateNoBlinkHoldMs: 2000
+  gateNoBlinkHoldMs: 2000,
+  /** Onboard expression gate "eyes open" threshold (more lenient than `earClosed = 0.2` so
+   *  mobile selfie cams — which run lower EAR due to wide-angle distortion + downward angle
+   *  + low-res landmarks — pass naturally without forcing the user to bug their eyes out). */
+  gateEyesOpenThresh: 0.13,
+  /** Onboard gate de-bounce: a single noisy sub-threshold frame won't reset the 2 s timer;
+   *  needs `gateBlinkResetFrames` consecutive sub-threshold frames to count as a real blink. */
+  gateBlinkResetFrames: 2
 } as const;
 
 function dist(
@@ -121,10 +128,12 @@ export function updateMouth(lm: Landmarks, s: MouthState): MouthState {
 export type BlinkHoldState = {
   done: boolean;
   since: number | null;
+  /** Consecutive sub-threshold frames; used by `updateNoBlink`'s de-bounce (optional). */
+  closedStreak?: number;
 };
 
 export function createBlinkHoldState(): BlinkHoldState {
-  return { done: false, since: null };
+  return { done: false, since: null, closedStreak: 0 };
 }
 
 /**
@@ -228,28 +237,39 @@ export function updateUserLeftEyeClosed(
 }
 
 /**
- * Generic no-blink hold: keep eyes OPEN (avg EAR ≥ threshold) continuously for `holdMs`.
- * Any blink (avg EAR < threshold) resets the timer. Reuses `BlinkHoldState`.
+ * Generic no-blink hold: keep eyes OPEN (avg EAR ≥ `openThresh`) continuously for `holdMs`.
+ * Any blink (avg EAR < `openThresh` for `resetFrames` consecutive frames) resets the timer.
  *
- * Same logic family as `updateBlinkHold` but with caller-provided duration so the onboard
- * gate (2 s) and the OWL game rule (5 s default) can share one implementation.
+ * Same logic family as `updateBlinkHold` but with caller-provided duration + threshold so
+ * the onboard gate (2 s, lenient mobile-friendly threshold) and the OWL game rule (5 s,
+ * stricter threshold) can share one implementation.
+ *
+ * @param openThresh   avg EAR cutoff. Defaults to `DETECTION_DEFAULTS.earClosed` (0.2 — desktop).
+ *                     Pass `gateEyesOpenThresh` (0.13) for mobile-friendly UX.
+ * @param resetFrames  how many consecutive sub-threshold frames count as a real blink.
+ *                     Defaults to 1 (instant reset, like `updateBlinkHold`). Pass
+ *                     `gateBlinkResetFrames` for the de-bounced gate behavior.
  */
 export function updateNoBlink(
   lm: Landmarks,
   s: BlinkHoldState,
   now: number,
-  holdMs: number
+  holdMs: number,
+  openThresh: number = DETECTION_DEFAULTS.earClosed,
+  resetFrames: number = 1
 ): BlinkHoldState {
   if (s.done) return s;
   const avg = (earValue(lm, LEFT_EYE_EAR) + earValue(lm, RIGHT_EYE_EAR)) / 2;
-  if (avg < DETECTION_DEFAULTS.earClosed) {
-    return { done: false, since: null };
+  // Track consecutive sub-threshold frames on the state object (re-used `closedStreak` field).
+  const streak = (avg < openThresh ? (s.closedStreak ?? 0) + 1 : 0);
+  if (streak >= resetFrames) {
+    return { done: false, since: null, closedStreak: streak };
   }
   const since = s.since ?? now;
   if (now - since >= holdMs) {
-    return { done: true, since };
+    return { done: true, since, closedStreak: streak };
   }
-  return { done: false, since };
+  return { done: false, since, closedStreak: streak };
 }
 
 export function noBlinkProgress(s: BlinkHoldState, now: number, holdMs: number): number {

@@ -63,7 +63,9 @@ export default function ExpressionGate({ onPassed }: Props) {
         lm,
         noBlinkRef.current,
         now,
-        DETECTION_DEFAULTS.gateNoBlinkHoldMs
+        DETECTION_DEFAULTS.gateNoBlinkHoldMs,
+        DETECTION_DEFAULTS.gateEyesOpenThresh,
+        DETECTION_DEFAULTS.gateBlinkResetFrames
       );
     }
     setUiTick((n) => (n + 1) % 1024);

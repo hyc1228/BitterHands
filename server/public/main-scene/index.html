@@ -1841,7 +1841,27 @@
       const BORDER = 110;
 
       function updatePlayer(dt) {
-        if (state.spectator) return;
+        if (state.spectator) {
+          // dead spectator: WASD / joystick pans the free camera
+          if (state.me.dead && state.obCamMode === "free") {
+            let dx = 0, dy = 0;
+            const joyMag = Math.hypot(state.joyX, state.joyY);
+            if (joyMag > 0.05) { dx = state.joyX; dy = state.joyY; }
+            else {
+              if (state.keys.up)    dy -= 1;
+              if (state.keys.down)  dy += 1;
+              if (state.keys.left)  dx -= 1;
+              if (state.keys.right) dx += 1;
+              const len = Math.hypot(dx, dy);
+              if (len > 1) { dx /= len; dy /= len; }
+            }
+            if (dx || dy) {
+              state.obFreeTarget.x = clamp(state.obFreeTarget.x + dx * SPEED * dt, BORDER, MAP_W - BORDER);
+              state.obFreeTarget.y = clamp(state.obFreeTarget.y + dy * SPEED * dt, BORDER, MAP_H - BORDER);
+            }
+          }
+          return;
+        }
         const me = state.me;
         let dx = 0,
           dy = 0;
@@ -2164,6 +2184,7 @@
       // =================================================================
       function renderLives() {
         const root = document.getElementById("lives");
+        if (state.me.dead) { root.innerHTML = ""; return; }
         root.innerHTML = "";
         for (let i = 0; i < 3; i++) {
           const sp = document.createElement("span");
@@ -2177,6 +2198,10 @@
         if (state.me.dead) return;
         state.me.dead = true;
         state.spectator = true;
+        // switch to free-pan camera starting at player's last position
+        state.obCamMode = "free";
+        state.obFreeTarget.x = state.me.x;
+        state.obFreeTarget.y = state.me.y;
         if (state.nodes.me) state.nodes.me.setAttribute("visibility", "hidden");
         challenge.active = false;
         challenge.completed = false;
@@ -2184,6 +2209,7 @@
         universalChallenge.active = false;
         universalChallenge.completed = false;
         uChalOverlay.className = "";
+        renderLives();
         addLog("💀 生命值归零，进入观战模式。");
         // Flash the full overlay for 2.5s, then fade out and show small badge
         const overlay = document.getElementById("deathOverlay");
