@@ -2084,6 +2084,120 @@
   50%      { opacity: 1; }
 }
 
+/* OB lobby (right pane): mirror in-game layout (5 left | center card | 5 right) so the
+   screen doesn't reshuffle when the game starts. */
+.ob-scene-layout--lobby .ob-scene-center {
+  display: grid;
+  place-items: stretch;
+  /* Match the in-game iframe slot's behaviour (fills the grid cell). */
+}
+.ob-lobby-center {
+  min-height: 0;
+}
+.ob-lobby-card {
+  height: 100%;
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  gap: 12px;
+  padding: 24px 18px;
+  border: 1.5px dashed var(--nz-cream-line);
+  border-radius: var(--nz-radius);
+  background: rgba(0, 0, 0, 0.34);
+  text-align: center;
+  isolation: isolate;
+  position: relative;
+  overflow: hidden;
+  transition: border-color 320ms ease, background 320ms ease;
+}
+.ob-lobby-card::before {
+  content: "";
+  position: absolute;
+  inset: -30% -10% auto -10%;
+  height: 80%;
+  background: radial-gradient(ellipse 60% 50% at 50% 30%, rgba(214, 64, 46, 0.32), transparent 65%);
+  pointer-events: none;
+  z-index: 0;
+  animation: nz-spotlight 900ms ease-out both;
+}
+.ob-lobby-card > * { position: relative; z-index: 1; }
+.ob-lobby-card.is-all-ready {
+  border-style: solid;
+  border-color: rgba(120, 200, 140, 0.55);
+  background: rgba(60, 130, 90, 0.12);
+}
+.ob-lobby-card__pulse {
+  display: grid;
+  grid-auto-flow: column;
+  gap: 6px;
+}
+.ob-lobby-card__pulse span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--nz-red);
+  opacity: 0.6;
+  animation: nz-lobby-pulse 1.4s ease-in-out infinite;
+}
+.ob-lobby-card__pulse span:nth-child(2) { animation-delay: 0.18s; }
+.ob-lobby-card__pulse span:nth-child(3) { animation-delay: 0.36s; }
+.ob-lobby-card.is-all-ready .ob-lobby-card__pulse span {
+  background: rgba(120, 200, 140, 1);
+}
+
+.ob-lobby-card__title {
+  font-family: var(--nz-font-display);
+  font-size: clamp(13px, 1.6vw, 15px);
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--nz-cream);
+}
+.ob-lobby-card__count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 6px 14px;
+  border: 1.5px dashed var(--nz-cream-line);
+  border-radius: var(--nz-radius-pill);
+  background: rgba(0, 0, 0, 0.32);
+}
+.ob-lobby-card.is-all-ready .ob-lobby-card__count {
+  border-color: rgba(120, 200, 140, 0.55);
+  border-style: solid;
+}
+.ob-lobby-card__big {
+  font-family: var(--nz-font-display);
+  font-size: clamp(28px, 4vw, 38px);
+  color: var(--nz-cream);
+  letter-spacing: 0.04em;
+}
+.ob-lobby-card__sep {
+  font-family: var(--nz-font-display);
+  font-size: clamp(20px, 3vw, 26px);
+  color: var(--nz-cream-dim);
+  margin: 0 4px;
+}
+.ob-lobby-card__label {
+  font-family: var(--nz-font-display);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--nz-cream-dim);
+  margin-left: 6px;
+}
+.ob-lobby-card__hint {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  max-width: 32em;
+}
+.ob-lobby-card__empty {
+  font-size: 12px;
+  font-family: var(--nz-font-display);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
 /* OB lobby start row */
 .ob-start-row {
   display: flex;

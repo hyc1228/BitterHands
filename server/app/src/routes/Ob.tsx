@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DEFAULT_ROOM_ID, getMainSceneFrameSrc, OB_FACE_SLOTS, OB_LOBBY_SPOTLIGHTS } from "../constants";
+import { DEFAULT_ROOM_ID, getMainSceneFrameSrc, OB_FACE_SLOTS } from "../constants";
 import { animalLocalized, dict } from "../i18n";
 import { useMainSceneIframeBridge } from "../hooks/useMainSceneIframeBridge";
 import {
@@ -11,7 +11,6 @@ import {
 } from "../mainSync/postToMainSceneFrame";
 import { ClientMessageTypes, type CameraFrame, type Lang, type PublicPlayer } from "../party/protocol";
 import { usePartyStore, type LogEntry } from "../party/store";
-import { pickObSpotlight } from "../utils/obSpotlight";
 import PlayerRowFace from "../components/PlayerRowFace";
 
 function obAnimalLabel(lang: Lang, animal: PublicPlayer["animal"], unknown: string): string {
@@ -85,7 +84,6 @@ export default function Ob() {
 
   const mainSceneSrc = useMemo(() => getMainSceneFrameSrc(), []);
   const gameLive = Boolean(snapshot?.started);
-  const roomId = snapshot?.roomId ?? room;
 
   const pushMainSceneIframe = useCallback(() => {
     if (!snapshot?.started) return;
@@ -162,23 +160,14 @@ export default function Ob() {
     [realPlayers]
   );
   const totalPlayers = realPlayers.length;
-  const canStart = conn === "open" && !gameLive && readyCount > 0;
+  // OB can start whenever connected + game not yet running. We don't gate on `readyCount > 0`
+  // so solo testing / pre-lobby start works; the count text and the green halo still tell
+  // the operator whether everyone is in.
+  const canStart = conn === "open" && !gameLive;
   const allReady = totalPlayers > 0 && readyCount === totalPlayers;
   const facePlayers = useMemo(
-    () => players.slice(0, OB_FACE_SLOTS),
-    [players]
-  );
-  const spotlightPlayers = useMemo(
-    () => pickObSpotlight(players, OB_LOBBY_SPOTLIGHTS, roomId),
-    [players, roomId]
-  );
-  const spotlightIds = useMemo(
-    () => new Set(spotlightPlayers.map((p) => p.id)),
-    [spotlightPlayers]
-  );
-  const restFacePlayers = useMemo(
-    () => players.filter((p) => p.name.toLowerCase() !== "ob" && !spotlightIds.has(p.id)),
-    [players, spotlightIds]
+    () => realPlayers.slice(0, OB_FACE_SLOTS),
+    [realPlayers]
   );
 
   const cams = useMemo(() => Array.from(cameraFrames.values()), [cameraFrames]);
@@ -267,50 +256,66 @@ export default function Ob() {
         </div>
 
         {!gameLive ? (
-          <div className="ob-lobby">
-            <p className="ob-lobby-note muted">{t.obLobbyNote}</p>
-            {conn === "open" ? (
-              <p className="ob-lobby-cam-hint muted">{t.obCamTapFaceHint}</p>
-            ) : null}
-            {spotlightPlayers.length === 0 ? (
-              <div className="ob-lobby-empty muted">{t.obLobbyEmpty}</div>
-            ) : (
-              <div
-                className="ob-lobby-spotlight-grid"
-                aria-label="ob-lobby-spotlight"
-              >
-                {spotlightPlayers.map((p) => (
-                  <ObSpotlightTile
-                    key={p.id}
-                    player={p}
-                    frame={cameraFrames.get(p.id) ?? null}
+          // Mirror the in-game layout (5 face slots ┃ center waiting card ┃ 5 face slots) so
+          // the screen doesn't reshuffle when OB hits Start. The center cell shows lobby state
+          // (ready count + "Waiting for OB" / Start hint) instead of the main-scene iframe.
+          <div className="ob-scene-layout ob-scene-layout--lobby">
+            <div className="ob-face-column" aria-label="ob-faces-left">
+              {Array.from({ length: 5 }, (_, j) => {
+                const i = j;
+                const player = facePlayers[i] ?? null;
+                return (
+                  <ObFaceSlot
+                    key={player?.id ?? `ob-slot-${i}`}
+                    index={i}
+                    player={player}
+                    frame={player ? cameraFrames.get(player.id) ?? null : null}
                     lang={lang}
-                    onPickPlayer={() => pickObFollow(p.id)}
-                    followSelected={obCam.mode === "follow" && obCam.followId === p.id}
-                    pickable
+                    onPickPlayer={player ? () => pickObFollow(player.id) : undefined}
+                    followSelected={Boolean(player) && obCam.mode === "follow" && obCam.followId === player?.id}
+                    pickable={Boolean(player)}
                   />
-                ))}
-              </div>
-            )}
-            {restFacePlayers.length > 0 ? (
-              <>
-                <div className="ob-lobby-rest-title section-title">{t.obLobbyAllPlayers}</div>
-                <div className="ob-lobby-rest-row" aria-label="ob-lobby-others">
-                  {restFacePlayers.map((p, i) => (
-                    <ObFaceSlot
-                      key={p.id}
-                      index={i}
-                      player={p}
-                      frame={cameraFrames.get(p.id) ?? null}
-                      lang={lang}
-                      onPickPlayer={() => pickObFollow(p.id)}
-                      followSelected={obCam.mode === "follow" && obCam.followId === p.id}
-                      pickable
-                    />
-                  ))}
+                );
+              })}
+            </div>
+
+            <div className="ob-scene-center ob-lobby-center">
+              <div className={"ob-lobby-card" + (allReady ? " is-all-ready" : "")}>
+                <div className="ob-lobby-card__pulse" aria-hidden="true">
+                  <span /><span /><span />
                 </div>
-              </>
-            ) : null}
+                <div className="ob-lobby-card__title">{t.obLobbyWaitingTitle}</div>
+                <div className="ob-lobby-card__count">
+                  <span className="ob-lobby-card__big">{readyCount}</span>
+                  <span className="ob-lobby-card__sep">/</span>
+                  <span className="ob-lobby-card__big">{totalPlayers}</span>
+                  <span className="ob-lobby-card__label">{t.lobbyReadyLabel}</span>
+                </div>
+                <p className="muted ob-lobby-card__hint">{t.obLobbyCenterHint}</p>
+                {totalPlayers === 0 ? (
+                  <div className="ob-lobby-card__empty muted">{t.obLobbyEmpty}</div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="ob-face-column" aria-label="ob-faces-right">
+              {Array.from({ length: 5 }, (_, j) => {
+                const i = j + 5;
+                const player = facePlayers[i] ?? null;
+                return (
+                  <ObFaceSlot
+                    key={player?.id ?? `ob-slot-${i}`}
+                    index={i}
+                    player={player}
+                    frame={player ? cameraFrames.get(player.id) ?? null : null}
+                    lang={lang}
+                    onPickPlayer={player ? () => pickObFollow(player.id) : undefined}
+                    followSelected={Boolean(player) && obCam.mode === "follow" && obCam.followId === player?.id}
+                    pickable={Boolean(player)}
+                  />
+                );
+              })}
+            </div>
           </div>
         ) : (
           <div className="ob-scene-layout">

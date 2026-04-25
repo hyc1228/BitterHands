@@ -110,6 +110,8 @@ interface Dict {
   /** OB controls: start the synchronized countdown for everyone in the lobby. */
   obStartGame: string;
   obReadyCount: (n: number, total: number) => string;
+  obLobbyWaitingTitle: string;
+  obLobbyCenterHint: string;
   gateTitle: string;
   gateHint: string;
   gateEnable: string;
@@ -219,6 +221,8 @@ const en: Dict = {
   lobbySelfPrefix: "Your role:",
   obStartGame: "Start game",
   obReadyCount: (n, t) => `${n}/${t} ready`,
+  obLobbyWaitingTitle: "Lobby — players in waiting room",
+  obLobbyCenterHint: "Use ‘Start game’ on the left when you're ready. Everyone will enter the zoo together.",
   gateTitle: "Final check",
   gateHint: "Pass three quick face tests to enter the zoo.",
   gateEnable: "Start face check",
@@ -327,6 +331,8 @@ const zh: Dict = {
   lobbySelfPrefix: "你的角色：",
   obStartGame: "开始游戏",
   obReadyCount: (n, t) => `${n}/${t} 已就绪`,
+  obLobbyWaitingTitle: "等待房间 · 玩家集合中",
+  obLobbyCenterHint: "准备好后点左侧「开始游戏」，所有玩家会同时进入。",
   gateTitle: "入园前自检",
   gateHint: "通过三关面部测试，才能进入动物园。",
   gateEnable: "开启自检",
