@@ -1220,12 +1220,12 @@
       function makeCone() {
         const root = el("g", { class: "flashlight-cone" });
         const halo = el("polygon", {
-          points: "70,-22 330,-150 330,150 70,22",
+          points: "70,-28 330,-200 330,200 70,28",
           fill: "rgba(173, 162, 70, 0.16)",
           filter: "url(#rough)",
         });
         const cone = el("polygon", {
-          points: "70,-14 300,-118 300,118 70,14",
+          points: "70,-18 300,-160 300,160 70,18",
           fill: "rgba(173, 162, 70, 0.78)",
           filter: "url(#rough)",
         });
@@ -1559,7 +1559,7 @@
       // Update (movement / monitor AI)
       // =================================================================
       const SPEED = 110; // units per second
-      const MON_SPEED = 46;
+      const MON_SPEED = 110;
       // Fence thickness — entities must stay inside this border.
       const BORDER = 110;
 
@@ -1753,7 +1753,7 @@
         const dy   = playerY - monY;
         const dist = Math.hypot(dx, dy);
         if (dist < 50 || dist > 300) return false;
-        return Math.abs(wrapAngle(Math.atan2(dy, dx) - aimAngle)) < 0.38;
+        return Math.abs(wrapAngle(Math.atan2(dy, dx) - aimAngle)) < 0.50;
       }
 
       function updateMonitor(dt) {
@@ -1774,7 +1774,7 @@
 
         if (m.mode === "sweep") {
           // Rotate flashlight back and forth
-          m.aimAngle  += m.sweepDir * 0.5 * dt;
+          m.aimAngle  += m.sweepDir * 1.0 * dt;
           m.sweepTimer -= dt;
           if (m.sweepTimer <= 0) {
             m.sweepTimer = 2 + Math.random() * 3;
@@ -1826,13 +1826,13 @@
           if (!target) { m.mode = "sweep"; m.sweepTimer = 1; return; }
 
           const desired = Math.atan2(target.y - m.y, target.x - m.x);
-          m.aimAngle += clamp(wrapAngle(desired - m.aimAngle), -4 * dt, 4 * dt);
+          m.aimAngle += clamp(wrapAngle(desired - m.aimAngle), -8 * dt, 8 * dt);
 
-          // Slowly close in on target
+          // Chase target closely
           const dx   = target.x - m.x;
           const dy   = target.y - m.y;
           const dist = Math.hypot(dx, dy);
-          if (dist > 120) {
+          if (dist > 40) {
             m.x += (dx / dist) * MON_SPEED * dt;
             m.y += (dy / dist) * MON_SPEED * dt;
           }
