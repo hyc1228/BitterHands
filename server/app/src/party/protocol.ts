@@ -20,7 +20,10 @@ export const ServerEventTypes = {
   GAME_ENDED: "game_ended",
   CAMERA_FRAME: "camera_frame",
   PRIVATE_RULES_CARD: "private_rules_card",
-  PRIVATE_OWL_ROSTER: "private_owl_roster"
+  PRIVATE_OWL_ROSTER: "private_owl_roster",
+  MAIN_SCENE_BROADCAST: "main_scene_broadcast",
+  MAIN_SCENE_ITEM_TAKEN: "main_scene_item_taken",
+  MAIN_SCENE_ITEMS_RESYNC: "main_scene_items_resync"
 } as const;
 
 export const ClientMessageTypes = {
@@ -32,7 +35,9 @@ export const ClientMessageTypes = {
   CHAT: "chat",
   CAMERA_FRAME: "camera_frame",
   OWL_SUBMIT: "owl_submit",
-  END: "end"
+  END: "end",
+  MAIN_SCENE_STATE: "main_scene_state",
+  MAIN_SCENE_ITEM_PICKUP: "main_scene_item_pickup"
 } as const;
 
 export type Lang = "en" | "zh";
@@ -54,6 +59,8 @@ export interface RoomSnapshot {
   startedAt: number | null;
   durationMs: number;
   players: PublicPlayer[];
+  /** Authoritative: item ids (h1, a1, …) already picked up in this run. */
+  mainSceneItemsRemoved?: string[];
 }
 
 export interface SystemEvent {
@@ -113,6 +120,33 @@ export interface GameEnded {
   owlGuesses: Record<string, unknown>;
 }
 
+/** Relayed to all clients (players + OB) for the shared playfield. */
+export interface MainScenePeerState {
+  playerId: string;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  moving: boolean;
+  /** e.g. idle, walk, interact_* — use for future skeletal animation. */
+  animKey: string;
+  facing: number;
+  t: number;
+  /** Optional one-shot or timed interaction effect. */
+  fx: { id: string; at: number; extra?: Record<string, unknown> } | null;
+}
+
+export interface MainSceneItemTaken {
+  itemId: string;
+  itemType: "heart" | "alarm";
+  byPlayerId: string;
+  alarmLured: { x: number; y: number } | null;
+}
+
+export type MainSceneItemInboxEntry =
+  | { kind: "taken"; data: MainSceneItemTaken }
+  | { kind: "resync"; removedItemIds: string[] };
+
 export type ServerEnvelope =
   | { type: typeof ServerEventTypes.ROOM_SNAPSHOT; data: RoomSnapshot }
   | { type: typeof ServerEventTypes.PLAYER_JOINED; data: PublicPlayer }
@@ -125,6 +159,9 @@ export type ServerEnvelope =
   | { type: typeof ServerEventTypes.CAMERA_FRAME; data: CameraFrame }
   | { type: typeof ServerEventTypes.PRIVATE_RULES_CARD; data: RulesCard }
   | { type: typeof ServerEventTypes.PRIVATE_OWL_ROSTER; data: OwlRosterEntry[] }
+  | { type: typeof ServerEventTypes.MAIN_SCENE_BROADCAST; data: MainScenePeerState }
+  | { type: typeof ServerEventTypes.MAIN_SCENE_ITEM_TAKEN; data: MainSceneItemTaken }
+  | { type: typeof ServerEventTypes.MAIN_SCENE_ITEMS_RESYNC; data: { removedItemIds: string[] } }
   | { type: "error"; error: string; max?: number }
   | { type: string; data?: unknown };
 

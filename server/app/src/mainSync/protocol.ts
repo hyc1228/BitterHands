@@ -5,6 +5,11 @@ export const NZ_MSG_SOURCE = "nocturne-zoo" as const;
 
 export const NZ_MSG_TYPE_SYNC = "NZ_PLAYER_SYNC" as const;
 export const NZ_MSG_TYPE_ROOM = "NZ_ROOM_PLAYERS" as const;
+export const NZ_MSG_TYPE_MS_VIEW = "NZ_MS_VIEW" as const;
+export const NZ_MSG_TYPE_NET = "NZ_MAIN_SCENE_NET" as const;
+export const NZ_MSG_OUT = "NZ_OUT_MAIN_SCENE" as const;
+export const NZ_MSG_OUT_ITEM = "NZ_OUT_ITEM_PICKUP" as const;
+export const NZ_MSG_TYPE_ITEM = "NZ_MS_ITEM" as const;
 
 /** Payload applied inside `main scene/index.html` (MainSync bridge). */
 export interface NzPlayerSyncPayload {
@@ -49,21 +54,45 @@ export interface NzRoomPlayerRow {
   sceneAnimal: NzPlayerSyncPayload["sceneAnimal"];
 }
 
-export function buildRoomPlayersPayload(snapshot: RoomSnapshot | null, myName: string): {
+export function buildRoomPlayersPayload(
+  snapshot: RoomSnapshot | null,
+  myName: string,
+  opts?: { spectator?: boolean }
+): {
   selfId: string;
-  /** Fallback when `selfId` is missing (race) — exclude this display name from `others`. */
   selfName: string;
+  roomStarted: boolean;
+  spectator: boolean;
+  itemsRemoved: string[];
   players: NzRoomPlayerRow[];
 } {
+  const spectator = Boolean(opts?.spectator);
   if (!snapshot?.players?.length) {
-    return { selfId: "", selfName: myName, players: [] };
+    return {
+      selfId: "",
+      selfName: myName,
+      roomStarted: Boolean(snapshot?.started),
+      spectator,
+      itemsRemoved: snapshot?.mainSceneItemsRemoved ?? [],
+      players: []
+    };
   }
-  const me = snapshot.players.find((p) => p.name === myName);
+  const roster = spectator
+    ? snapshot.players.filter((p) => p.name.toLowerCase() !== "ob")
+    : snapshot.players;
+  const me = !spectator ? snapshot.players.find((p) => p.name === myName) : null;
   const selfId = me?.id ?? "";
-  const players: NzRoomPlayerRow[] = snapshot.players.map((p) => ({
+  const players: NzRoomPlayerRow[] = roster.map((p) => ({
     id: p.id,
     name: p.name,
     sceneAnimal: mapAnimalToMainScene(p.animal)
   }));
-  return { selfId, selfName: myName, players };
+  return {
+    selfId,
+    selfName: myName,
+    roomStarted: Boolean(snapshot.started),
+    spectator,
+    itemsRemoved: snapshot.mainSceneItemsRemoved ?? [],
+    players
+  };
 }

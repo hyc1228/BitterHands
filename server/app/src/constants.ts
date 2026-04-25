@@ -11,6 +11,9 @@ export const DEFAULT_MAIN_SCENE_PATH = "main-scene/index.html";
 /** Max face slots on the OB “camera wall” (matches server room cap). */
 export const OB_FACE_SLOTS = 10;
 
+/** In lobby, how many player feeds to highlight up top (build-profile watch). */
+export const OB_LOBBY_SPOTLIGHTS = 4;
+
 /**
  * Public URL for the main-scene HTML (iframe). Same for player MainScene and OB backdrop.
  */

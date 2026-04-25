@@ -4,6 +4,20 @@ import { fnv1a32, pickLooksRoast, similarityPercentFor } from "./photoAnalysis.j
 /** Max players (JOIN) per room — matches GDD 5–10; hard cap 10. */
 const MAX_ROOM_PLAYERS = 10;
 
+/** Must match `main scene/index.html` MAP_W / MAP_H and `state.items` ids/positions. */
+const MAP_W_MS = 1080;
+const MAP_H_MS = 1500;
+const CX_MS = MAP_W_MS / 2;
+const CY_MS = MAP_H_MS / 2;
+const MAIN_SCENE_ITEM_DEFS = [
+  { id: "h1", type: "heart", x: CX_MS - 80, y: CY_MS - 340 },
+  { id: "h2", type: "heart", x: CX_MS - 320, y: CY_MS - 60 },
+  { id: "h3", type: "heart", x: CX_MS + 270, y: CY_MS + 380 },
+  { id: "a1", type: "alarm", x: CX_MS + 140, y: CY_MS + 40 },
+  { id: "a2", type: "alarm", x: CX_MS - 200, y: CY_MS + 220 },
+  { id: "a3", type: "alarm", x: CX_MS + 320, y: CY_MS - 260 }
+];
+
 /**
  * @typedef {object} Player
  * @property {string} id
@@ -51,9 +65,17 @@ export default class Server {
     /** @type {Map<string, {dataUrl: string, ts: number}>} */
     this.lastCameraFrameByPlayerId = new Map();
 
+    /** @type {Map<string, number>} */
+    this._lastMainSceneAt = new Map();
+
     /** In-room profile avatars (data URLs decoded); keyed by connection id. */
     /** @type {Map<string, { mime: string, bytes: Uint8Array }>} */
     this._avatarByPlayerId = new Map();
+
+    /** @type {Set<string>} */
+    this.mainSceneItemsRemoved = new Set();
+    /** @type {Map<string, (typeof MAIN_SCENE_ITEM_DEFS)[0]>} */
+    this._mainSceneItemRegistry = new Map(MAIN_SCENE_ITEM_DEFS.map((d) => [d.id, d]));
   }
 
   /**
@@ -247,6 +269,7 @@ export default class Server {
         if (this.started) return;
         this.started = true;
         this.startedAt = Date.now();
+        this.mainSceneItemsRemoved = new Set();
 
         this._broadcast(ServerEventTypes.GAME_STARTED, {
           startedAt: this.startedAt,
@@ -341,6 +364,67 @@ export default class Server {
         return;
       }
 
+      case ClientMessageTypes.MAIN_SCENE_STATE: {
+        if (!this.started) return;
+        const player = this.players.get(conn.id);
+        if (!player) return;
+        // ~20 Hz cap per client
+        const now = Date.now();
+        const last = this._lastMainSceneAt.get(conn.id) ?? 0;
+        if (now - last < 50) return;
+        this._lastMainSceneAt.set(conn.id, now);
+        const x = Number(msg?.x);
+        const y = Number(msg?.y);
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        const MAP_MAX = 10000;
+        const clampPos = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(MAP_MAX, v)) : 0);
+        const clampVel = (v) =>
+          Number.isFinite(v) ? Math.max(-800, Math.min(800, v)) : 0;
+        const payload = {
+          playerId: conn.id,
+          x: clampPos(x),
+          y: clampPos(y),
+          vx: clampVel(Number(msg?.vx)),
+          vy: clampVel(Number(msg?.vy)),
+          moving: Boolean(msg?.moving),
+          animKey: typeof msg?.animKey === "string" ? msg.animKey.slice(0, 48) : "idle",
+          facing: typeof msg?.facing === "number" && Number.isFinite(msg.facing) ? msg.facing : 0,
+          t: now,
+          fx: msg?.fx && typeof msg.fx === "object" ? msg.fx : null
+        };
+        this._broadcast(ServerEventTypes.MAIN_SCENE_BROADCAST, payload);
+        return;
+      }
+
+      case ClientMessageTypes.MAIN_SCENE_ITEM_PICKUP: {
+        if (!this.started) return;
+        const player = this.players.get(conn.id);
+        if (!player) return;
+        const itemId = typeof msg?.itemId === "string" ? msg.itemId.slice(0, 32) : "";
+        if (!itemId || !this._mainSceneItemRegistry.has(itemId)) {
+          return;
+        }
+        if (this.mainSceneItemsRemoved.has(itemId)) {
+          conn.send(
+            JSON.stringify({
+              type: ServerEventTypes.MAIN_SCENE_ITEMS_RESYNC,
+              data: { removedItemIds: Array.from(this.mainSceneItemsRemoved) }
+            })
+          );
+          return;
+        }
+        this.mainSceneItemsRemoved.add(itemId);
+        const meta = this._mainSceneItemRegistry.get(itemId);
+        this._broadcast(ServerEventTypes.MAIN_SCENE_ITEM_TAKEN, {
+          itemId,
+          itemType: meta.type,
+          byPlayerId: conn.id,
+          alarmLured: meta.type === "alarm" ? { x: meta.x, y: meta.y } : null
+        });
+        this._sendRoomSnapshot();
+        return;
+      }
+
       default: {
         conn.send(JSON.stringify({ type: "error", error: "unknown_message_type" }));
       }
@@ -354,6 +438,7 @@ export default class Server {
     this.players.delete(conn.id);
     this.owlGuessesByPlayerId.delete(conn.id);
     this.lastCameraFrameByPlayerId.delete(conn.id);
+    this._lastMainSceneAt.delete(conn.id);
     this._avatarByPlayerId.delete(conn.id);
 
     this._broadcast(ServerEventTypes.SYSTEM, {
@@ -449,7 +534,10 @@ export default class Server {
       started: this.started,
       startedAt: this.startedAt,
       durationMs: this.durationMs,
-      players: Array.from(this.players.values()).map((p) => this._publicPlayer(p))
+      players: Array.from(this.players.values()).map((p) => this._publicPlayer(p)),
+      mainSceneItemsRemoved: this.started
+        ? Array.from(this.mainSceneItemsRemoved)
+        : []
     };
   }
 

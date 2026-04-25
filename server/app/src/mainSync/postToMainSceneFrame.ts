@@ -1,24 +1,43 @@
-import type { AnimalCode, Lang, RoomSnapshot, RulesCard } from "../party/protocol";
+import type { AnimalCode, Lang, MainScenePeerState, RoomSnapshot, RulesCard } from "../party/protocol";
 import {
   buildPlayerSyncPayload,
   buildRoomPlayersPayload,
   NZ_MSG_SOURCE,
+  NZ_MSG_TYPE_ITEM,
+  NZ_MSG_TYPE_MS_VIEW,
+  NZ_MSG_TYPE_NET,
   NZ_MSG_TYPE_ROOM,
   NZ_MSG_TYPE_SYNC
 } from "./protocol";
+import type { MainSceneItemInboxEntry } from "../party/protocol";
 
-/** Push MainSync + room roster into the static `main-scene` iframe (player or OB). */
+export interface PostToMainSceneArgs {
+  myName: string;
+  myAnimal: AnimalCode | null;
+  rulesCard: RulesCard | null;
+  lang: Lang;
+  snapshot: RoomSnapshot | null;
+  /** OB / spectators: no local avatar, see everyone on the shared map. */
+  spectator?: boolean;
+  /** `PublicPlayer.id` for this client (from snapshot). */
+  selfPlayerId: string;
+  mainScenePeers: Record<string, MainScenePeerState>;
+}
+
+/** Push MainSync + room roster + network poses into the static `main-scene` iframe. */
 export function postToMainSceneFrame(
   w: Window | null | undefined,
-  args: {
-    myName: string;
-    myAnimal: AnimalCode | null;
-    rulesCard: RulesCard | null;
-    lang: Lang;
-    snapshot: RoomSnapshot | null;
-  }
+  args: PostToMainSceneArgs
 ): void {
   if (!w) return;
+  w.postMessage(
+    {
+      type: NZ_MSG_TYPE_MS_VIEW,
+      source: NZ_MSG_SOURCE,
+      payload: { spectator: Boolean(args.spectator) }
+    },
+    "*"
+  );
   w.postMessage(
     {
       type: NZ_MSG_TYPE_SYNC,
@@ -32,11 +51,50 @@ export function postToMainSceneFrame(
     },
     "*"
   );
+  const roomPayload = buildRoomPlayersPayload(args.snapshot, args.myName, {
+    spectator: args.spectator
+  });
   w.postMessage(
     {
       type: NZ_MSG_TYPE_ROOM,
       source: NZ_MSG_SOURCE,
-      payload: buildRoomPlayersPayload(args.snapshot, args.myName)
+      payload: roomPayload
+    },
+    "*"
+  );
+  w.postMessage(
+    {
+      type: NZ_MSG_TYPE_NET,
+      source: NZ_MSG_SOURCE,
+      payload: { peers: args.mainScenePeers, selfId: args.selfPlayerId }
+    },
+    "*"
+  );
+}
+
+export function postItemInboxToFrame(
+  w: Window | null | undefined,
+  events: MainSceneItemInboxEntry[]
+): void {
+  if (!w || !events.length) return;
+  w.postMessage(
+    { type: NZ_MSG_TYPE_ITEM, source: NZ_MSG_SOURCE, payload: { events } },
+    "*"
+  );
+}
+
+/** Throttled: only playfield positions / anim from PartyKit (lighter than a full re-push). */
+export function postMainSceneNetToFrame(
+  w: Window | null | undefined,
+  selfId: string,
+  peers: Record<string, MainScenePeerState>
+): void {
+  if (!w) return;
+  w.postMessage(
+    {
+      type: NZ_MSG_TYPE_NET,
+      source: NZ_MSG_SOURCE,
+      payload: { peers, selfId }
     },
     "*"
   );

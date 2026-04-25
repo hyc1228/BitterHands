@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { DEFAULT_ROOM_ID, getMainSceneFrameSrc, OB_FACE_SLOTS } from "../constants";
+import { DEFAULT_ROOM_ID, getMainSceneFrameSrc, OB_FACE_SLOTS, OB_LOBBY_SPOTLIGHTS } from "../constants";
 import { dict } from "../i18n";
-import { postToMainSceneFrame } from "../mainSync/postToMainSceneFrame";
+import { useMainSceneIframeBridge } from "../hooks/useMainSceneIframeBridge";
+import { postToMainSceneFrame, postItemInboxToFrame, postMainSceneNetToFrame } from "../mainSync/postToMainSceneFrame";
 import type { CameraFrame, PublicPlayer } from "../party/protocol";
 import { usePartyStore, type LogEntry } from "../party/store";
+import { pickObSpotlight } from "../utils/obSpotlight";
 import PlayerRowFace from "../components/PlayerRowFace";
 
 export default function Ob() {
@@ -19,6 +21,10 @@ export default function Ob() {
   const snapshot = usePartyStore((s) => s.snapshot);
   const log = usePartyStore((s) => s.log);
   const cameraFrames = usePartyStore((s) => s.cameraFrames);
+  const selfPlayerId = usePartyStore(
+    (s) => s.snapshot?.players.find((p) => p.name === s.myName)?.id ?? ""
+  );
+  useMainSceneIframeBridge();
 
   const [room, setRoom] = useState(() => {
     const params = new URLSearchParams(location.hash.split("?")[1] || "");
@@ -34,20 +40,40 @@ export default function Ob() {
   const mainSceneIframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const mainSceneSrc = useMemo(() => getMainSceneFrameSrc(), []);
+  const gameLive = Boolean(snapshot?.started);
+  const roomId = snapshot?.roomId ?? room;
 
   const pushMainSceneIframe = useCallback(() => {
+    if (!snapshot?.started) return;
     postToMainSceneFrame(mainSceneIframeRef.current?.contentWindow, {
       myName,
       myAnimal,
       rulesCard,
       lang,
-      snapshot
+      snapshot,
+      spectator: true,
+      selfPlayerId,
+      mainScenePeers: usePartyStore.getState().mainScenePeers
     });
-  }, [myName, myAnimal, rulesCard, lang, snapshot]);
+  }, [myName, myAnimal, rulesCard, lang, snapshot, selfPlayerId]);
 
   useEffect(() => {
+    if (!gameLive) return;
     pushMainSceneIframe();
-  }, [pushMainSceneIframe]);
+  }, [gameLive, pushMainSceneIframe]);
+
+  useEffect(() => {
+    if (conn !== "open" || !gameLive) return;
+    const t = window.setInterval(() => {
+      const s = usePartyStore.getState();
+      const sid = s.snapshot?.players.find((p) => p.name === s.myName)?.id ?? "";
+      const w = mainSceneIframeRef.current?.contentWindow;
+      postMainSceneNetToFrame(w, sid, s.mainScenePeers);
+      const inbox = s.drainMainSceneItemInbox();
+      postItemInboxToFrame(w, inbox);
+    }, 100);
+    return () => clearInterval(t);
+  }, [conn, gameLive]);
 
   useEffect(() => {
     setMode("ob");
@@ -74,6 +100,18 @@ export default function Ob() {
   const facePlayers = useMemo(
     () => players.slice(0, OB_FACE_SLOTS),
     [players]
+  );
+  const spotlightPlayers = useMemo(
+    () => pickObSpotlight(players, OB_LOBBY_SPOTLIGHTS, roomId),
+    [players, roomId]
+  );
+  const spotlightIds = useMemo(
+    () => new Set(spotlightPlayers.map((p) => p.id)),
+    [spotlightPlayers]
+  );
+  const restFacePlayers = useMemo(
+    () => players.filter((p) => p.name.toLowerCase() !== "ob" && !spotlightIds.has(p.id)),
+    [players, spotlightIds]
   );
 
   const cams = useMemo(() => Array.from(cameraFrames.values()), [cameraFrames]);
@@ -129,52 +167,108 @@ export default function Ob() {
             {t.cameras} <span className="muted">({liveCount} live)</span>
           </span>
           <span className="muted ob-scene-hint" style={{ fontSize: 12, letterSpacing: "0.06em" }}>
-            {t.obMainSceneLabel}
+            {gameLive ? t.obMainSceneLabel : t.obLobbyLabel}
           </span>
         </div>
 
-        <div className="ob-scene-layout">
-          <div className="ob-face-column" aria-label="ob-faces-left">
-            {Array.from({ length: 5 }, (_, j) => {
-              const i = j;
-              const player = facePlayers[i] ?? null;
-              return (
-                <ObFaceSlot
-                  key={player?.id ?? `ob-slot-${i}`}
-                  index={i}
-                  player={player}
-                  frame={player ? cameraFrames.get(player.id) ?? null : null}
-                />
-              );
-            })}
+        {!gameLive ? (
+          <div className="ob-lobby">
+            <p className="ob-lobby-note muted">{t.obLobbyNote}</p>
+            {spotlightPlayers.length === 0 ? (
+              <div className="ob-lobby-empty muted">{t.obLobbyEmpty}</div>
+            ) : (
+              <div
+                className="ob-lobby-spotlight-grid"
+                aria-label="ob-lobby-spotlight"
+              >
+                {spotlightPlayers.map((p) => (
+                  <ObSpotlightTile
+                    key={p.id}
+                    player={p}
+                    frame={cameraFrames.get(p.id) ?? null}
+                  />
+                ))}
+              </div>
+            )}
+            {restFacePlayers.length > 0 ? (
+              <>
+                <div className="ob-lobby-rest-title section-title">{t.obLobbyAllPlayers}</div>
+                <div className="ob-lobby-rest-row" aria-label="ob-lobby-others">
+                  {restFacePlayers.map((p, i) => (
+                    <ObFaceSlot
+                      key={p.id}
+                      index={i}
+                      player={p}
+                      frame={cameraFrames.get(p.id) ?? null}
+                    />
+                  ))}
+                </div>
+              </>
+            ) : null}
           </div>
+        ) : (
+          <div className="ob-scene-layout">
+            <div className="ob-face-column" aria-label="ob-faces-left">
+              {Array.from({ length: 5 }, (_, j) => {
+                const i = j;
+                const player = facePlayers[i] ?? null;
+                return (
+                  <ObFaceSlot
+                    key={player?.id ?? `ob-slot-${i}`}
+                    index={i}
+                    player={player}
+                    frame={player ? cameraFrames.get(player.id) ?? null : null}
+                  />
+                );
+              })}
+            </div>
 
-          <div className="ob-scene-center">
-            <iframe
-              ref={mainSceneIframeRef}
-              className="ob-scene-iframe"
-              title="Main scene"
-              src={mainSceneSrc}
-              onLoad={pushMainSceneIframe}
-            />
-          </div>
+            <div className="ob-scene-center">
+              <iframe
+                ref={mainSceneIframeRef}
+                className="ob-scene-iframe"
+                title="Main scene"
+                src={mainSceneSrc}
+                onLoad={pushMainSceneIframe}
+              />
+            </div>
 
-          <div className="ob-face-column" aria-label="ob-faces-right">
-            {Array.from({ length: 5 }, (_, j) => {
-              const i = j + 5;
-              const player = facePlayers[i] ?? null;
-              return (
-                <ObFaceSlot
-                  key={player?.id ?? `ob-slot-${i}`}
-                  index={i}
-                  player={player}
-                  frame={player ? cameraFrames.get(player.id) ?? null : null}
-                />
-              );
-            })}
+            <div className="ob-face-column" aria-label="ob-faces-right">
+              {Array.from({ length: 5 }, (_, j) => {
+                const i = j + 5;
+                const player = facePlayers[i] ?? null;
+                return (
+                  <ObFaceSlot
+                    key={player?.id ?? `ob-slot-${i}`}
+                    index={i}
+                    player={player}
+                    frame={player ? cameraFrames.get(player.id) ?? null : null}
+                  />
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
       </section>
+    </div>
+  );
+}
+
+function ObSpotlightTile({ player, frame }: { player: PublicPlayer; frame: CameraFrame | null }) {
+  return (
+    <div className="ob-spotlight-tile" data-ob-spotlight={player.id}>
+      <div className="ob-spotlight-screen" title={player.name}>
+        {frame ? (
+          <img src={frame.dataUrl} alt={`${player.name} camera`} />
+        ) : (
+          <div className="ob-spotlight-placeholder" aria-hidden>
+            <span className="ob-face-initial">{player.name.charAt(0).toUpperCase()}</span>
+          </div>
+        )}
+      </div>
+      <div className="ob-spotlight-name" title={player.name}>
+        {player.name.length > 12 ? `${player.name.slice(0, 11)}…` : player.name}
+      </div>
     </div>
   );
 }

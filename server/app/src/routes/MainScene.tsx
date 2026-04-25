@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { getMainSceneFrameSrc } from "../constants";
-import { postToMainSceneFrame } from "../mainSync/postToMainSceneFrame";
+import { useMainSceneIframeBridge } from "../hooks/useMainSceneIframeBridge";
+import { postToMainSceneFrame, postItemInboxToFrame, postMainSceneNetToFrame } from "../mainSync/postToMainSceneFrame";
 import { usePartyStore } from "../party/store";
 
 /**
@@ -17,8 +18,12 @@ export default function MainScene() {
   const myAnimal = usePartyStore((s) => s.myAnimal);
   const lang = usePartyStore((s) => s.lang);
   const snapshot = usePartyStore((s) => s.snapshot);
+  const selfPlayerId = usePartyStore(
+    (s) => s.snapshot?.players.find((p) => p.name === s.myName)?.id ?? ""
+  );
 
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  useMainSceneIframeBridge();
 
   useEffect(() => {
     if (conn === "idle" || (conn === "closed" && !rulesCard)) {
@@ -34,13 +39,29 @@ export default function MainScene() {
       myAnimal,
       rulesCard,
       lang,
-      snapshot
+      snapshot,
+      spectator: false,
+      selfPlayerId,
+      mainScenePeers: usePartyStore.getState().mainScenePeers
     });
-  }, [myName, myAnimal, rulesCard, lang, snapshot]);
+  }, [myName, myAnimal, rulesCard, lang, snapshot, selfPlayerId]);
 
   useEffect(() => {
     pushToIframe();
   }, [pushToIframe]);
+
+  useEffect(() => {
+    if (conn !== "open") return;
+    const t = window.setInterval(() => {
+      const s = usePartyStore.getState();
+      const sid = s.snapshot?.players.find((p) => p.name === s.myName)?.id ?? "";
+      const w = iframeRef.current?.contentWindow;
+      postMainSceneNetToFrame(w, sid, s.mainScenePeers);
+      const inbox = s.drainMainSceneItemInbox();
+      postItemInboxToFrame(w, inbox);
+    }, 100);
+    return () => clearInterval(t);
+  }, [conn]);
 
   return (
     <iframe

@@ -8,6 +8,9 @@ import {
   type OwlRosterEntry,
   type PublicPlayer,
   type RoomSnapshot,
+  type MainSceneItemInboxEntry,
+  type MainSceneItemTaken,
+  type MainScenePeerState,
   type RulesCard,
   type ServerEnvelope,
   ServerEventTypes
@@ -40,6 +43,10 @@ interface PartyStoreState {
   answersSubmitted: boolean;
   /** Set when server sends `{ type: "error" }` (e.g. room_full). */
   connectError: string | null;
+  /** Latest main-scene pose per connection id (from `main_scene_broadcast`). */
+  mainScenePeers: Record<string, MainScenePeerState>;
+  mainSceneItemInbox: MainSceneItemInboxEntry[];
+  drainMainSceneItemInbox: () => MainSceneItemInboxEntry[];
   // Actions
   setLang: (lang: Lang) => void;
   setName: (name: string) => void;
@@ -108,6 +115,14 @@ export const usePartyStore = create<PartyStoreState>((set, get) => ({
   photoSubmitted: false,
   answersSubmitted: false,
   connectError: null,
+  mainScenePeers: {},
+  mainSceneItemInbox: [],
+
+  drainMainSceneItemInbox: () => {
+    const q = get().mainSceneItemInbox;
+    if (q.length) set({ mainSceneItemInbox: [] });
+    return q;
+  },
 
   clearConnectError: () => set({ connectError: null }),
 
@@ -215,7 +230,9 @@ export const usePartyStore = create<PartyStoreState>((set, get) => ({
       cameraFrames: new Map(),
       photoSubmitted: false,
       answersSubmitted: false,
-      connectError: null
+      connectError: null,
+      mainScenePeers: {},
+      mainSceneItemInbox: []
     })
 }));
 
@@ -235,7 +252,45 @@ function handleServerEnvelope(
     return;
   }
   if (t === ServerEventTypes.ROOM_SNAPSHOT) {
-    set({ snapshot: msg.data as RoomSnapshot });
+    const raw = msg.data as RoomSnapshot;
+    const snap: RoomSnapshot = {
+      ...raw,
+      mainSceneItemsRemoved: raw.mainSceneItemsRemoved ?? []
+    };
+    set((s) => {
+      const next: Record<string, MainScenePeerState> = { ...s.mainScenePeers };
+      const alive = new Set(snap.players.map((p) => p.id));
+      for (const k of Object.keys(next)) {
+        if (!alive.has(k)) delete next[k];
+      }
+      return { snapshot: snap, mainScenePeers: next };
+    });
+    return;
+  }
+  if (t === ServerEventTypes.MAIN_SCENE_ITEM_TAKEN) {
+    const data = msg.data as MainSceneItemTaken;
+    set((s) => ({
+      mainSceneItemInbox: [...s.mainSceneItemInbox, { kind: "taken" as const, data }]
+    }));
+    return;
+  }
+  if (t === ServerEventTypes.MAIN_SCENE_ITEMS_RESYNC) {
+    const d = msg.data as { removedItemIds: string[] };
+    if (!d?.removedItemIds?.length) return;
+    set((s) => ({
+      mainSceneItemInbox: [
+        ...s.mainSceneItemInbox,
+        { kind: "resync" as const, removedItemIds: d.removedItemIds }
+      ]
+    }));
+    return;
+  }
+  if (t === ServerEventTypes.MAIN_SCENE_BROADCAST) {
+    const d = msg.data as MainScenePeerState;
+    if (!d?.playerId) return;
+    set((s) => ({
+      mainScenePeers: { ...s.mainScenePeers, [d.playerId]: d }
+    }));
     return;
   }
   if (t === ServerEventTypes.PLAYER_JOINED || t === ServerEventTypes.PLAYER_UPDATED) {

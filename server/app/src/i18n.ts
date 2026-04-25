@@ -71,6 +71,14 @@ interface Dict {
   obTitle: string;
   /** Subtitle on OB panel: main scene + face wall */
   obMainSceneLabel: string;
+  /** Before game start: top strip title */
+  obLobbyLabel: string;
+  /** One-line explainer: main scene comes after start */
+  obLobbyNote: string;
+  /** Shown when random spotlight strip is empty */
+  obLobbyEmpty: string;
+  /** Row below spotlights: everyone not in the spotlight (optional) */
+  obLobbyAllPlayers: string;
   /** Accessible name for the floating language control */
   langAria: string;
   cameras: string;
@@ -143,6 +151,10 @@ const en: Dict = {
   detOff: "Off",
   obTitle: "Nocturne Zoo · OB",
   obMainSceneLabel: "Center = live playfield · side rings = player faces",
+  obLobbyLabel: "Random feeds · profile build",
+  obLobbyNote: "The main playfield appears here after the game starts.",
+  obLobbyEmpty: "No players in the room yet.",
+  obLobbyAllPlayers: "All players",
   langAria: "Language",
   cameras: "CAMERAS",
   events: "ZOO KEEPER LOG"
@@ -213,6 +225,10 @@ const zh: Dict = {
   detOff: "未开启",
   obTitle: "深夜动物园 · OB",
   obMainSceneLabel: "中间为对局主场景 · 两侧圆环为玩家面部画面",
+  obLobbyLabel: "随堂镜头 · 建档过程",
+  obLobbyNote: "游戏开始之后，对局主场景会出现在中间。",
+  obLobbyEmpty: "房间内暂无玩家。",
+  obLobbyAllPlayers: "其他玩家",
   langAria: "界面语言",
   cameras: "摄像头",
   events: "ZOO KEEPER LOG"

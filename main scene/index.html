@@ -13,6 +13,7 @@
       href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Patrick+Hand&display=swap"
       rel="stylesheet"
     />
+    <link rel="stylesheet" href="player-id-labels.css" />
     <style>
       *,
       *::before,
@@ -1292,6 +1293,11 @@
           animal: "owl",
         },
         lastMainSyncName: "",
+        /** OB: hide local avatar, camera follows everyone. */
+        spectator: false,
+        roomStarted: false,
+        netSelfId: "",
+        _pickupReq: typeof Set !== "undefined" ? new Set() : null,
         others: [],
         monitor: {
           x: cx + 130,
@@ -1326,6 +1332,33 @@
           items: new Map(),
         },
       };
+
+      function defaultItemsLayout() {
+        const cxi = MAP_W / 2;
+        const cyi = MAP_H / 2;
+        return [
+          { id: "h1", type: "heart", x: cxi - 80, y: cyi - 340 },
+          { id: "h2", type: "heart", x: cxi - 320, y: cyi - 60 },
+          { id: "h3", type: "heart", x: cxi + 270, y: cyi + 380 },
+          { id: "a1", type: "alarm", x: cxi + 140, y: cyi + 40 },
+          { id: "a2", type: "alarm", x: cxi - 200, y: cyi + 220 },
+          { id: "a3", type: "alarm", x: cxi + 320, y: cyi - 260 },
+        ];
+      }
+      function reseedMapItems() {
+        state.items = defaultItemsLayout();
+        state.nodes.items.clear();
+        if (state._pickupReq) state._pickupReq.clear();
+        while (layers.items.firstChild) {
+          layers.items.removeChild(layers.items.firstChild);
+        }
+        for (const it of state.items) {
+          const node = it.type === "heart" ? makeHeart() : makeAlarm();
+          node.dataset.id = it.id;
+          layers.items.appendChild(node);
+          state.nodes.items.set(it.id, node);
+        }
+      }
 
       // =================================================================
       // Build initial scene
@@ -1431,10 +1464,28 @@
       // Render (set transforms each frame)
       // =================================================================
       function updateCamera() {
-        // Center the viewport on the player, but clamp to map bounds so the
-        // camera doesn't show the void outside the fence.
-        let camX = state.me.x - VIEW_W / 2;
-        let camY = state.me.y - VIEW_H / 2;
+        let camX, camY;
+        if (state.spectator) {
+          const oth = state.others;
+          if (oth.length === 0) {
+            camX = MAP_W / 2 - VIEW_W / 2;
+            camY = MAP_H / 2 - VIEW_H / 2;
+          } else {
+            let sx = 0,
+              sy = 0;
+            for (const p of oth) {
+              sx += p.x;
+              sy += p.y;
+            }
+            const cx = sx / oth.length,
+              cy = sy / oth.length;
+            camX = cx - VIEW_W / 2;
+            camY = cy - VIEW_H / 2;
+          }
+        } else {
+          camX = state.me.x - VIEW_W / 2;
+          camY = state.me.y - VIEW_H / 2;
+        }
         camX = clamp(camX, 0, Math.max(0, MAP_W - VIEW_W));
         camY = clamp(camY, 0, Math.max(0, MAP_H - VIEW_H));
         state.cam.x = camX;
@@ -1456,19 +1507,30 @@
           const node = state.nodes.others.get(p.id);
           if (!node) continue;
           node.setAttribute("transform", `translate(${p.x} ${p.y})`);
-          node.classList.toggle("walking", p.moving);
+          const ak =
+            p.animKey != null && p.animKey !== ""
+              ? p.animKey
+              : p.moving
+                ? "walk"
+                : "idle";
+          node.setAttribute("data-anim", ak);
+          node.classList.toggle("walking", p.moving || ak === "walk");
         }
         // monitor body stays upright (no rotation) — only flashlight rotates.
         state.nodes.monitor.setAttribute(
           "transform",
           `translate(${state.monitor.x} ${state.monitor.y})`
         );
-        // me
-        state.nodes.me.setAttribute(
-          "transform",
-          `translate(${state.me.x} ${state.me.y})`
-        );
-        state.nodes.me.classList.toggle("walking", state.me.moving);
+        // me (not in pure spectator / OB)
+        if (!state.spectator && state.nodes.me) {
+          state.nodes.me.setAttribute(
+            "transform",
+            `translate(${state.me.x} ${state.me.y})`
+          );
+          const mak = state.me.moving ? "walk" : "idle";
+          state.nodes.me.setAttribute("data-anim", mak);
+          state.nodes.me.classList.toggle("walking", state.me.moving);
+        }
 
         // Cone + torch share the same world transform: they rotate around
         // the monitor's center and always point along the aim angle.
@@ -1502,6 +1564,7 @@
       const BORDER = 110;
 
       function updatePlayer(dt) {
+        if (state.spectator) return;
         const me = state.me;
         let dx = 0,
           dy = 0;
@@ -1534,30 +1597,20 @@
           me.y = clamp(me.y + dy * SPEED * dt, BORDER, MAP_H - BORDER);
         }
 
-        // Pickup detection
+        // Pickup: solo / pre-start = local; after room started = server authority
         for (let i = state.items.length - 1; i >= 0; i--) {
           const it = state.items[i];
           if (Math.hypot(it.x - me.x, it.y - me.y) < 32) {
-            pickup(it, i);
+            if (state.roomStarted) {
+              tryRequestItemPickup(it);
+            } else {
+              pickupLocal(it, i);
+            }
           }
         }
       }
 
-      function pickup(it, idx) {
-        if (it.type === "heart") {
-          if (state.me.lives >= 3) return; // full HP, walk over without consuming
-          state.me.lives += 1;
-          renderLives();
-          flashHeartGain();
-        } else if (it.type === "alarm") {
-          addLog("闹铃响了…它转过头来。");
-          if (challenge.active) endChallenge(false);
-          state.monitor.mode     = "sweep";
-          state.monitor.targetId = null;
-          state.monitor.lured    = { x: it.x, y: it.y };
-          state.monitor.retargetIn = 4;
-        }
-        // disappear animation, then remove
+      function stripItemNode(it, idx) {
         const node = state.nodes.items.get(it.id);
         if (node) {
           const inner = node.firstElementChild;
@@ -1569,6 +1622,94 @@
         }
         state.nodes.items.delete(it.id);
         state.items.splice(idx, 1);
+        if (state._pickupReq) state._pickupReq.delete(it.id);
+      }
+
+      function tryRequestItemPickup(it) {
+        if (!state._pickupReq) return;
+        if (state._pickupReq.has(it.id)) return;
+        if (it.type === "heart" && state.me.lives >= 3) return;
+        state._pickupReq.add(it.id);
+        try {
+          if (window !== window.top) {
+            window.parent.postMessage(
+              {
+                type: "NZ_OUT_ITEM_PICKUP",
+                source: "nocturne-zoo",
+                payload: { itemId: it.id },
+              },
+              "*"
+            );
+          } else {
+            state._pickupReq.delete(it.id);
+          }
+        } catch (err) {
+          state._pickupReq.delete(it.id);
+        }
+      }
+
+      function pickupLocal(it, idx) {
+        if (it.type === "heart") {
+          if (state.me.lives >= 3) return;
+          state.me.lives += 1;
+          renderLives();
+          flashHeartGain();
+        } else if (it.type === "alarm") {
+          addLog("闹铃响了…它转过头来。");
+          if (challenge.active) endChallenge(false);
+          state.monitor.mode = "sweep";
+          state.monitor.targetId = null;
+          state.monitor.lured = { x: it.x, y: it.y };
+          state.monitor.retargetIn = 4;
+        }
+        stripItemNode(it, idx);
+      }
+
+      function applyItemTakenEvent(e) {
+        if (!e || !e.itemId) return;
+        const idx = state.items.findIndex((x) => x.id === e.itemId);
+        if (idx < 0) return;
+        const it = state.items[idx];
+        if (e.itemType === "heart" && e.byPlayerId === state.netSelfId) {
+          if (state.me.lives < 3) {
+            state.me.lives += 1;
+            renderLives();
+            flashHeartGain();
+          }
+        } else if (e.itemType === "alarm") {
+          addLog("闹铃响了…它转过头来。");
+          if (challenge.active) endChallenge(false);
+          state.monitor.mode = "sweep";
+          state.monitor.targetId = null;
+          if (e.alarmLured) {
+            state.monitor.lured = { x: e.alarmLured.x, y: e.alarmLured.y };
+          } else {
+            state.monitor.lured = { x: it.x, y: it.y };
+          }
+          state.monitor.retargetIn = 4;
+        }
+        stripItemNode(it, idx);
+      }
+
+      function removeItemByIdNoEffects(id) {
+        const idx = state.items.findIndex((x) => x.id === id);
+        if (idx < 0) return;
+        stripItemNode(state.items[idx], idx);
+      }
+
+      function applyItemInbox(evts) {
+        if (!Array.isArray(evts)) return;
+        for (var ii = 0; ii < evts.length; ii++) {
+          var ev = evts[ii];
+          if (!ev || !ev.kind) continue;
+          if (ev.kind === "taken") {
+            applyItemTakenEvent(ev.data);
+          } else if (ev.kind === "resync" && ev.removedItemIds) {
+            for (var j = 0; j < ev.removedItemIds.length; j++) {
+              removeItemByIdNoEffects(ev.removedItemIds[j]);
+            }
+          }
+        }
       }
 
       function flashHeartGain() {
@@ -1880,7 +2021,36 @@
         updateChallenge(dt);
         updateUniversalChallenge(dt);
         render();
+        flushOutMainScene();
         requestAnimationFrame(frame);
+      }
+      var outFrameTick = 0;
+      function flushOutMainScene() {
+        if (window === window.top) return;
+        if (state.spectator || !state.roomStarted) return;
+        outFrameTick += 1;
+        if (outFrameTick % 2) return;
+        if (!state.nodes.me) return;
+        const me = state.me;
+        try {
+          window.parent.postMessage(
+            {
+              type: "NZ_OUT_MAIN_SCENE",
+              source: "nocturne-zoo",
+              payload: {
+                x: me.x,
+                y: me.y,
+                vx: 0,
+                vy: 0,
+                moving: !!me.moving,
+                animKey: me.moving ? "walk" : "idle",
+                facing: 0,
+                fx: null
+              }
+            },
+            "*"
+          );
+        } catch (e) {}
       }
 
       // Timer ticking
@@ -2238,6 +2408,11 @@
       // -----------------------------------------------------------------
       function applyMainSync(p) {
         if (!p || typeof p !== "object") return;
+        if (state.spectator) {
+          if (p.ruleText) addLog("「守则」" + String(p.ruleText), null, { rule: true });
+          if (p.winText) addLog("「胜利」" + String(p.winText), null, {});
+          return;
+        }
         var a = p.sceneAnimal;
         if (a !== "lion" && a !== "owl" && a !== "giraffe") a = "owl";
         state.me.animal = a;
@@ -2263,12 +2438,49 @@
           h = ((h << 5) - h + s.charCodeAt(i)) | 0;
         return (Math.abs(h) % 1000) / 1000;
       }
+      function applyMSView(p) {
+        if (!p || typeof p !== "object") return;
+        state.spectator = Boolean(p.spectator);
+        if (state.spectator && state.nodes.me) {
+          state.nodes.me.setAttribute("visibility", "hidden");
+        } else if (state.nodes.me) {
+          state.nodes.me.setAttribute("visibility", "visible");
+        }
+      }
+      function applyNetPeers(raw) {
+        if (!raw || typeof raw !== "object") return;
+        var peers = raw.peers;
+        if (!peers || typeof peers !== "object") return;
+        var selfId = String(raw.selfId != null ? raw.selfId : state.netSelfId || "");
+        var spec = state.spectator;
+        for (var pid in peers) {
+          if (!spec && pid === selfId) continue;
+          var pr = peers[pid];
+          if (!pr || typeof pr !== "object") continue;
+          var row = state.others.find(function (o) { return o.id === pid; });
+          if (!row) continue;
+          if (pr.x != null && Number.isFinite(pr.x)) row.x = clamp(pr.x, BORDER, MAP_W - BORDER);
+          if (pr.y != null && Number.isFinite(pr.y)) row.y = clamp(pr.y, BORDER, MAP_H - BORDER);
+          if (pr.moving != null) row.moving = !!pr.moving;
+          if (pr.animKey != null) row.animKey = String(pr.animKey).slice(0, 64);
+          if (pr.facing != null) row.facing = +pr.facing;
+        }
+      }
       function applyRoomPlayers(raw) {
         if (!raw || typeof raw !== "object") return;
         var pl = raw.players;
         if (!Array.isArray(pl)) return;
         var selfId = raw.selfId || "";
         var selfName = String(raw.selfName || "");
+        state.netSelfId = selfId;
+        state.roomStarted = Boolean(raw.roomStarted);
+        if (raw.spectator != null) state.spectator = Boolean(raw.spectator);
+        var toRem = raw.itemsRemoved;
+        if (Array.isArray(toRem) && toRem.length) {
+          for (var rii = 0; rii < toRem.length; rii++) {
+            removeItemByIdNoEffects(toRem[rii]);
+          }
+        }
         var others = pl.filter(function (q) {
           if (!q || !q.id) return false;
           if (selfId) return q.id !== selfId;
@@ -2306,6 +2518,8 @@
             vx: 0,
             vy: 0,
             moving: false,
+            animKey: "idle",
+            facing: 0,
             netRemote: true,
           };
           state.others.push(row);
@@ -2314,14 +2528,27 @@
           state.nodes.others.set(q.id, g);
         }
         if (n > 0) addLog("已同步 " + n + " 名同房间玩家", null, {});
+        if (
+          raw.roomStarted &&
+          state.items.length === 0 &&
+          (!toRem || toRem.length === 0)
+        ) {
+          reseedMapItems();
+        }
       }
       window.addEventListener("message", function (ev) {
         var d = ev.data;
-        if (!d || d.source !== "nocturne-zoo" || !d.payload) return;
-        if (d.type === "NZ_PLAYER_SYNC") {
+        if (!d || d.source !== "nocturne-zoo" || d.payload == null) return;
+        if (d.type === "NZ_MS_VIEW") {
+          applyMSView(d.payload);
+        } else if (d.type === "NZ_PLAYER_SYNC") {
           applyMainSync(d.payload);
         } else if (d.type === "NZ_ROOM_PLAYERS") {
           applyRoomPlayers(d.payload);
+        } else if (d.type === "NZ_MAIN_SCENE_NET") {
+          applyNetPeers(d.payload);
+        } else if (d.type === "NZ_MS_ITEM") {
+          if (d.payload && d.payload.events) applyItemInbox(d.payload.events);
         }
       });
     </script>
