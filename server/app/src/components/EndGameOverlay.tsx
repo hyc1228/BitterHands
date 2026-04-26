@@ -8,6 +8,7 @@ import type {
   AnimalCode,
   Lang,
   FaceCounts,
+  HighlightBurst,
   PlayerHighlights
 } from "../party/protocol";
 import type { dict as dictFn } from "../i18n";
@@ -16,15 +17,17 @@ type Dict = ReturnType<typeof dictFn>;
 type RevealEntry = GameEnded["reveal"][number];
 type AwardKey = "mouth" | "shake" | "blink";
 
+const BURST_PLAY_INTERVAL_MS = 110; // tile frame swap rate (≈9 fps)
+
 interface Props {
   viewerRole?: "player" | "ob";
   homePath?: string;
 }
 
-/** One step in the ceremony script. Each takes ~5 s; user can skip with a button. */
+/** One step in the ceremony script. User clicks "Next" to advance — no auto. */
 type Stage =
   | { kind: "intro" }
-  | { kind: "award"; key: AwardKey; phase: "reveal" | "winner" }
+  | { kind: "award"; key: AwardKey }
   | { kind: "summary" };
 
 const AWARD_KEYS: AwardKey[] = ["mouth", "shake", "blink"];
@@ -62,30 +65,15 @@ export default function EndGameOverlay({ viewerRole = "player", homePath }: Prop
 
   const advance = useCallback(() => {
     setStage((s) => {
-      if (s.kind === "intro") return { kind: "award", key: "mouth", phase: "reveal" };
-      if (s.kind === "award" && s.phase === "reveal") return { kind: "award", key: s.key, phase: "winner" };
-      if (s.kind === "award" && s.phase === "winner") {
+      if (s.kind === "intro") return { kind: "award", key: "mouth" };
+      if (s.kind === "award") {
         const idx = AWARD_KEYS.indexOf(s.key);
         const next = AWARD_KEYS[idx + 1];
-        return next ? { kind: "award", key: next, phase: "reveal" } : { kind: "summary" };
+        return next ? { kind: "award", key: next } : { kind: "summary" };
       }
       return s;
     });
   }, []);
-
-  // Auto-advance schedule. Different durations for each beat — winner sits longer.
-  useEffect(() => {
-    if (!gameEnded) return;
-    if (stage.kind === "summary") return;
-    const dur =
-      stage.kind === "intro"
-        ? 2400
-        : stage.kind === "award" && stage.phase === "reveal"
-          ? 3200
-          : 4200; // winner phase — pause for applause
-    const id = window.setTimeout(advance, dur);
-    return () => window.clearTimeout(id);
-  }, [stage, gameEnded, advance]);
 
   const realPlayers = useMemo(
     () => (gameEnded?.reveal ?? []).filter((p) => p.name.toLowerCase() !== "ob"),
@@ -112,17 +100,22 @@ export default function EndGameOverlay({ viewerRole = "player", homePath }: Prop
     <div className="endgame-mask" role="dialog" aria-modal="true" aria-labelledby="endgameTitle">
       <div className="endgame-stage" key={stageKey(stage)}>
         {stage.kind === "intro" ? (
-          <IntroPanel t={t} survivors={survivors.length} total={realPlayers.length} />
+          <IntroPanel
+            t={t}
+            survivors={survivors.length}
+            total={realPlayers.length}
+            onNext={advance}
+          />
         ) : null}
         {stage.kind === "award" ? (
           <AwardPanel
             t={t}
             kind={stage.key}
-            phase={stage.phase}
             award={awardFor(gameEnded, stage.key)}
             players={realPlayers}
             youName={myName}
             lang={lang}
+            onNext={advance}
           />
         ) : null}
         {stage.kind === "summary" ? (
@@ -156,7 +149,7 @@ export default function EndGameOverlay({ viewerRole = "player", homePath }: Prop
 function stageKey(s: Stage): string {
   if (s.kind === "intro") return "intro";
   if (s.kind === "summary") return "summary";
-  return `award:${s.key}:${s.phase}`;
+  return `award:${s.key}`;
 }
 
 function awardFor(gameEnded: GameEnded, kind: AwardKey): GameEndedAward | null {
@@ -171,7 +164,17 @@ function awardFor(gameEnded: GameEnded, kind: AwardKey): GameEndedAward | null {
 /* Stage panels                                                       */
 /* ------------------------------------------------------------------ */
 
-function IntroPanel({ t, survivors, total }: { t: Dict; survivors: number; total: number }) {
+function IntroPanel({
+  t,
+  survivors,
+  total,
+  onNext
+}: {
+  t: Dict;
+  survivors: number;
+  total: number;
+  onNext: () => void;
+}) {
   return (
     <div className="endgame-card endgame-intro">
       <div className="endgame-eyebrow">{t.endGameTitle}</div>
@@ -179,6 +182,11 @@ function IntroPanel({ t, survivors, total }: { t: Dict; survivors: number; total
         {t.endGameCeremony}
       </h1>
       <p className="endgame-sub muted">{t.endGameCeremonySub(survivors, total)}</p>
+      <div className="endgame-actions">
+        <button className="primary" onClick={onNext}>
+          {t.endGameNext}
+        </button>
+      </div>
     </div>
   );
 }
@@ -195,35 +203,63 @@ const AWARD_META: Record<
 function AwardPanel({
   t,
   kind,
-  phase,
   award,
   players,
   youName,
-  lang
+  lang,
+  onNext
 }: {
   t: Dict;
   kind: AwardKey;
-  phase: "reveal" | "winner";
   award: GameEndedAward | null;
   players: RevealEntry[];
   youName: string;
   lang: Lang;
+  onNext: () => void;
 }) {
   const meta = AWARD_META[kind];
   const titleStr = t[meta.titleKey] as string;
   const subStr = t[meta.subKey] as string;
 
-  // Build collage: every player's stills for this kind (server already capped to 3).
-  const tiles = useMemo(() => collageTiles(players, kind), [players, kind]);
+  // Each tile is a player's burst (short frame loop). Winner highlighted.
+  const tiles = useMemo(
+    () => collageTiles(players, kind, award?.id ?? null),
+    [players, kind, award?.id]
+  );
   const winnerEntry = award ? players.find((p) => p.id === award.id) ?? null : null;
   const winnerAnimal = winnerEntry?.animal
     ? animalLocalized[lang][winnerEntry.animal as AnimalCode] ?? winnerEntry.animal
     : "—";
 
   const isYou = !!youName && award && award.name === youName;
+  const cardRef = useRef<HTMLDivElement | null>(null);
+  const [savedHint, setSavedHint] = useState(false);
+
+  const handleSave = useCallback(async () => {
+    const blob = await composeAwardCardPng({
+      medal: meta.medal,
+      title: titleStr,
+      sub: subStr,
+      tiles,
+      winnerName: award?.name ?? null,
+      winnerCount: award?.count ?? null,
+      winnerAnimal: winnerEntry ? winnerAnimal : null
+    });
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `nocturne-zoo-${kind}-${Date.now()}.png`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setSavedHint(true);
+    window.setTimeout(() => setSavedHint(false), 1600);
+  }, [meta.medal, titleStr, subStr, tiles, award, winnerEntry, winnerAnimal, kind]);
 
   return (
-    <div className={"endgame-card endgame-award-stage" + (phase === "winner" ? " is-winner" : "")}>
+    <div ref={cardRef} className="endgame-card endgame-award-stage is-winner">
       <div className="endgame-eyebrow">{t.endGameAwardsHead}</div>
       <div className="endgame-award-stage__title">
         <span className="endgame-award-stage__medal" aria-hidden>{meta.medal}</span>
@@ -235,60 +271,73 @@ function AwardPanel({
 
       <Collage tiles={tiles} fallbackEmoji={meta.emoji} />
 
-      {phase === "winner" ? (
-        award ? (
-          <div className={"endgame-award-stage__winner" + (isYou ? " is-self" : "")}>
-            <div className="endgame-award-stage__winner-line">
-              <span className="endgame-award-stage__star" aria-hidden>★</span>
-              <span className="endgame-award-stage__wname">{award.name}</span>
-              {isYou ? <span className="endgame-award-stage__you" aria-hidden> · YOU</span> : null}
-            </div>
-            <div className="endgame-award-stage__wmeta">
-              {winnerAnimal} · ×{award.count}
-            </div>
+      {award ? (
+        <div className={"endgame-award-stage__winner" + (isYou ? " is-self" : "")}>
+          <div className="endgame-award-stage__winner-line">
+            <span className="endgame-award-stage__star" aria-hidden>★</span>
+            <span className="endgame-award-stage__wname">{award.name}</span>
+            {isYou ? <span className="endgame-award-stage__you" aria-hidden> · YOU</span> : null}
           </div>
-        ) : (
-          <div className="muted endgame-award-stage__none">{t.endGameAwardNone}</div>
-        )
+          <div className="endgame-award-stage__wmeta">
+            {winnerAnimal} · ×{award.count}
+          </div>
+        </div>
       ) : (
-        <div className="endgame-award-stage__teaser muted">{t.endGameAwardCounting}</div>
+        <div className="muted endgame-award-stage__none">{t.endGameAwardNone}</div>
       )}
+
+      <div className="endgame-actions">
+        <button className="ghost" onClick={handleSave}>
+          {savedHint ? t.endGameSaved : t.endGameSave}
+        </button>
+        <button className="primary" onClick={onNext}>
+          {t.endGameNext}
+        </button>
+      </div>
     </div>
   );
 }
 
 interface CollageTile {
-  src: string | null;
+  /** Frames forming a tiny GIF; if empty, we render the letter fallback. */
+  frames: HighlightBurst;
   initial: string;
   isWinner: boolean;
 }
 
-function collageTiles(players: RevealEntry[], kind: AwardKey): CollageTile[] {
-  // Pull every still each player has for this kind. If no stills at all, we
-  // fall back to a "letter chip" so the panel isn't empty.
-  const buckets: { player: RevealEntry; stills: string[] }[] = players.map((p) => {
+function collageTiles(
+  players: RevealEntry[],
+  kind: AwardKey,
+  winnerId: string | null
+): CollageTile[] {
+  // Each tile = one burst (so a single player can contribute up to 3 tiles).
+  const buckets: { player: RevealEntry; bursts: HighlightBurst[] }[] = players.map((p) => {
     const hl: PlayerHighlights | undefined = p.highlights;
-    const stills = (hl?.[kind] ?? []).slice(0, 3);
-    return { player: p, stills };
+    const bursts = (hl?.[kind] ?? []).slice(0, 3);
+    return { player: p, bursts };
   });
   const all: CollageTile[] = [];
   for (const b of buckets) {
-    if (b.stills.length === 0) continue;
-    for (const s of b.stills) {
-      all.push({ src: s, initial: b.player.name.charAt(0).toUpperCase(), isWinner: false });
+    if (b.bursts.length === 0) continue;
+    for (const burst of b.bursts) {
+      all.push({
+        frames: burst,
+        initial: b.player.name.charAt(0).toUpperCase(),
+        isWinner: !!winnerId && b.player.id === winnerId
+      });
     }
   }
   if (all.length === 0) {
-    // Letter chips for everyone so the screen still feels populated.
     return players.slice(0, 9).map((p) => ({
-      src: null,
+      frames: [],
       initial: p.name.charAt(0).toUpperCase(),
-      isWinner: false
+      isWinner: !!winnerId && p.id === winnerId
     }));
   }
-  // Cap to ~9 tiles so the layout doesn't blow up on a 10-player room.
-  const capped = all.slice(0, 9);
-  return capped;
+  // Sort winner tiles to the front so they read first (and we keep them when
+  // capping to 9).
+  all.sort((a, b) => Number(b.isWinner) - Number(a.isWinner));
+  return all.slice(0, 9);
 }
 
 function Collage({ tiles, fallbackEmoji }: { tiles: CollageTile[]; fallbackEmoji: string }) {
@@ -311,8 +360,8 @@ function Collage({ tiles, fallbackEmoji }: { tiles: CollageTile[]; fallbackEmoji
           className={"endgame-collage__tile" + (tl.isWinner ? " is-winner" : "")}
           style={{ animationDelay: `${i * 60}ms` }}
         >
-          {tl.src ? (
-            <img className="endgame-collage__img" src={tl.src} alt="" />
+          {tl.frames.length > 0 ? (
+            <BurstImage frames={tl.frames} />
           ) : (
             <span className="endgame-collage__initial">{tl.initial}</span>
           )}
@@ -320,6 +369,213 @@ function Collage({ tiles, fallbackEmoji }: { tiles: CollageTile[]; fallbackEmoji
       ))}
     </div>
   );
+}
+
+/**
+ * Cycles through a burst's frames as a tiny GIF. Single-frame bursts render as
+ * a still; longer bursts use a setInterval to swap the `<img>.src`. Stagger by
+ * a per-tile offset so the tiles don't all flip on the exact same beat.
+ */
+function BurstImage({ frames }: { frames: HighlightBurst }) {
+  const [i, setI] = useState(0);
+  useEffect(() => {
+    if (frames.length <= 1) return;
+    // Random per-tile phase so the collage doesn't strobe in unison.
+    const offset = Math.floor(Math.random() * BURST_PLAY_INTERVAL_MS);
+    let cancel = false;
+    const start = window.setTimeout(() => {
+      if (cancel) return;
+      const id = window.setInterval(() => {
+        setI((j) => (j + 1) % frames.length);
+      }, BURST_PLAY_INTERVAL_MS);
+      // Stash on closure for cleanup
+      cleanup = () => window.clearInterval(id);
+    }, offset);
+    let cleanup = () => window.clearTimeout(start);
+    return () => {
+      cancel = true;
+      cleanup();
+    };
+  }, [frames.length]);
+  return <img className="endgame-collage__img" src={frames[i] ?? frames[0]} alt="" />;
+}
+
+/* ------------------------------------------------------------------ */
+/* Save card (Canvas-composed PNG, no extra dep)                       */
+/* ------------------------------------------------------------------ */
+
+interface SaveOpts {
+  medal: string;
+  title: string;
+  sub: string;
+  tiles: CollageTile[];
+  winnerName: string | null;
+  winnerCount: number | null;
+  winnerAnimal: string | null;
+}
+
+async function composeAwardCardPng(opts: SaveOpts): Promise<Blob | null> {
+  const W = 720;
+  const H = 920;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  // Background — same noir gradient as the live card.
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#1a1314");
+  bg.addColorStop(1, "#070707");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Top spotlight
+  const sp = ctx.createRadialGradient(W / 2, H * 0.18, 0, W / 2, H * 0.18, W * 0.55);
+  sp.addColorStop(0, "rgba(214, 64, 46, 0.36)");
+  sp.addColorStop(1, "rgba(214, 64, 46, 0)");
+  ctx.fillStyle = sp;
+  ctx.fillRect(0, 0, W, H);
+
+  // Medal + title
+  ctx.fillStyle = "#f2efe9";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.font = "92px serif";
+  ctx.fillText(opts.medal, W / 2, 130);
+  ctx.font = "600 30px Helvetica, Arial, sans-serif";
+  ctx.fillText(opts.title.toUpperCase(), W / 2, 190);
+  ctx.fillStyle = "rgba(242, 239, 233, 0.62)";
+  ctx.font = "16px Helvetica, Arial, sans-serif";
+  ctx.fillText(opts.sub, W / 2, 218);
+
+  // Collage 3×3 (or whatever fits)
+  const COLS = 3;
+  const ROWS = 3;
+  const PAD = 60;
+  const GAP = 18;
+  const gridTop = 250;
+  const cellW = (W - PAD * 2 - GAP * (COLS - 1)) / COLS;
+  const cellH = cellW;
+  const visible = opts.tiles.slice(0, COLS * ROWS);
+  await Promise.all(
+    visible.map(async (tile, i) => {
+      const col = i % COLS;
+      const row = Math.floor(i / COLS);
+      const x = PAD + col * (cellW + GAP);
+      const y = gridTop + row * (cellH + GAP);
+      // Slight per-tile rotation for polaroid feel.
+      const rot = ((i * 7) % 5) * 0.018 - 0.04;
+      ctx.save();
+      ctx.translate(x + cellW / 2, y + cellH / 2);
+      ctx.rotate(rot);
+      ctx.translate(-cellW / 2, -cellH / 2);
+      ctx.fillStyle = "#000";
+      roundedRect(ctx, 0, 0, cellW, cellH, 12);
+      ctx.fill();
+      const src = tile.frames[0] ?? null;
+      if (src) {
+        try {
+          const img = await loadImage(src);
+          ctx.save();
+          roundedRect(ctx, 0, 0, cellW, cellH, 12);
+          ctx.clip();
+          ctx.drawImage(img, 0, 0, cellW, cellH);
+          ctx.restore();
+        } catch (e) { /* ignore single tile failure */ }
+      } else {
+        ctx.fillStyle = "rgba(214, 64, 46, 0.32)";
+        ctx.fillRect(0, 0, cellW, cellH);
+        ctx.fillStyle = "#f2efe9";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.font = "600 64px Helvetica, Arial, sans-serif";
+        ctx.fillText(tile.initial, cellW / 2, cellH / 2);
+      }
+      // Winner border in gold
+      if (tile.isWinner) {
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = "rgba(255, 220, 90, 0.95)";
+        roundedRect(ctx, 2, 2, cellW - 4, cellH - 4, 12);
+        ctx.stroke();
+      } else {
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = "rgba(242, 239, 233, 0.55)";
+        roundedRect(ctx, 1, 1, cellW - 2, cellH - 2, 12);
+        ctx.stroke();
+      }
+      ctx.restore();
+    })
+  );
+
+  // Winner block
+  const winnerY = gridTop + ROWS * cellH + ROWS * GAP + 18;
+  if (opts.winnerName) {
+    // gold framed band
+    ctx.fillStyle = "rgba(255, 220, 90, 0.10)";
+    roundedRect(ctx, PAD, winnerY, W - PAD * 2, 110, 16);
+    ctx.fill();
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(255, 220, 90, 0.85)";
+    roundedRect(ctx, PAD, winnerY, W - PAD * 2, 110, 16);
+    ctx.stroke();
+    ctx.fillStyle = "#f2efe9";
+    ctx.textAlign = "center";
+    ctx.font = "600 36px Helvetica, Arial, sans-serif";
+    ctx.fillText(`★  ${opts.winnerName}`, W / 2, winnerY + 50);
+    ctx.fillStyle = "rgba(242, 239, 233, 0.7)";
+    ctx.font = "18px Helvetica, Arial, sans-serif";
+    const meta = [opts.winnerAnimal, opts.winnerCount != null ? `×${opts.winnerCount}` : null]
+      .filter(Boolean)
+      .join("  ·  ");
+    ctx.fillText(meta || "—", W / 2, winnerY + 84);
+  } else {
+    ctx.fillStyle = "rgba(242, 239, 233, 0.5)";
+    ctx.font = "18px Helvetica, Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText("—", W / 2, winnerY + 60);
+  }
+
+  // Footer wordmark
+  ctx.fillStyle = "rgba(242, 239, 233, 0.55)";
+  ctx.font = "12px Helvetica, Arial, sans-serif";
+  ctx.textAlign = "center";
+  ctx.fillText("NOCTURNE ZOO · NIGHT SHIFT", W / 2, H - 28);
+
+  return new Promise((resolve) => {
+    canvas.toBlob((b) => resolve(b), "image/png", 0.92);
+  });
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+function roundedRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number
+): void {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.lineTo(x + w - rr, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
+  ctx.lineTo(x + w, y + h - rr);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
+  ctx.lineTo(x + rr, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
+  ctx.lineTo(x, y + rr);
+  ctx.quadraticCurveTo(x, y, x + rr, y);
+  ctx.closePath();
 }
 
 function SummaryPanel({

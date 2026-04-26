@@ -146,6 +146,9 @@ interface Dict {
   endGameCeremonySub: (alive: number, total: number) => string;
   endGameAwardCounting: string;
   endGameSkip: string;
+  endGameNext: string;
+  endGameSave: string;
+  endGameSaved: string;
   /** Operator-only auth gate for `/ob` so casual visitors can't open OB */
   obAuthTitle: string;
   obAuthHint: string;
@@ -295,6 +298,9 @@ const en: Dict = {
     `${alive} of ${total} survived. Now — tonight's standout performances.`,
   endGameAwardCounting: "Tallying the moments…",
   endGameSkip: "Skip to summary",
+  endGameNext: "Next →",
+  endGameSave: "💾 Save card",
+  endGameSaved: "✓ Saved",
   obAuthTitle: "Operator only",
   obAuthHint: "OB is the operator console. Enter your operator key to continue. The key stays on this device.",
   obAuthKeyLabel: "Operator key",
@@ -442,6 +448,9 @@ const zh: Dict = {
     `${alive} / ${total} 活着逃出 · 现在——今晚的高光时刻。`,
   endGameAwardCounting: "统计中…",
   endGameSkip: "跳过 · 直接看总结",
+  endGameNext: "下一项 →",
+  endGameSave: "💾 保存图片",
+  endGameSaved: "✓ 已保存",
   obAuthTitle: "仅限操作员",
   obAuthHint: "OB 是操作员控制台。输入你的密钥继续，密钥仅保存在本设备。",
   obAuthKeyLabel: "操作员密钥",

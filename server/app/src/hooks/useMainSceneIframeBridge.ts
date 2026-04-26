@@ -59,13 +59,24 @@ export function useMainSceneIframeBridge() {
   );
 
   const onHighlight = useCallback(
-    (payload: { kind?: string; dataUrl?: string }) => {
+    (payload: { kind?: string; frames?: string[]; dataUrl?: string }) => {
       if (!started) return;
       const kind = payload?.kind;
-      const dataUrl = typeof payload?.dataUrl === "string" ? payload.dataUrl : "";
       if (kind !== "mouth" && kind !== "shake" && kind !== "blink") return;
-      if (!dataUrl.startsWith("data:image/")) return;
-      send(ClientMessageTypes.HIGHLIGHT, { kind, dataUrl });
+      // New burst payload: an array of JPEG dataURLs forming a short loop.
+      // Old shape (single `dataUrl`) is still accepted as a 1-frame burst.
+      const rawFrames = Array.isArray(payload?.frames) ? payload.frames : null;
+      const frames =
+        rawFrames && rawFrames.length > 0
+          ? rawFrames
+          : payload?.dataUrl
+            ? [payload.dataUrl]
+            : [];
+      const cleaned = frames.filter(
+        (f): f is string => typeof f === "string" && f.startsWith("data:image/")
+      );
+      if (cleaned.length === 0) return;
+      send(ClientMessageTypes.HIGHLIGHT, { kind, frames: cleaned });
     },
     [send, started]
   );

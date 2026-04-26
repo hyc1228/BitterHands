@@ -505,12 +505,28 @@ export default class Server {
         if (!player) return;
         if (!this.started) return;
         const kind = msg && msg.kind;
-        const dataUrl = msg && typeof msg.dataUrl === "string" ? msg.dataUrl : "";
         if (kind !== "mouth" && kind !== "shake" && kind !== "blink") return;
-        if (!dataUrl.startsWith("data:image/")) return;
-        if (dataUrl.length > 60_000) return; // guardrail; 96² jpeg is ~3-5 KB
+        // New shape: { frames: string[] } (each frame a 96² JPEG dataURL). We
+        // also accept the legacy { dataUrl } shape so older clients still drop
+        // a single still in.
+        let frames = Array.isArray(msg && msg.frames) ? msg.frames : null;
+        if (!frames && typeof msg?.dataUrl === "string") frames = [msg.dataUrl];
+        if (!frames || frames.length === 0) return;
+        // Sanitize each frame; cap aggregate burst size so a misbehaving client
+        // can't push megabytes through the WS.
+        const cleaned = [];
+        let totalLen = 0;
+        for (const f of frames) {
+          if (typeof f !== "string") continue;
+          if (!f.startsWith("data:image/")) continue;
+          if (f.length > 60_000) continue;
+          totalLen += f.length;
+          if (totalLen > 280_000) break; // ~4 frames × ~5 KB headroom
+          cleaned.push(f);
+        }
+        if (cleaned.length === 0) return;
         const bucket = player.highlights[kind];
-        bucket.push(dataUrl);
+        bucket.push(cleaned);
         if (bucket.length > HIGHLIGHTS_MAX_PER_KIND) bucket.shift();
         return;
       }

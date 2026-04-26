@@ -141,11 +141,14 @@ export interface GameEndedAward {
   count: number;
 }
 
+/** A single highlight = a short burst of JPEG dataURLs (acts as a tiny GIF). */
+export type HighlightBurst = string[];
+
 export interface PlayerHighlights {
-  /** Up to N JPEG dataURLs captured at action-edge times (3 per kind on server). */
-  mouth: string[];
-  shake: string[];
-  blink: string[];
+  /** Up to N bursts per kind (server caps; each burst is a short frame loop). */
+  mouth: HighlightBurst[];
+  shake: HighlightBurst[];
+  blink: HighlightBurst[];
 }
 
 export interface GameEnded {

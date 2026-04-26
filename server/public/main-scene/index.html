@@ -3838,11 +3838,15 @@
       const FACE_MOUTH_OPEN_MAR = 0.45;       // hysteresis: open above this …
       const FACE_MOUTH_CLOSE_MAR = 0.30;      // … close back below this
       const FACE_SHAKE_NX_THRESH = 0.10;      // |nose_x - center| / face_w
-      // Don't spam the server with highlight stills — at most one per kind per
+      // Don't spam the server with highlight bursts — at most one per kind per
       // HIGHLIGHT_COOLDOWN_MS. Server caps at 3 stored per kind regardless.
+      // Each highlight is a tiny "GIF" — a short burst of frames captured around
+      // the action-edge moment that the end-game ceremony replays in a loop.
       const HIGHLIGHT_COOLDOWN_MS = 3500;
       const HIGHLIGHT_SIZE = 96;              // square JPEG edge for highlights
-      const HIGHLIGHT_QUALITY = 0.45;
+      const HIGHLIGHT_QUALITY = 0.42;
+      const HIGHLIGHT_FRAMES = 4;             // total frames per highlight burst
+      const HIGHLIGHT_FRAME_INTERVAL_MS = 90;
       state.faceTracker = {
         mouthOpen: false,
         nxDir: 0, // -1 left, 0 center, +1 right
@@ -3856,13 +3860,11 @@
       _hlCanvas.height = HIGHLIGHT_SIZE;
       const _hlCtx = _hlCanvas.getContext("2d", { alpha: false });
 
-      function maybeSendHighlight(kind, now) {
-        const ft = state.faceTracker;
-        if (now - (ft.lastHighlight[kind] || 0) < HIGHLIGHT_COOLDOWN_MS) return;
-        if (!_hlCtx || !webcamVideo) return;
+      function grabHighlightFrame() {
+        if (!_hlCtx || !webcamVideo) return null;
         const vw = webcamVideo.videoWidth;
         const vh = webcamVideo.videoHeight;
-        if (!vw || !vh) return;
+        if (!vw || !vh) return null;
         // Center-crop to a square so the face stays in frame; mirror the X axis
         // because the player has been seeing the mirrored selfie all round.
         const side = Math.min(vw, vh);
@@ -3874,19 +3876,47 @@
           _hlCtx.scale(-1, 1);
           _hlCtx.drawImage(webcamVideo, sx, sy, side, side, 0, 0, HIGHLIGHT_SIZE, HIGHLIGHT_SIZE);
           _hlCtx.restore();
-          const dataUrl = _hlCanvas.toDataURL("image/jpeg", HIGHLIGHT_QUALITY);
-          ft.lastHighlight[kind] = now;
-          if (window !== window.top) {
-            window.parent.postMessage(
-              {
-                type: "NZ_OUT_HIGHLIGHT",
-                source: "nocturne-zoo",
-                payload: { kind, dataUrl, ts: Date.now() },
-              },
-              "*"
-            );
+          return _hlCanvas.toDataURL("image/jpeg", HIGHLIGHT_QUALITY);
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function maybeSendHighlight(kind, now) {
+        const ft = state.faceTracker;
+        if (now - (ft.lastHighlight[kind] || 0) < HIGHLIGHT_COOLDOWN_MS) return;
+        if (!webcamVideo) return;
+        ft.lastHighlight[kind] = now;
+        // Capture a short burst (acts as a tiny GIF the ceremony loops). Each
+        // frame is grabbed on its own setTimeout so the FaceMesh loop stays on
+        // schedule. The very first frame is the action-edge moment itself.
+        const frames = [];
+        const first = grabHighlightFrame();
+        if (first) frames.push(first);
+        let i = 1;
+        function snap() {
+          if (i >= HIGHLIGHT_FRAMES) {
+            if (frames.length === 0) return;
+            if (window !== window.top) {
+              try {
+                window.parent.postMessage(
+                  {
+                    type: "NZ_OUT_HIGHLIGHT",
+                    source: "nocturne-zoo",
+                    payload: { kind, frames, ts: Date.now() },
+                  },
+                  "*"
+                );
+              } catch (e) { /* ignore */ }
+            }
+            return;
           }
-        } catch (e) { /* ignore — webcam not warm yet, etc. */ }
+          const f = grabHighlightFrame();
+          if (f) frames.push(f);
+          i += 1;
+          setTimeout(snap, HIGHLIGHT_FRAME_INTERVAL_MS);
+        }
+        setTimeout(snap, HIGHLIGHT_FRAME_INTERVAL_MS);
       }
 
       function tallyFaceActions(lm, now) {
