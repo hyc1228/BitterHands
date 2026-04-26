@@ -15,11 +15,17 @@
  */
 
 const STORAGE_KEY = "nz.obKey";
-const FALLBACK_KEY = "keeper-1228";
+const FALLBACK_KEY = "Hackathon";
 
 export function expectedObKey(): string {
   const env = import.meta.env.VITE_OB_KEY?.trim();
   return env && env.length > 0 ? env : FALLBACK_KEY;
+}
+
+/** Case-insensitive comparison so "hackathon" / "HACKATHON" / "Hackathon" all unlock. */
+function keyEquals(a: string | null | undefined, b: string | null | undefined): boolean {
+  if (!a || !b) return false;
+  return a.trim().toLowerCase() === b.trim().toLowerCase();
 }
 
 export function readStoredObKey(): string | null {
@@ -47,12 +53,17 @@ export function clearStoredObKey(): void {
   }
 }
 
+/** True iff the user-supplied (or earlier-saved) key matches expected key, case-insensitively. */
+export function isObKeyMatch(input: string | null | undefined): boolean {
+  return keyEquals(input, expectedObKey());
+}
+
 /** True iff `?key=…` (or any earlier saved key) matches the expected operator key. */
 export function isObAuthorized(): boolean {
   const expect = expectedObKey();
   if (!expect) return true;
   const stored = readStoredObKey();
-  if (stored === expect) return true;
+  if (keyEquals(stored, expect)) return true;
   // One-shot URL grant: a hash like `#/ob?key=…` will set the cookie and clean up the URL.
   try {
     const hash = window.location.hash || "";
@@ -60,8 +71,8 @@ export function isObAuthorized(): boolean {
     if (q) {
       const params = new URLSearchParams(q);
       const fromUrl = params.get("key");
-      if (fromUrl && fromUrl === expect) {
-        writeStoredObKey(fromUrl);
+      if (keyEquals(fromUrl, expect)) {
+        writeStoredObKey(fromUrl as string);
         // Drop the `?key=…` from the URL so it doesn't sit in history / get screenshotted.
         params.delete("key");
         const rest = params.toString();
