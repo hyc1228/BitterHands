@@ -11,6 +11,7 @@ import {
   type PublicPlayer,
   type RoomSnapshot,
   type MainSceneItemInboxEntry,
+  type MainSceneItemRespawn,
   type MainSceneItemTaken,
   type MainScenePeerState,
   type MonitorStateMessage,
@@ -356,6 +357,13 @@ function handleServerEnvelope(
     const data = msg.data as MainSceneItemTaken;
     set((s) => ({
       mainSceneItemInbox: [...s.mainSceneItemInbox, { kind: "taken" as const, data }]
+    }));
+    return;
+  }
+  if (t === ServerEventTypes.MAIN_SCENE_ITEM_RESPAWN) {
+    const data = msg.data as MainSceneItemRespawn;
+    set((s) => ({
+      mainSceneItemInbox: [...s.mainSceneItemInbox, { kind: "respawn" as const, data }]
     }));
     return;
   }
