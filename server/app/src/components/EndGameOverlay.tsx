@@ -269,6 +269,33 @@ function AwardPanel({
     if (phase !== "reveal") setPhase("reveal");
   }, [phase]);
 
+  const winnerBurst: HighlightBurst | null = useMemo(() => {
+    if (!award) return null;
+    const winner = players.find((p) => p.id === award.id);
+    const bursts = winner?.highlights?.[kind];
+    return bursts && bursts.length > 0 ? bursts[0] : null;
+  }, [players, award, kind]);
+  // MediaRecorder + canvas.captureStream support gates the clip button.
+  // iOS Safari 14.5+ supports both, but very old browsers won't.
+  const canExportClip = typeof window !== "undefined"
+    && typeof window.MediaRecorder !== "undefined"
+    && typeof HTMLCanvasElement !== "undefined"
+    && "captureStream" in HTMLCanvasElement.prototype
+    && (winnerBurst?.length ?? 0) >= 2;
+
+  const baseShareText = award?.name ? `${meta.medal} ${award.name}` : titleStr;
+  const baseFileBase = useCallback(() => {
+    const safeWinner = (award?.name ?? "winner")
+      .replace(/[^a-zA-Z0-9_-]+/g, "_")
+      .slice(0, 24) || "winner";
+    return `nocturne-zoo-${kind}-${safeWinner}-${formatDateSlug()}`;
+  }, [award, kind]);
+
+  const flashSavedHint = useCallback(() => {
+    setSavedHint(true);
+    window.setTimeout(() => setSavedHint(false), 1600);
+  }, []);
+
   const handleSave = useCallback(async () => {
     const blob = await composeAwardCardPng({
       medal: meta.medal,
@@ -280,43 +307,32 @@ function AwardPanel({
       winnerAnimal: winnerEntry ? winnerAnimal : null
     });
     if (!blob) return;
-    const safeWinner = (award?.name ?? "winner")
-      .replace(/[^a-zA-Z0-9_-]+/g, "_")
-      .slice(0, 24) || "winner";
-    const filename = `nocturne-zoo-${kind}-${safeWinner}-${formatDateSlug()}.png`;
-    // Web Share API first (mobile share sheet → save to camera roll, AirDrop,
-    // etc.); falls back to a regular blob download if unavailable or rejected.
-    const file = new File([blob], filename, { type: "image/png" });
-    let shared = false;
-    try {
-      const navAny = navigator as Navigator & {
-        canShare?: (data: { files?: File[] }) => boolean;
-        share?: (data: ShareData & { files?: File[] }) => Promise<void>;
-      };
-      if (navAny.share && navAny.canShare && navAny.canShare({ files: [file] })) {
-        await navAny.share({
-          title: titleStr,
-          text: award?.name ? `${meta.medal} ${award.name}` : titleStr,
-          files: [file]
-        });
-        shared = true;
-      }
-    } catch {
-      /* user cancelled or share failed — fall through to download */
+    await shareOrDownload(blob, `${baseFileBase()}.png`, "image/png", titleStr, baseShareText);
+    flashSavedHint();
+  }, [meta.medal, titleStr, subStr, tiles, award, winnerEntry, winnerAnimal, baseFileBase, baseShareText, flashSavedHint]);
+
+  const handleSaveClip = useCallback(async () => {
+    if (!winnerBurst) return;
+    const blob = await composeAwardClipWebm(
+      {
+        medal: meta.medal,
+        title: titleStr,
+        winnerName: award?.name ?? null,
+        winnerCount: award?.count ?? null,
+        winnerAnimal: winnerEntry ? winnerAnimal : null
+      },
+      winnerBurst
+    );
+    if (!blob) {
+      // Encoder failure — fall back to the static PNG so the user still gets
+      // something. Better than a silent no-op.
+      await handleSave();
+      return;
     }
-    if (!shared) {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-    }
-    setSavedHint(true);
-    window.setTimeout(() => setSavedHint(false), 1600);
-  }, [meta.medal, titleStr, subStr, tiles, award, winnerEntry, winnerAnimal, kind]);
+    const ext = blob.type.includes("webm") ? "webm" : "mp4";
+    await shareOrDownload(blob, `${baseFileBase()}.${ext}`, blob.type || "video/webm", titleStr, baseShareText);
+    flashSavedHint();
+  }, [winnerBurst, meta.medal, titleStr, award, winnerEntry, winnerAnimal, baseFileBase, baseShareText, flashSavedHint, handleSave]);
 
   return (
     <div
@@ -372,6 +388,17 @@ function AwardPanel({
         >
           {savedHint ? t.endGameSaved : t.endGameSave}
         </button>
+        {canExportClip ? (
+          <button
+            type="button"
+            className="ghost"
+            onClick={(e) => { e.stopPropagation(); handleSaveClip(); }}
+            disabled={phase !== "reveal"}
+            title={t.endGameSaveClipHint}
+          >
+            {t.endGameSaveClip}
+          </button>
+        ) : null}
         <button
           type="button"
           className="primary"
@@ -383,6 +410,225 @@ function AwardPanel({
       </div>
     </div>
   );
+}
+
+/** Web Share API (with files) → fallback blob download. Used for both PNG and WebM. */
+async function shareOrDownload(
+  blob: Blob,
+  filename: string,
+  mime: string,
+  title: string,
+  text: string
+): Promise<void> {
+  const file = new File([blob], filename, { type: mime });
+  try {
+    const navAny = navigator as Navigator & {
+      canShare?: (data: { files?: File[] }) => boolean;
+      share?: (data: ShareData & { files?: File[] }) => Promise<void>;
+    };
+    if (navAny.share && navAny.canShare && navAny.canShare({ files: [file] })) {
+      await navAny.share({ title, text, files: [file] });
+      return;
+    }
+  } catch {
+    /* user cancelled or share failed — fall through to download */
+  }
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/**
+ * Render the winner's highlight burst as a short looping video clip
+ * (`video/webm`, ~2 s). Each frame draws a card layout (medal / title at
+ * top, current burst frame in the middle, winner block at the bottom),
+ * then captures the canvas via MediaRecorder for sharing/download.
+ *
+ * Returns null if MediaRecorder isn't available or the burst is too short
+ * to be a useful clip.
+ */
+async function composeAwardClipWebm(
+  opts: {
+    medal: string;
+    title: string;
+    winnerName: string | null;
+    winnerCount: number | null;
+    winnerAnimal: string | null;
+  },
+  frames: HighlightBurst
+): Promise<Blob | null> {
+  if (!frames || frames.length < 2) return null;
+  if (typeof MediaRecorder === "undefined") return null;
+  const W = 480;
+  const H = 720;
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+
+  const imgs = await Promise.all(
+    frames.map((src) =>
+      loadImage(src).catch(() => null)
+    )
+  );
+  const validImgs = imgs.filter((x): x is HTMLImageElement => !!x);
+  if (validImgs.length < 2) return null;
+
+  const captureCtx = canvas as HTMLCanvasElement & { captureStream?: (fps: number) => MediaStream };
+  if (typeof captureCtx.captureStream !== "function") return null;
+  const stream = captureCtx.captureStream(30);
+  const candidates = [
+    "video/webm;codecs=vp9",
+    "video/webm;codecs=vp8",
+    "video/webm",
+    "video/mp4"
+  ];
+  let mime = "";
+  for (const c of candidates) {
+    if (MediaRecorder.isTypeSupported(c)) { mime = c; break; }
+  }
+  let rec: MediaRecorder;
+  try {
+    rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+  } catch {
+    return null;
+  }
+  const chunks: Blob[] = [];
+  rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
+
+  return new Promise<Blob | null>((resolve) => {
+    let stopped = false;
+    const finish = () => {
+      if (stopped) return;
+      stopped = true;
+      try { rec.stop(); } catch { /* ignore */ }
+    };
+    rec.onstop = () => {
+      const out = new Blob(chunks, { type: rec.mimeType || mime || "video/webm" });
+      resolve(out.size > 0 ? out : null);
+    };
+    // Hard timeout so a stuck encoder never traps the UI.
+    const timeout = window.setTimeout(finish, 8000);
+
+    rec.start();
+
+    const FRAME_MS = 110;          // ≈ 9 fps, matches the in-page playback rate
+    const LOOPS = 3;
+    const totalFrames = validImgs.length * LOOPS;
+    let i = 0;
+
+    function drawOnce() {
+      drawClipFrame(ctx!, W, H, opts, validImgs[i % validImgs.length]!);
+      i++;
+      if (i >= totalFrames) {
+        // Hold the last frame briefly so the video doesn't end mid-motion.
+        window.setTimeout(() => {
+          window.clearTimeout(timeout);
+          finish();
+        }, 220);
+        return;
+      }
+      window.setTimeout(drawOnce, FRAME_MS);
+    }
+    drawOnce();
+  });
+}
+
+function drawClipFrame(
+  ctx: CanvasRenderingContext2D,
+  W: number,
+  H: number,
+  opts: {
+    medal: string;
+    title: string;
+    winnerName: string | null;
+    winnerCount: number | null;
+    winnerAnimal: string | null;
+  },
+  img: HTMLImageElement
+): void {
+  // Background
+  const bg = ctx.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, "#1a1314");
+  bg.addColorStop(1, "#070707");
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, W, H);
+  // Spotlight halo behind the medal
+  const sp = ctx.createRadialGradient(W / 2, 90, 0, W / 2, 90, W * 0.55);
+  sp.addColorStop(0, "rgba(255, 220, 90, 0.32)");
+  sp.addColorStop(1, "rgba(255, 220, 90, 0)");
+  ctx.fillStyle = sp;
+  ctx.fillRect(0, 0, W, H);
+
+  // Medal + title
+  ctx.fillStyle = "#f2efe9";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.font = "60px serif";
+  ctx.fillText(opts.medal, W / 2, 80);
+  ctx.font = "600 22px Helvetica, Arial, sans-serif";
+  ctx.fillText(opts.title.toUpperCase(), W / 2, 118);
+
+  // Burst frame in the middle
+  const FX = 30;
+  const FY = 140;
+  const FW = W - 60;
+  const FH = 360;
+  ctx.fillStyle = "#000";
+  roundedRect(ctx, FX, FY, FW, FH, 14);
+  ctx.fill();
+  ctx.save();
+  roundedRect(ctx, FX, FY, FW, FH, 14);
+  ctx.clip();
+  // Cover-fit the image into the slot
+  const ar = img.naturalWidth / Math.max(1, img.naturalHeight);
+  const slotAr = FW / FH;
+  let dw = FW, dh = FH, dx = FX, dy = FY;
+  if (ar > slotAr) {
+    dh = FH;
+    dw = FH * ar;
+    dx = FX - (dw - FW) / 2;
+  } else {
+    dw = FW;
+    dh = FW / ar;
+    dy = FY - (dh - FH) / 2;
+  }
+  ctx.drawImage(img, dx, dy, dw, dh);
+  ctx.restore();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(255, 220, 90, 0.7)";
+  roundedRect(ctx, FX, FY, FW, FH, 14);
+  ctx.stroke();
+
+  // Winner band
+  const WY = FY + FH + 26;
+  ctx.fillStyle = "rgba(255, 220, 90, 0.10)";
+  roundedRect(ctx, 30, WY, W - 60, 110, 16);
+  ctx.fill();
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = "rgba(255, 220, 90, 0.85)";
+  roundedRect(ctx, 30, WY, W - 60, 110, 16);
+  ctx.stroke();
+  ctx.fillStyle = "#f2efe9";
+  ctx.font = "600 30px Helvetica, Arial, sans-serif";
+  ctx.fillText(`★  ${opts.winnerName ?? "—"}`, W / 2, WY + 50);
+  ctx.fillStyle = "rgba(242, 239, 233, 0.7)";
+  ctx.font = "16px Helvetica, Arial, sans-serif";
+  const meta = [opts.winnerAnimal, opts.winnerCount != null ? `×${opts.winnerCount}` : null]
+    .filter(Boolean)
+    .join("  ·  ");
+  ctx.fillText(meta || "—", W / 2, WY + 80);
+
+  // Footer wordmark
+  ctx.fillStyle = "rgba(242, 239, 233, 0.55)";
+  ctx.font = "11px Helvetica, Arial, sans-serif";
+  ctx.fillText("NOCTURNE ZOO · NIGHT SHIFT", W / 2, H - 24);
 }
 
 function formatDateSlug(): string {
