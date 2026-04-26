@@ -13,6 +13,13 @@ const MAP_W_MS = 1080;
 const MAP_H_MS = 1500;
 const CX_MS = MAP_W_MS / 2;
 const CY_MS = MAP_H_MS / 2;
+/** Mirror of iframe constants used by the Monitor AI tick. */
+const MAP_BORDER = 110;
+const MON_SPEED = 110;
+const CONE_LEN = 260;
+const CONE_HALF = Math.PI / 6;
+const CHAL_MAX = 8;
+const MONITOR_TICK_MS = 100;
 const MAIN_SCENE_ITEM_DEFS = [
   { id: "h1", type: "heart", x: CX_MS - 80, y: CY_MS - 340 },
   { id: "h2", type: "heart", x: CX_MS - 320, y: CY_MS - 60 },
@@ -85,6 +92,49 @@ export default class Server {
 
     /** Monotonic counter for monitor_voice ids when no audio hash is available. */
     this._monitorVoiceSeq = 0;
+
+    /**
+     * Server-authoritative Monitor (AI flashlight) state. Mirror of the iframe
+     * `state.monitor` shape. Ticks at MONITOR_TICK_MS while the room is started
+     * and the result is broadcast to every connection so all phones + the OB
+     * tab see the same position / aim / lock target.
+     *
+     * @type {{
+     *   x: number, y: number, aimAngle: number, mode: "sweep"|"locked",
+     *   moving: boolean, targetId: string|null, lockTimer: number,
+     *   sweepDir: 1|-1, sweepTimer: number,
+     *   patrolTarget: {x:number,y:number}|null, patrolTimer: number,
+     *   lured: {x:number,y:number}|null, retargetIn: number
+     * }}
+     */
+    this.monitor = this._initialMonitorState();
+
+    /** Latest known position per player from MAIN_SCENE_STATE; the monitor
+     * tick uses these to chase / cone-detect. Cleared on game end. */
+    /** @type {Map<string, {x:number, y:number, ts:number}>} */
+    this._playerPositions = new Map();
+
+    /** Monitor tick handle (setInterval). Started on game start, cleared on end. */
+    this._monitorTick = null;
+    this._monitorLastTickAt = 0;
+  }
+
+  _initialMonitorState() {
+    return {
+      x: CX_MS,
+      y: CY_MS - 200,
+      aimAngle: 0,
+      mode: "sweep",
+      moving: false,
+      targetId: null,
+      lockTimer: 0,
+      sweepDir: 1,
+      sweepTimer: 1,
+      patrolTarget: null,
+      patrolTimer: 0,
+      lured: null,
+      retargetIn: 0
+    };
   }
 
   /**
@@ -339,6 +389,9 @@ export default class Server {
         this.started = true;
         this.startedAt = Date.now();
         this.mainSceneItemsRemoved = new Set();
+        this.monitor = this._initialMonitorState();
+        this._playerPositions.clear();
+        this._startMonitorTick();
 
         this._broadcast(ServerEventTypes.GAME_STARTED, {
           startedAt: this.startedAt,
@@ -484,10 +537,12 @@ export default class Server {
         const clampPos = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(MAP_MAX, v)) : 0);
         const clampVel = (v) =>
           Number.isFinite(v) ? Math.max(-800, Math.min(800, v)) : 0;
+        const cx = clampPos(x);
+        const cy = clampPos(y);
         const payload = {
           playerId: conn.id,
-          x: clampPos(x),
-          y: clampPos(y),
+          x: cx,
+          y: cy,
           vx: clampVel(Number(msg?.vx)),
           vy: clampVel(Number(msg?.vy)),
           moving: Boolean(msg?.moving),
@@ -496,6 +551,8 @@ export default class Server {
           t: now,
           fx: msg?.fx && typeof msg.fx === "object" ? msg.fx : null
         };
+        // Cache for the Monitor AI tick (chase / cone-detect).
+        this._playerPositions.set(conn.id, { x: cx, y: cy, ts: now });
         this._broadcast(ServerEventTypes.MAIN_SCENE_BROADCAST, payload);
         return;
       }
@@ -577,6 +634,15 @@ export default class Server {
         if (meta.type === "heart" && player.lives < 3) {
           player.lives += 1;
           this._broadcast(ServerEventTypes.PLAYER_UPDATED, this._publicPlayer(player));
+        }
+        // Alarm: lure the Monitor AI toward the pickup site server-side, so
+        // every client sees the same diversion (was previously each client's
+        // own independent monitor reacting locally).
+        if (meta.type === "alarm") {
+          this.monitor.lured = { x: meta.x, y: meta.y };
+          this.monitor.retargetIn = 4;
+          this.monitor.mode = "sweep";
+          this.monitor.targetId = null;
         }
         this._broadcast(ServerEventTypes.MAIN_SCENE_ITEM_TAKEN, {
           itemId,
@@ -740,9 +806,156 @@ export default class Server {
     });
   }
 
+  // -------------------------------------------------------------
+  // Monitor (AI flashlight) — server-authoritative tick.
+  // Mirror of `updateMonitor()` from `main scene/index.html`. Runs while the
+  // room is started; broadcasts the new pose at MONITOR_TICK_MS so every
+  // client (players + OB) renders the same flashlight position / lock.
+  // -------------------------------------------------------------
+  _startMonitorTick() {
+    this._stopMonitorTick();
+    this._monitorLastTickAt = Date.now();
+    this._monitorTick = setInterval(() => {
+      const now = Date.now();
+      const dt = Math.min(0.5, (now - this._monitorLastTickAt) / 1000);
+      this._monitorLastTickAt = now;
+      this._tickMonitor(dt);
+      this._broadcastMonitorState();
+    }, MONITOR_TICK_MS);
+  }
+  _stopMonitorTick() {
+    if (this._monitorTick) {
+      clearInterval(this._monitorTick);
+      this._monitorTick = null;
+    }
+  }
+  _broadcastMonitorState() {
+    const m = this.monitor;
+    this._broadcast(ServerEventTypes.MONITOR_STATE, {
+      x: m.x,
+      y: m.y,
+      aimAngle: m.aimAngle,
+      mode: m.mode,
+      moving: m.moving,
+      targetId: m.targetId,
+      lured: m.lured ? { x: m.lured.x, y: m.lured.y } : null,
+      ts: Date.now()
+    });
+  }
+  _tickMonitor(dt) {
+    const m = this.monitor;
+    const wrap = (a) => {
+      while (a > Math.PI) a -= 2 * Math.PI;
+      while (a < -Math.PI) a += 2 * Math.PI;
+      return a;
+    };
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const inCone = (mx, my, ang, px, py) => {
+      const dx = px - mx, dy = py - my;
+      const d = Math.hypot(dx, dy);
+      if (d > CONE_LEN || d < 1) return false;
+      let bear = Math.atan2(dy, dx) - ang;
+      bear = ((bear + Math.PI) % (2 * Math.PI)) - Math.PI;
+      return Math.abs(bear) <= CONE_HALF;
+    };
+
+    // ----- Alarm lure: tilt toward lure for retargetIn seconds, then resume sweep.
+    if (m.lured) {
+      const desired = Math.atan2(m.lured.y - m.y, m.lured.x - m.x);
+      m.aimAngle += clamp(wrap(desired - m.aimAngle), -4 * dt, 4 * dt);
+      m.retargetIn -= dt;
+      if (m.retargetIn <= 0) {
+        m.lured = null;
+        m.mode = "sweep";
+        m.sweepTimer = 1;
+      }
+      return;
+    }
+
+    if (m.mode === "sweep") {
+      m.aimAngle += m.sweepDir * 1.0 * dt;
+      m.sweepTimer -= dt;
+      if (m.sweepTimer <= 0) {
+        m.sweepTimer = 2 + Math.random() * 3;
+        if (Math.random() < 0.6) m.sweepDir *= -1;
+      }
+      // Patrol waypoint
+      if (
+        !m.patrolTarget ||
+        m.patrolTimer <= 0 ||
+        Math.hypot(m.patrolTarget.x - m.x, m.patrolTarget.y - m.y) < 60
+      ) {
+        m.patrolTimer = 3 + Math.random() * 5;
+        m.patrolTarget = {
+          x: MAP_BORDER + Math.random() * (MAP_W_MS - 2 * MAP_BORDER),
+          y: MAP_BORDER + Math.random() * (MAP_H_MS - 2 * MAP_BORDER)
+        };
+      }
+      m.patrolTimer -= dt;
+      const pdx = m.patrolTarget.x - m.x;
+      const pdy = m.patrolTarget.y - m.y;
+      const pd = Math.hypot(pdx, pdy);
+      m.moving = pd > 10;
+      if (m.moving) {
+        m.x = clamp(m.x + (pdx / pd) * MON_SPEED * 0.55 * dt, MAP_BORDER, MAP_W_MS - MAP_BORDER);
+        m.y = clamp(m.y + (pdy / pd) * MON_SPEED * 0.55 * dt, MAP_BORDER, MAP_H_MS - MAP_BORDER);
+      }
+      // Cone detect against alive players
+      const candidates = [];
+      for (const [pid, pos] of this._playerPositions.entries()) {
+        const player = this.players.get(pid);
+        if (!player || !player.alive) continue;
+        candidates.push({ id: pid, x: pos.x, y: pos.y });
+      }
+      const eligible = candidates.filter((p) =>
+        inCone(m.x, m.y, m.aimAngle, p.x, p.y)
+      );
+      if (eligible.length > 0) {
+        const pick = eligible[Math.floor(Math.random() * eligible.length)];
+        m.targetId = pick.id;
+        m.mode = "locked";
+        m.lockTimer = CHAL_MAX;
+      }
+      return;
+    }
+
+    // ----- locked
+    m.lockTimer -= dt;
+    if (m.lockTimer <= 0) {
+      m.mode = "sweep";
+      m.targetId = null;
+      m.sweepTimer = 1;
+      return;
+    }
+    const target = this._playerPositions.get(m.targetId);
+    const player = this.players.get(m.targetId);
+    if (!target || !player || !player.alive) {
+      m.mode = "sweep";
+      m.targetId = null;
+      m.sweepTimer = 1;
+      return;
+    }
+    const desired = Math.atan2(target.y - m.y, target.x - m.x);
+    m.aimAngle += clamp(wrap(desired - m.aimAngle), -8 * dt, 8 * dt);
+    const dx = target.x - m.x;
+    const dy = target.y - m.y;
+    const dist = Math.hypot(dx, dy);
+    const COMFORT = 150;
+    const RAMP = 70;
+    m.moving = dist > COMFORT;
+    if (m.moving) {
+      const speedFactor = Math.min(1, (dist - COMFORT) / RAMP);
+      m.x += (dx / dist) * MON_SPEED * speedFactor * dt;
+      m.y += (dy / dist) * MON_SPEED * speedFactor * dt;
+    }
+    m.x = clamp(m.x, MAP_BORDER, MAP_W_MS - MAP_BORDER);
+    m.y = clamp(m.y, MAP_BORDER, MAP_H_MS - MAP_BORDER);
+  }
+
   _endGame() {
     if (!this.started) return;
     this.started = false;
+    this._stopMonitorTick();
     if (this._endTimer) {
       clearTimeout(this._endTimer);
       this._endTimer = null;

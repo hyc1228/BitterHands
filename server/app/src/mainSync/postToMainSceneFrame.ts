@@ -1,9 +1,10 @@
-import type { AnimalCode, Lang, MainScenePeerState, RoomSnapshot, RulesCard } from "../party/protocol";
+import type { AnimalCode, Lang, MainScenePeerState, MonitorStateMessage, RoomSnapshot, RulesCard } from "../party/protocol";
 import {
   buildPlayerSyncPayload,
   buildRoomPlayersPayload,
   NZ_MSG_SOURCE,
   NZ_MSG_TYPE_ITEM,
+  NZ_MSG_TYPE_MONITOR,
   NZ_MSG_TYPE_MS_VIEW,
   NZ_MSG_TYPE_NET,
   NZ_MSG_TYPE_OB_CAM,
@@ -100,6 +101,18 @@ export function postMainSceneNetToFrame(
       source: NZ_MSG_SOURCE,
       payload: { peers, selfId }
     },
+    "*"
+  );
+}
+
+/** Forward the latest server-authoritative Monitor pose to the iframe. */
+export function postMonitorStateToFrame(
+  w: Window | null | undefined,
+  state: MonitorStateMessage | null
+): void {
+  if (!w || !state) return;
+  w.postMessage(
+    { type: NZ_MSG_TYPE_MONITOR, source: NZ_MSG_SOURCE, payload: state },
     "*"
   );
 }

@@ -8,6 +8,7 @@ import { useMainSceneIframeBridge } from "../hooks/useMainSceneIframeBridge";
 import {
   postItemInboxToFrame,
   postMainSceneNetToFrame,
+  postMonitorStateToFrame,
   postObCameraToFrame,
   postToMainSceneFrame,
   type ObCameraPayload
@@ -188,6 +189,7 @@ function ObInner() {
       const sid = s.snapshot?.players.find((p) => p.name === s.myName)?.id ?? "";
       const w = mainSceneIframeRef.current?.contentWindow;
       postMainSceneNetToFrame(w, sid, s.mainScenePeers);
+      postMonitorStateToFrame(w, s.monitorState);
       const inbox = s.drainMainSceneItemInbox();
       postItemInboxToFrame(w, inbox);
     }, 100);

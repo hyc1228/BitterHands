@@ -1035,7 +1035,9 @@
          removes itself, so they never compete with the persistent
          alert state. */
 
-      /* HP loss: full-screen red radial flash, 280ms. */
+      /* HP loss: full-screen red radial flash, 360ms (extra punch for iOS
+         users who can't feel the vibration). Two-step opacity so the leading
+         edge "snaps" before easing out. */
       .hp-flash {
         position: absolute;
         inset: 0;
@@ -1043,32 +1045,84 @@
         z-index: 70;
         opacity: 0;
         background: radial-gradient(circle at 50% 50%,
-          rgba(255, 50, 50, 0) 30%,
-          rgba(255, 30, 30, 0.55) 100%);
+          rgba(255, 80, 80, 0.0) 22%,
+          rgba(255, 30, 30, 0.78) 100%);
       }
       .hp-flash.active {
-        animation: hpFlash 0.28s ease-out forwards;
+        animation: hpFlash 0.36s ease-out forwards;
       }
       @keyframes hpFlash {
         0%   { opacity: 0; }
-        18%  { opacity: 1; }
+        12%  { opacity: 1; }
+        45%  { opacity: 0.85; }
         100% { opacity: 0; }
       }
 
-      /* Lives container reactions on HP change. */
-      .lives.hp-shake { animation: livesShake 0.28s ease-out; }
-      @keyframes livesShake {
-        0%, 100% { transform: translateX(0); }
-        20%      { transform: translateX(-4px) rotate(-1deg); }
-        45%      { transform: translateX(5px)  rotate(1deg);  }
-        70%      { transform: translateX(-3px); }
+      /* Whole-phone shake on hard impact (HP loss, eliminated). Applied to
+         the outer .phone-frame so the persistent CRT wobble inside .screen
+         keeps running unaffected. */
+      .phone-frame.impact-shake {
+        animation: impactShake 0.32s cubic-bezier(.36,.07,.19,.97) both;
+      }
+      @keyframes impactShake {
+        10%, 90% { transform: translate3d(-2px, 0, 0); }
+        20%, 80% { transform: translate3d(4px, 0, 0); }
+        30%, 50%, 70% { transform: translate3d(-7px, 1px, 0); }
+        40%, 60% { transform: translate3d(7px, -1px, 0); }
+        0%, 100%  { transform: translate3d(0, 0, 0); }
+      }
+      .phone-frame.death-shake {
+        animation: deathShake 0.6s cubic-bezier(.36,.07,.19,.97) both;
+      }
+      @keyframes deathShake {
+        0%, 100% { transform: translate3d(0, 0, 0); }
+        12% { transform: translate3d(-9px, 2px, 0) rotate(-0.6deg); }
+        25% { transform: translate3d(11px, -2px, 0) rotate(0.6deg); }
+        38% { transform: translate3d(-8px, 1px, 0) rotate(-0.4deg); }
+        52% { transform: translate3d(7px, -1px, 0) rotate(0.4deg); }
+        66% { transform: translate3d(-4px, 0, 0); }
+        80% { transform: translate3d(3px, 0, 0); }
       }
 
-      .lives.hp-bump { animation: livesBump 0.34s cubic-bezier(.34,1.56,.64,1); }
+      /* Lives container reactions on HP change. Shake is bigger now so the
+         loss is unmissable even without vibration. */
+      .lives.hp-shake { animation: livesShake 0.42s cubic-bezier(.36,.07,.19,.97); }
+      @keyframes livesShake {
+        0%, 100% { transform: translateX(0); }
+        12%      { transform: translateX(-7px) rotate(-2deg) scale(1.04); }
+        28%      { transform: translateX(8px)  rotate(2deg)  scale(1.04); }
+        44%      { transform: translateX(-6px) rotate(-1.5deg); }
+        62%      { transform: translateX(5px)  rotate(1deg);   }
+        80%      { transform: translateX(-2px); }
+      }
+
+      .lives.hp-bump { animation: livesBump 0.42s cubic-bezier(.34,1.56,.64,1); }
       @keyframes livesBump {
-        0%   { transform: scale(1); }
-        45%  { transform: scale(1.18); }
-        100% { transform: scale(1); }
+        0%   { transform: scale(1); filter: drop-shadow(0 0 0 rgba(120, 220, 130, 0)); }
+        35%  { transform: scale(1.25); filter: drop-shadow(0 0 18px rgba(120, 220, 130, 0.95)); }
+        70%  { transform: scale(0.96); filter: drop-shadow(0 0 8px rgba(120, 220, 130, 0.55)); }
+        100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(120, 220, 130, 0)); }
+      }
+
+      /* One-shot warning ring on Monitor lock-on. Bright yellow → red flash
+         so the lock-on moment punches through the persistent .alert-overlay
+         pulse. Pairs with the haptic on Android, stands alone on iOS. */
+      .lock-warn-ring {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 73;
+        opacity: 0;
+        box-shadow: inset 0 0 0 0 rgba(255, 220, 70, 0);
+      }
+      .lock-warn-ring.active {
+        animation: lockWarnRing 0.55s ease-out forwards;
+      }
+      @keyframes lockWarnRing {
+        0%   { box-shadow: inset 0 0 0 4px rgba(255, 220, 70, 0.0); opacity: 0; }
+        18%  { box-shadow: inset 0 0 16px 6px rgba(255, 220, 70, 0.95); opacity: 1; }
+        55%  { box-shadow: inset 0 0 32px 10px rgba(255, 70, 70, 0.78); opacity: 1; }
+        100% { box-shadow: inset 0 0 64px 16px rgba(255, 70, 70, 0); opacity: 0; }
       }
 
       /* Game-start: brief screen brightening flash, 360ms. */
@@ -1116,8 +1170,11 @@
         .hp-flash.active,
         .start-flash.active,
         .death-flash.active,
+        .lock-warn-ring.active,
         .lives.hp-shake,
-        .lives.hp-bump {
+        .lives.hp-bump,
+        .phone-frame.impact-shake,
+        .phone-frame.death-shake {
           animation: none !important;
         }
       }
@@ -1308,10 +1365,11 @@
         <!-- Red alert vignette — pulses around the screen edge while a
              challenge (monitor or universal) is active. -->
         <div class="alert-overlay" id="alertOverlay" aria-hidden="true"></div>
-        <!-- One-shot impact flashes (HP loss / game start / eliminated). -->
+        <!-- One-shot impact flashes (HP loss / game start / eliminated / lock). -->
         <div class="hp-flash" id="hpFlash" aria-hidden="true"></div>
         <div class="start-flash" id="startFlash" aria-hidden="true"></div>
         <div class="death-flash" id="deathFlash" aria-hidden="true"></div>
+        <div class="lock-warn-ring" id="lockWarnRing" aria-hidden="true"></div>
 
         <!-- Language toggle — manual override for zh ↔ en. -->
         <button class="lang-toggle" id="langToggle" type="button" aria-label="Language">中</button>
@@ -2199,9 +2257,12 @@
           { id: "_local_p3", name: "ZOE", animal: "owl",     x: cx - 280, y: cy + 320, vx: 0, vy: 0, moving: false },
         ],
         monitor: {
-          x: cx + 130,
-          y: cy - 170,
-          aimAngle: Math.PI,
+          // Match the server's _initialMonitorState (CX_MS, CY_MS - 200,
+          // aimAngle 0) so the iframe doesn't render at a different spot
+          // for the ~100ms before the first MONITOR_STATE arrives.
+          x: cx,
+          y: cy - 200,
+          aimAngle: 0,
           mode: "sweep",    // 'sweep' | 'locked'
           sweepDir: 1,
           sweepTimer: 2,
@@ -2481,6 +2542,18 @@
       function pulseLives(cls, durationMs) {
         if (REDUCED_MOTION) return;
         const root = document.getElementById("lives");
+        if (!root) return;
+        root.classList.remove(cls);
+        void root.offsetWidth;
+        root.classList.add(cls);
+        setTimeout(() => root.classList.remove(cls), durationMs);
+      }
+      // One-shot shake on the outer phone-frame. Used for hard-impact moments
+      // (HP loss, eliminated) so iOS users — who don't get the haptic — still
+      // physically register the hit through the screen wobble.
+      function shakePhone(cls, durationMs) {
+        if (REDUCED_MOTION) return;
+        const root = document.querySelector(".phone-frame");
         if (!root) return;
         root.classList.remove(cls);
         void root.offsetWidth;
@@ -2910,7 +2983,65 @@
         return Math.abs(wrapAngle(Math.atan2(dy, dx) - aimAngle)) < 0.50;
       }
 
+      // When the server is broadcasting authoritative Monitor state via
+      // NZ_MONITOR_STATE, skip the local AI sim — every client must see the
+      // same flashlight / lock target. Local sim is preserved for solo /
+      // pre-network playtest (no server frame yet).
+      function applyServerMonitorState(p) {
+        if (!p || typeof p !== "object") return;
+        const m = state.monitor;
+        if (typeof p.x === "number") m.x = p.x;
+        if (typeof p.y === "number") m.y = p.y;
+        if (typeof p.aimAngle === "number") m.aimAngle = p.aimAngle;
+        if (p.mode === "sweep" || p.mode === "locked") m.mode = p.mode;
+        if (typeof p.moving === "boolean") m.moving = p.moving;
+        if (p.lured && typeof p.lured.x === "number") {
+          m.lured = { x: p.lured.x, y: p.lured.y };
+        } else if (p.lured === null) {
+          m.lured = null;
+        }
+        // Track lock-on-me edge so the local challenge bar fires exactly once
+        // per server lock event (server is the only place that decides who
+        // gets locked; the iframe just reacts).
+        const newTargetIsMe = p.targetId === state.netSelfId;
+        const wasTargetMe = m.targetId === "me";
+        m.targetId = newTargetIsMe ? "me" : (p.targetId || null);
+        state._serverMonitorAt = (typeof performance !== "undefined" ? performance.now() : Date.now());
+        // Reset the "fell back to local" warning so it can fire again on the
+        // next stutter rather than only the first time per session.
+        state._localMonitorWarned = false;
+        if (m.mode === "locked" && newTargetIsMe && !wasTargetMe) {
+          // Server says we're now the lock target — start the local
+          // challenge bar so the action prompt shows up.
+          if (!challenge.active && !state.spectator && !state.me.dead) {
+            startChallenge();
+          }
+        }
+        if ((m.mode === "sweep" || !newTargetIsMe) && wasTargetMe && challenge.active) {
+          // Server released the lock on us — close out the challenge bar.
+          endChallenge(false);
+        }
+      }
+
       function updateMonitor(dt) {
+        // If the authoritative server frame arrived recently, defer entirely
+        // to it. Tightened to 600ms (server ticks every 100ms, so this gives
+        // a ~6-frame buffer) — was 1500ms which let local sim drift visibly
+        // when packets stuttered. Two clients running their own RNG diverge
+        // instantly, so we want the local fallback to almost never fire.
+        const _nowMs = (typeof performance !== "undefined" ? performance.now() : Date.now());
+        if (state._serverMonitorAt && _nowMs - state._serverMonitorAt < 600) return;
+        // Solo / pre-server playtest path. In a networked game the server
+        // tick should keep _serverMonitorAt warm; if we end up here during
+        // multiplayer it's a network stutter and the next server frame
+        // resyncs us. Log once so it shows up in DevTools when investigating.
+        if (state.roomStarted && !state._localMonitorWarned) {
+          state._localMonitorWarned = true;
+          if (typeof console !== "undefined") {
+            console.warn("[nz] Monitor: server frame stale; falling back to local sim",
+              { lastServerAt: state._serverMonitorAt, age: _nowMs - (state._serverMonitorAt || 0) });
+          }
+        }
         const m = state.monitor;
 
         // --- Alarm lure: point toward lure position, then resume sweep ---
@@ -3108,9 +3239,12 @@
         uChalOverlay.className = "action-bar action-bar-bottom";
         renderLives();
         addLog(t("logDeath"));
-        // Hard impact: red wash + long vibration so the player physically
-        // notices they're out, even if they were spamming inputs.
+        // Hard impact: red wash + screen shake + long vibration so the player
+        // physically registers being out, even on iOS where vibration is a
+        // no-op. The shake on .phone-frame doesn't fight the persistent CRT
+        // wobble inside .screen.
         if (typeof flashOverlay === "function") flashOverlay("deathFlash", 700);
+        if (typeof shakePhone === "function") shakePhone("death-shake", 620);
         if (typeof nzHaptic === "function") nzHaptic("eliminated");
         // Show the death dialog. It stays open until the user clicks the CTA;
         // only then do we flip into spectator (free-pan) mode. Strings localized
@@ -3520,8 +3654,10 @@
         chalBarFill.style.width = "100%";
         chalOverlay.className  = "action-bar action-bar-top active";
         addLog(t("logMonitorAlert"), null, { rule: true });
-        // Warning haptic the moment the Monitor locks onto you. Pairs with
-        // the persistent alert vignette already toggled by render().
+        // One-shot lock-on cue. Yellow → red ring punches through the
+        // persistent alert vignette so iOS players (no haptic) still get a
+        // clear "you've been seen" moment.
+        flashOverlay("lockWarnRing", 550);
         nzHaptic("monitorLock");
       }
 
@@ -3558,8 +3694,9 @@
           state.me.lives = Math.max(0, state.me.lives - 1);
           renderLives();
           playSound("healthLoss");
-          flashOverlay("hpFlash", 280);
-          pulseLives("hp-shake", 280);
+          flashOverlay("hpFlash", 360);
+          pulseLives("hp-shake", 420);
+          shakePhone("impact-shake", 320);
           nzHaptic("hpLoss");
           addLog(t("logRuleFail"), null, { rule: true });
           if (state.me.lives <= 0) { setTimeout(handleDeath, 1400); }
@@ -4090,8 +4227,9 @@
           state.me.lives = Math.max(0, state.me.lives - 1);
           renderLives();
           playSound("healthLoss");
-          flashOverlay("hpFlash", 280);
-          pulseLives("hp-shake", 280);
+          flashOverlay("hpFlash", 360);
+          pulseLives("hp-shake", 420);
+          shakePhone("impact-shake", 320);
           nzHaptic("hpLoss");
           addLog(t("logUniFail"), null, { rule: true });
           if (state.me.lives <= 0) { setTimeout(handleDeath, 1200); }
@@ -4463,6 +4601,8 @@
           if (d.payload && d.payload.events) applyItemInbox(d.payload.events);
         } else if (d.type === "NZ_OB_CAMERA") {
           applyObCamera(d.payload);
+        } else if (d.type === "NZ_MONITOR_STATE") {
+          applyServerMonitorState(d.payload);
         }
       });
     </script>
