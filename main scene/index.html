@@ -4039,7 +4039,12 @@
             alive: q.alive !== false,
           };
           state.others.push(row);
-          var g = makeAnimalAvatar({ animal: an, isMe: false, name: row.name });
+          // Dead remote players render as a floating ghost (matches the local death visual).
+          // Without this, other clients keep showing the dead player's animal sprite frozen
+          // at their last position — the "ghost没触发" symptom.
+          var g = row.alive
+            ? makeAnimalAvatar({ animal: an, isMe: false, name: row.name })
+            : makeGhost({ name: row.name });
           layers.others.appendChild(g);
           state.nodes.others.set(q.id, g);
         }
