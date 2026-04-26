@@ -1027,6 +1027,100 @@
           box-shadow: inset 0 0 95px 20px rgba(255, 0, 0, 0.78);
         }
       }
+
+      /* ---------- One-shot game-feel cues ----------
+         Short, hard-impact reactions layered on top of the existing
+         alert vignette: HP-loss flash, HP-gain bounce, monitor-lock
+         pulse, eliminated finale. Each runs once per event and
+         removes itself, so they never compete with the persistent
+         alert state. */
+
+      /* HP loss: full-screen red radial flash, 280ms. */
+      .hp-flash {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 70;
+        opacity: 0;
+        background: radial-gradient(circle at 50% 50%,
+          rgba(255, 50, 50, 0) 30%,
+          rgba(255, 30, 30, 0.55) 100%);
+      }
+      .hp-flash.active {
+        animation: hpFlash 0.28s ease-out forwards;
+      }
+      @keyframes hpFlash {
+        0%   { opacity: 0; }
+        18%  { opacity: 1; }
+        100% { opacity: 0; }
+      }
+
+      /* Lives container reactions on HP change. */
+      .lives.hp-shake { animation: livesShake 0.28s ease-out; }
+      @keyframes livesShake {
+        0%, 100% { transform: translateX(0); }
+        20%      { transform: translateX(-4px) rotate(-1deg); }
+        45%      { transform: translateX(5px)  rotate(1deg);  }
+        70%      { transform: translateX(-3px); }
+      }
+
+      .lives.hp-bump { animation: livesBump 0.34s cubic-bezier(.34,1.56,.64,1); }
+      @keyframes livesBump {
+        0%   { transform: scale(1); }
+        45%  { transform: scale(1.18); }
+        100% { transform: scale(1); }
+      }
+
+      /* Game-start: brief screen brightening flash, 360ms. */
+      .start-flash {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 71;
+        opacity: 0;
+        background: radial-gradient(circle at 50% 50%,
+          rgba(255, 230, 160, 0.5) 0%,
+          rgba(255, 230, 160, 0) 65%);
+      }
+      .start-flash.active {
+        animation: startFlash 0.36s ease-out forwards;
+      }
+      @keyframes startFlash {
+        0%   { opacity: 0; }
+        25%  { opacity: 1; }
+        100% { opacity: 0; }
+      }
+
+      /* Eliminated: hard slow red wash, 700ms — louder than hp-flash. */
+      .death-flash {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 72;
+        opacity: 0;
+        background: radial-gradient(circle at 50% 50%,
+          rgba(180, 0, 0, 0.0) 0%,
+          rgba(180, 0, 0, 0.65) 100%);
+      }
+      .death-flash.active {
+        animation: deathFlash 0.7s ease-out forwards;
+      }
+      @keyframes deathFlash {
+        0%   { opacity: 0; }
+        18%  { opacity: 1; }
+        100% { opacity: 0; }
+      }
+
+      /* Respect reduced-motion preferences for all of the above. */
+      @media (prefers-reduced-motion: reduce) {
+        .hp-flash.active,
+        .start-flash.active,
+        .death-flash.active,
+        .lives.hp-shake,
+        .lives.hp-bump {
+          animation: none !important;
+        }
+      }
     </style>
   </head>
   <body>
@@ -1214,6 +1308,10 @@
         <!-- Red alert vignette — pulses around the screen edge while a
              challenge (monitor or universal) is active. -->
         <div class="alert-overlay" id="alertOverlay" aria-hidden="true"></div>
+        <!-- One-shot impact flashes (HP loss / game start / eliminated). -->
+        <div class="hp-flash" id="hpFlash" aria-hidden="true"></div>
+        <div class="start-flash" id="startFlash" aria-hidden="true"></div>
+        <div class="death-flash" id="deathFlash" aria-hidden="true"></div>
 
         <!-- Language toggle — manual override for zh ↔ en. -->
         <button class="lang-toggle" id="langToggle" type="button" aria-label="Language">中</button>
@@ -2340,6 +2438,56 @@
         } catch (_) {}
       }
 
+      // ---- Haptic + visual impact cues -------------------------------
+      // Mobile haptic patterns. iOS Safari ignores navigator.vibrate, but
+      // the call doesn't throw — Android Chrome/Edge/Firefox honour it,
+      // and that's where most playtest devices land. Reduced-motion users
+      // also get the silent treatment (no flashes, no pulses).
+      const REDUCED_MOTION = (() => {
+        try { return matchMedia("(prefers-reduced-motion: reduce)").matches; }
+        catch { return false; }
+      })();
+      const HAPTIC = {
+        hpLoss:      [22, 60, 30],
+        hpGain:      [14],
+        alarm:       [25, 50, 25, 50, 60],
+        monitorLock: [40, 80, 40],
+        eliminated:  [60, 80, 80, 80, 200],
+        gameStart:   [30],
+        gameEnd:     [40, 60, 40]
+      };
+      function nzHaptic(name) {
+        if (REDUCED_MOTION) return;
+        const pattern = HAPTIC[name];
+        if (!pattern) return;
+        try {
+          if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
+            navigator.vibrate(pattern);
+          }
+        } catch (_) { /* feature absent / blocked — ignore */ }
+      }
+      // One-shot flash helper. Removes the .active class after the CSS
+      // animation finishes so the next trigger restarts cleanly.
+      function flashOverlay(id, durationMs) {
+        const el = document.getElementById(id);
+        if (!el) return;
+        el.classList.remove("active");
+        // force reflow to restart animation
+        void el.offsetWidth;
+        el.classList.add("active");
+        setTimeout(() => el.classList.remove("active"), durationMs);
+      }
+      // Quick CSS-class one-shot on the lives container (shake/bump).
+      function pulseLives(cls, durationMs) {
+        if (REDUCED_MOTION) return;
+        const root = document.getElementById("lives");
+        if (!root) return;
+        root.classList.remove(cls);
+        void root.offsetWidth;
+        root.classList.add(cls);
+        setTimeout(() => root.classList.remove(cls), durationMs);
+      }
+
       // ---- Background music (loop) -----------------------------------
       // Starts when the room transitions to `started` (player has just been
       // brought into the live scene). Loops until the game ends or the
@@ -2648,10 +2796,13 @@
           state.me.lives += 1;
           renderLives();
           flashHeartGain();
+          pulseLives("hp-bump", 340);
           playSound("healthGain");
+          nzHaptic("hpGain");
         } else if (it.type === "alarm") {
           addLog(t("logAlarmRing"));
           playAlarmSound();
+          nzHaptic("alarm");
           if (challenge.active) endChallenge(false);
           state.monitor.mode = "sweep";
           state.monitor.targetId = null;
@@ -2671,11 +2822,16 @@
             state.me.lives += 1;
             renderLives();
             flashHeartGain();
+            pulseLives("hp-bump", 340);
             playSound("healthGain");
+            nzHaptic("hpGain");
           }
         } else if (e.itemType === "alarm") {
           addLog(t("logAlarmRing"));
           playAlarmSound();
+          // Only trigger haptic for the local player who picked it up; other
+          // clients don't need their phones buzzing for someone else's pickup.
+          if (e.byPlayerId === state.netSelfId) nzHaptic("alarm");
           if (challenge.active) endChallenge(false);
           state.monitor.mode = "sweep";
           state.monitor.targetId = null;
@@ -2952,6 +3108,10 @@
         uChalOverlay.className = "action-bar action-bar-bottom";
         renderLives();
         addLog(t("logDeath"));
+        // Hard impact: red wash + long vibration so the player physically
+        // notices they're out, even if they were spamming inputs.
+        if (typeof flashOverlay === "function") flashOverlay("deathFlash", 700);
+        if (typeof nzHaptic === "function") nzHaptic("eliminated");
         // Show the death dialog. It stays open until the user clicks the CTA;
         // only then do we flip into spectator (free-pan) mode. Strings localized
         // each time it opens so a mid-round language switch picks up new copy.
@@ -3281,6 +3441,7 @@
             // Game just ended — stop the looping BGM. Per-event Monitor PA + SFX
             // can still play (they're separate audio elements).
             stopBgm();
+            nzHaptic("gameEnd");
           }
         }
       }, 1000);
@@ -3359,6 +3520,9 @@
         chalBarFill.style.width = "100%";
         chalOverlay.className  = "action-bar action-bar-top active";
         addLog(t("logMonitorAlert"), null, { rule: true });
+        // Warning haptic the moment the Monitor locks onto you. Pairs with
+        // the persistent alert vignette already toggled by render().
+        nzHaptic("monitorLock");
       }
 
       function reportViolation() {
@@ -3394,6 +3558,9 @@
           state.me.lives = Math.max(0, state.me.lives - 1);
           renderLives();
           playSound("healthLoss");
+          flashOverlay("hpFlash", 280);
+          pulseLives("hp-shake", 280);
+          nzHaptic("hpLoss");
           addLog(t("logRuleFail"), null, { rule: true });
           if (state.me.lives <= 0) { setTimeout(handleDeath, 1400); }
         }
@@ -3843,6 +4010,9 @@
           state.me.lives = Math.max(0, state.me.lives - 1);
           renderLives();
           playSound("healthLoss");
+          flashOverlay("hpFlash", 280);
+          pulseLives("hp-shake", 280);
+          nzHaptic("hpLoss");
           addLog(t("logUniFail"), null, { rule: true });
           if (state.me.lives <= 0) { setTimeout(handleDeath, 1200); }
         }
@@ -4120,7 +4290,14 @@
         state.roomStarted = Boolean(raw.roomStarted);
         // BGM kicks in the moment the room flips to "started" (player has just entered the
         // live scene). Looping handled by the audio element; stops on timer-end below.
-        if (state.roomStarted && !wasStarted) startBgm();
+        // Plus a brief amber flash + haptic so the round transition lands.
+        if (state.roomStarted && !wasStarted) {
+          startBgm();
+          if (!state.spectator) {
+            flashOverlay("startFlash", 360);
+            nzHaptic("gameStart");
+          }
+        }
         if (raw.spectator != null) state.spectator = Boolean(raw.spectator);
         var toRem = raw.itemsRemoved;
         if (Array.isArray(toRem) && toRem.length) {
