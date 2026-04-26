@@ -3808,26 +3808,33 @@
         // own open-eye reference. ~30 fps × 1.5 s ≈ 45 samples.
         baselineMaxSamples: 45,
         // Samples below this are discarded so real blinks don't drag the
-        // baseline down. Lower it (e.g. 0.10) only if a user's open-eye
-        // EAR is genuinely below 0.12 (very narrow eyes + bad angle).
-        baselineFilterFloor: 0.12,
+        // baseline down. Mobile narrow-eye users baseline ~0.16; allow
+        // them in.
+        baselineFilterFloor: 0.10,
         // Use the 80th percentile of recent samples as the "open" EAR.
         // Higher (e.g. 0.9) = more conservative open reference, makes
         // blink threshold higher (easier to trigger).
         baselinePercentile: 0.80,
         // Min samples needed before the baseline kicks in. While below
-        // this we use `fallbackThreshold` instead.
-        baselineMinSamples: 8,
+        // this we use `fallbackThreshold` instead. Lower for mobile —
+        // 15 fps × 8 samples = ~0.55 s of mis-classified frames before
+        // the user's own baseline kicks in. Drop to 4 (~0.27 s).
+        baselineMinSamples: 4,
 
         // --- Closed-eye decision (the main sensitivity knob) ---------
         // Eye is "closed" when SMOOTHED ear < baseline × this ratio.
-        //   0.85 = very sensitive (lots of false-positive blinks)
-        //   0.75 = current default — reliably catches mobile blinks
-        //   0.65 = strict (misses some real blinks on phone cams)
-        closedRatio: 0.75,
-        // Used only before the baseline calibrates (first ~0.3 s of
-        // detection). Forgiving fallback so brand-new sessions work.
-        fallbackThreshold: 0.19,
+        //   0.85 = very sensitive (catches half-blinks + squints)
+        //   0.75 = old default — reliably catches mobile blinks but
+        //          misses fast partial blinks at 15 fps
+        //   0.65 = strict (misses real blinks on phone cams)
+        // Bumped to 0.82 so a brief 1-frame mobile blink registers
+        // (real blink dips ~50 %, partial squint ~80 %; we want both).
+        closedRatio: 0.82,
+        // Used only before the baseline calibrates. Lowered from 0.19
+        // to 0.15 because mobile users with narrow open-eye EAR (~0.18)
+        // would otherwise spend the first 0.3 s falsely flagged as
+        // "closed" and have the noBlink timer never start.
+        fallbackThreshold: 0.15,
 
         // --- Avatar eye visual mapping (Live2D-style scaleY) ---------
         // Where on the EAR scale the avatar's eye is "fully closed" /
@@ -3837,16 +3844,15 @@
         avatarOpenRatio:   1.00,   // ear ≥ baseline      → eye round
 
         // --- u_noblink (universal "don't blink for 2s") -------------
-        // Tracks frames where eyes are OPEN; any blink event resets the
-        // counter. ~60 frames at 30 fps = 2 seconds. Mobile-friendly:
-        // uses both eyes' EAR average, so single-eye jitter doesn't
-        // count as a blink.
-        uNoBlinkFramesNeeded: 60,
+        // Time-based hold: from the first eyes-OPEN frame, wait `holdMs`
+        // of wall-clock time without any closed-eye frame. At 15 fps
+        // mobile, the previous 60-frame target took ~4 s; this fixes
+        // that to a true 2 s on every device.
+        uNoBlinkHoldMs: 2000,
         // Reset on ANY single closed frame — the previous 2-frame debounce
         // let very fast blinks slip through, so the rule "did not blink"
         // could pass even right after a real blink. Phones running
-        // MediaPipe at 15 fps may capture a real blink in just one frame,
-        // which is what the user reported as "blinking succeeds the task".
+        // MediaPipe at 15 fps may capture a real blink in just one frame.
         uNoBlinkResetFrames: 1,
       };
 
@@ -4269,7 +4275,7 @@
         universalChallenge.action    = rule.id;
         universalChallenge.timeLeft  = universalChallenge.MAX_TIME;
         universalChallenge.blink     = { frames: 0 };
-        universalChallenge.noblink   = { open: 0, closedStreak: 0 };
+        universalChallenge.noblink   = { since: null, closedStreak: 0 };
         universalChallenge.mouth     = { frames: 0 };
         universalChallenge.headmove  = { hDir: 0, hChanges: 0, vDir: 0, vChanges: 0 };
         uChalIcon.textContent    = rule.icon;
@@ -4318,32 +4324,34 @@
         const act = universalChallenge.action;
 
         if (act === "u_noblink") {
-          // "Don't blink for 2s" — increment frames every tick where BOTH
-          // eyes are open; a debounced blink (consecutive closed frames)
-          // resets the counter. Reusing the per-eye EAR samples we already
-          // computed for the avatar / Owl rule path.
+          // "Don't blink for 2s" — wall-clock hold so the rule reads as
+          // a true 2 s regardless of FPS (was 60 frames = ~4 s @ 15 fps
+          // on mobile). Use SMOOTHED EAR so single-frame jitter doesn't
+          // false-reset the timer; resetFrames=1 means a real blink
+          // (which lasts multiple smoothed frames anyway) immediately
+          // resets `since`.
           const earL = earVal(lm, L_EYE_IDX);
           const earR = earVal(lm, R_EYE_IDX);
-          const ear = (earL + earR) / 2;
+          const ear = smoothedEar((earL + earR) / 2);
           const closed = isEyeClosed(ear);
           if (!universalChallenge.noblink) {
-            universalChallenge.noblink = { open: 0, closedStreak: 0 };
+            universalChallenge.noblink = { since: null, closedStreak: 0 };
           }
           const nb = universalChallenge.noblink;
+          const now = (typeof performance !== "undefined" ? performance.now() : Date.now());
           if (closed) {
             nb.closedStreak++;
             if (nb.closedStreak >= BLINK_TUNING.uNoBlinkResetFrames) {
-              // Real blink detected — reset the open-eye counter.
-              nb.open = 0;
+              nb.since = null;
               uChalStatus.textContent = t("statusNoBlinkPlease");
             }
           } else {
             nb.closedStreak = 0;
-            nb.open++;
-            const need = BLINK_TUNING.uNoBlinkFramesNeeded;
-            const left = Math.max(0, need - nb.open);
-            uChalStatus.textContent = t("statusNoBlinkHold", (left / 30).toFixed(1));
-            if (nb.open >= need) {
+            if (nb.since == null) nb.since = now;
+            const elapsed = now - nb.since;
+            const left = Math.max(0, (BLINK_TUNING.uNoBlinkHoldMs - elapsed) / 1000);
+            uChalStatus.textContent = t("statusNoBlinkHold", left.toFixed(1));
+            if (elapsed >= BLINK_TUNING.uNoBlinkHoldMs) {
               universalChallenge.completed = true;
               endUniversalChallenge(true);
             }

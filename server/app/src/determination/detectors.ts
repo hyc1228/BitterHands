@@ -31,10 +31,12 @@ export const DETECTION_DEFAULTS = {
   eyesClosedHoldMs: 1500,
   /** Onboard expression gate: hold eyes OPEN (no blink) for this long (positive test). */
   gateNoBlinkHoldMs: 2000,
-  /** Onboard expression gate "eyes open" threshold (more lenient than `earClosed = 0.2` so
-   *  mobile selfie cams — which run lower EAR due to wide-angle distortion + downward angle
-   *  + low-res landmarks — pass naturally without forcing the user to bug their eyes out). */
-  gateEyesOpenThresh: 0.13,
+  /** Onboard expression gate "eyes open" threshold. Lowered from 0.13 → 0.11 so
+   *  narrow-eye users on mobile (whose baseline EAR sits around 0.13–0.16 due to
+   *  wide-angle selfie distortion) don't false-reset the no-blink timer just by
+   *  holding their head still. Real blinks still dip to ~0.05–0.08, well below
+   *  this cutoff, so detection of actual blink events is unaffected. */
+  gateEyesOpenThresh: 0.11,
   /** Onboard gate reset: any single closed-eye frame resets the timer. The earlier 2-frame
    *  debounce was too forgiving — fast blinks (1 frame on lower-fps mobile cameras) could
    *  slip through, leading to the bug "blinking succeeds the don't-blink task". */
