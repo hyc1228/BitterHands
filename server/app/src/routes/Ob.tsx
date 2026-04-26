@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import EndGameOverlay from "../components/EndGameOverlay";
 import { DEFAULT_ROOM_ID, getMainSceneFrameSrc, OB_FACE_SLOTS } from "../constants";
 import { expectedObKey, isObAuthorized, writeStoredObKey } from "../lib/obAuth";
 import { animalLocalized, dict } from "../i18n";
@@ -246,6 +247,7 @@ function ObInner() {
   }, []);
 
   return (
+    <>
     <div className="ob-grid">
       <section className="card stack" aria-label="ob-left">
         <div className="ob-room-row">
@@ -504,6 +506,8 @@ function ObInner() {
         )}
       </section>
     </div>
+    <EndGameOverlay viewerRole="ob" homePath="/ob" />
+    </>
   );
 }
 

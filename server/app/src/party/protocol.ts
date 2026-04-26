@@ -127,7 +127,14 @@ export interface GameStarted {
 
 export interface GameEnded {
   endedAt: number;
-  reveal: { id: string; name: string; animal: AnimalCode | null; verdict: string | null }[];
+  reveal: {
+    id: string;
+    name: string;
+    animal: AnimalCode | null;
+    verdict: string | null;
+    alive?: boolean;
+    lives?: number;
+  }[];
   owlGuesses: Record<string, unknown>;
 }
 

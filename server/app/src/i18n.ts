@@ -112,6 +112,17 @@ interface Dict {
   obReadyCount: (n: number, total: number) => string;
   obLobbyWaitingTitle: string;
   obLobbyCenterHint: string;
+  /** End-of-game settlement overlay */
+  endGameTitle: string;
+  endGameAlive: string;
+  endGameDead: string;
+  endGameAliveSub: string;
+  endGameDeadSub: string;
+  endGameSurvivorsHead: string;
+  endGameDeadHead: string;
+  endGameSurvivorCount: (n: number, total: number) => string;
+  endGameClose: string;
+  endGameBackHome: string;
   /** Operator-only auth gate for `/ob` so casual visitors can't open OB */
   obAuthTitle: string;
   obAuthHint: string;
@@ -231,6 +242,16 @@ const en: Dict = {
   obReadyCount: (n, t) => `${n}/${t} ready`,
   obLobbyWaitingTitle: "Lobby — players in waiting room",
   obLobbyCenterHint: "Use ‘Start game’ on the left when you're ready. Everyone will enter the zoo together.",
+  endGameTitle: "Night shift over",
+  endGameAlive: "Escaped Alive",
+  endGameDead: "Lost to the Night",
+  endGameAliveSub: "You walked out of Nocturne Zoo before the sun.",
+  endGameDeadSub: "Your file has been archived. The zoo keeps a copy.",
+  endGameSurvivorsHead: "Survivors",
+  endGameDeadHead: "Eliminated",
+  endGameSurvivorCount: (n, t) => `${n}/${t} escaped alive`,
+  endGameClose: "Close",
+  endGameBackHome: "Back to start",
   obAuthTitle: "Operator only",
   obAuthHint: "OB is the operator console. Enter your operator key to continue. The key stays on this device.",
   obAuthKeyLabel: "Operator key",
@@ -348,6 +369,16 @@ const zh: Dict = {
   obReadyCount: (n, t) => `${n}/${t} 已就绪`,
   obLobbyWaitingTitle: "等待房间 · 玩家集合中",
   obLobbyCenterHint: "准备好后点左侧「开始游戏」，所有玩家会同时进入。",
+  endGameTitle: "夜班结束",
+  endGameAlive: "活着逃出",
+  endGameDead: "未能逃脱",
+  endGameAliveSub: "你在天亮前走出了深夜动物园。",
+  endGameDeadSub: "你的档案已归档，动物园会留一份。",
+  endGameSurvivorsHead: "幸存者",
+  endGameDeadHead: "已淘汰",
+  endGameSurvivorCount: (n, t) => `${n}/${t} 活着逃出`,
+  endGameClose: "关闭",
+  endGameBackHome: "返回首页",
   obAuthTitle: "仅限操作员",
   obAuthHint: "OB 是操作员控制台。输入你的密钥继续，密钥仅保存在本设备。",
   obAuthKeyLabel: "操作员密钥",

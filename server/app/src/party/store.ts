@@ -5,6 +5,7 @@ import {
   ClientMessageTypes,
   type AnimalCode,
   type CameraFrame,
+  type GameEnded,
   type Lang,
   type OwlRosterEntry,
   type PublicPlayer,
@@ -52,6 +53,9 @@ interface PartyStoreState {
   /** Push-only inbox of Monitor PA broadcasts; the audio hook drains this. */
   monitorVoiceInbox: MonitorVoiceMessage[];
   drainMonitorVoiceInbox: () => MonitorVoiceMessage[];
+  /** Last GAME_ENDED payload — drives the settlement overlay; null between matches. */
+  gameEnded: GameEnded | null;
+  clearGameEnded: () => void;
   // Actions
   setLang: (lang: Lang) => void;
   setName: (name: string) => void;
@@ -149,6 +153,9 @@ export const usePartyStore = create<PartyStoreState>((set, get) => ({
   mainScenePeers: {},
   mainSceneItemInbox: [],
   monitorVoiceInbox: [],
+  gameEnded: null,
+
+  clearGameEnded: () => set({ gameEnded: null }),
 
   drainMainSceneItemInbox: () => {
     const q = get().mainSceneItemInbox;
@@ -284,7 +291,8 @@ export const usePartyStore = create<PartyStoreState>((set, get) => ({
       connectError: null,
       mainScenePeers: {},
       mainSceneItemInbox: [],
-      monitorVoiceInbox: []
+      monitorVoiceInbox: [],
+      gameEnded: null
     })
 }));
 
@@ -399,6 +407,8 @@ function handleServerEnvelope(
   }
   if (t === ServerEventTypes.GAME_ENDED) {
     const lang = get().lang;
+    const data = msg.data as GameEnded;
+    set({ gameEnded: data });
     get().pushLog({
       kind: "system",
       text: lang === "zh" ? "游戏结束" : "Game ended"

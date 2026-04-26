@@ -59,7 +59,9 @@ export default class Server {
     this.startedAt = null;
 
     /** @type {number} */
-    this.durationMs = 4 * 60 * 1000;
+    this.durationMs = 2 * 60 * 1000;
+    /** Auto-end timer handle (cleared on _endGame so it doesn't double-fire). */
+    this._endTimer = null;
 
     /** @type {Map<string, any>} */
     this.owlGuessesByPlayerId = new Map();
@@ -337,6 +339,16 @@ export default class Server {
 
         this._broadcast(ServerEventTypes.SYSTEM, { code: "GAME_STARTED" });
         this._sendRoomSnapshot();
+
+        // Auto-settle when the timer runs out. setTimeout survives PartyKit hibernation
+        // because we keep at least one connection alive during play; if the room sleeps
+        // before the timer fires, OB / players reconnecting will trigger fresh state and
+        // the snapshot's `started === false` (set by _endGame on next ping) re-syncs.
+        if (this._endTimer) clearTimeout(this._endTimer);
+        this._endTimer = setTimeout(() => {
+          this._endTimer = null;
+          this._endGame();
+        }, this.durationMs);
         // Opening Monitor PA voice intentionally muted for now — the cold-open line
         // was too jarring on first load. Re-enable by uncommenting:
         //   void this._dispatchMonitorLine({ kind: "game_started", priority: 8, ttlMs: 9000 });
@@ -657,6 +669,10 @@ export default class Server {
   _endGame() {
     if (!this.started) return;
     this.started = false;
+    if (this._endTimer) {
+      clearTimeout(this._endTimer);
+      this._endTimer = null;
+    }
 
     this._broadcast(ServerEventTypes.GAME_ENDED, {
       endedAt: Date.now(),
@@ -664,10 +680,15 @@ export default class Server {
         id: p.id,
         name: p.name,
         animal: p.animal,
-        verdict: p.verdict
+        verdict: p.verdict,
+        alive: p.alive,
+        lives: p.lives
       })),
       owlGuesses: Object.fromEntries(this.owlGuessesByPlayerId.entries())
     });
+    // Push a fresh snapshot too so `started=false` propagates to clients that route on snapshot
+    // (Lobby / Onboard auto-redirect listeners).
+    this._sendRoomSnapshot();
 
     const survivors = Array.from(this.players.values()).filter((p) => p.alive);
     const winner = survivors.length

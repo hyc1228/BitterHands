@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import CameraFrameUploader from "../components/CameraFrameUploader";
+import EndGameOverlay from "../components/EndGameOverlay";
 import { getMainSceneFrameSrc } from "../constants";
 import { useMainSceneIframeBridge } from "../hooks/useMainSceneIframeBridge";
 import { postToMainSceneFrame, postItemInboxToFrame, postMainSceneNetToFrame } from "../mainSync/postToMainSceneFrame";
@@ -78,6 +79,8 @@ export default function MainScene() {
           Mounting here (not inside the iframe) sidesteps the iframe's permission
           quirks and reuses the React-side store/WS we already have open. */}
       <CameraFrameUploader />
+      {/* Settlement overlay (escaped / lost). Renders only when GAME_ENDED arrived. */}
+      <EndGameOverlay viewerRole="player" homePath="/" />
     </>
   );
 }

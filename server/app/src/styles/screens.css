@@ -2226,6 +2226,180 @@
   text-transform: uppercase;
 }
 
+/* =============================================================
+   End-of-game settlement overlay (escaped / lost)
+   ============================================================= */
+.endgame-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  background: radial-gradient(ellipse 70% 60% at 50% 30%, rgba(214, 64, 46, 0.18), rgba(0, 0, 0, 0.85) 70%);
+  padding: max(env(safe-area-inset-top), 16px) 14px max(env(safe-area-inset-bottom), 16px);
+  overflow: auto;
+  animation: nz-endgame-mask 320ms ease-out both;
+}
+@keyframes nz-endgame-mask {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.endgame-card {
+  width: min(640px, 100%);
+  max-height: 100%;
+  display: grid;
+  gap: 14px;
+  padding: 26px 22px 22px;
+  border-radius: var(--nz-radius-lg);
+  border: 1.5px solid var(--nz-cream-line);
+  background: linear-gradient(180deg, rgba(28, 22, 22, 0.96), rgba(10, 10, 10, 0.96));
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6), inset 0 0 0 1px rgba(242, 239, 233, 0.06);
+  text-align: center;
+  isolation: isolate;
+  animation: nz-endgame-card 480ms cubic-bezier(0.2, 1.4, 0.3, 1) both;
+}
+.endgame-card--alive {
+  border-color: rgba(120, 200, 140, 0.55);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6), 0 0 0 2px rgba(120, 200, 140, 0.18);
+}
+@keyframes nz-endgame-card {
+  0% { opacity: 0; transform: translateY(14px) scale(0.96); }
+  60% { transform: scale(1.01); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.endgame-eyebrow {
+  font-family: var(--nz-font-display);
+  font-size: 12px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--nz-cream-dim);
+}
+.endgame-headline {
+  font-family: var(--nz-font-display);
+  font-size: clamp(28px, 6vw, 42px);
+  letter-spacing: 0.08em;
+  margin: 0;
+  color: var(--nz-cream);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.45), 0 8px 24px rgba(214, 64, 46, 0.25);
+  animation: nz-stamp-in 720ms cubic-bezier(0.2, 1.4, 0.3, 1) 1;
+}
+.endgame-card--alive .endgame-headline {
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.45), 0 8px 24px rgba(120, 200, 140, 0.4);
+}
+.endgame-sub {
+  margin: -4px 0 0;
+  font-family: var(--nz-font-serif);
+  font-style: italic;
+  font-size: clamp(14px, 3vw, 16px);
+  line-height: 1.45;
+}
+
+.endgame-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  margin-top: 6px;
+  text-align: left;
+}
+@media (min-width: 540px) {
+  .endgame-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.endgame-section-label {
+  font-family: var(--nz-font-display);
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--nz-cream-dim);
+  margin-bottom: 6px;
+}
+
+.endgame-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.endgame-row {
+  display: grid;
+  grid-template-columns: 22px 1fr auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: var(--nz-radius-sm);
+  border: 1px solid var(--nz-cream-line);
+  background: rgba(0, 0, 0, 0.35);
+}
+.endgame-row.is-self {
+  border-color: rgba(214, 64, 46, 0.55);
+  background: rgba(214, 64, 46, 0.10);
+}
+.endgame-row.is-dead {
+  opacity: 0.7;
+  text-decoration: none;
+}
+.endgame-row__mark {
+  font-family: var(--nz-font-display);
+  font-size: 16px;
+  text-align: center;
+  color: rgba(160, 220, 170, 1);
+}
+.endgame-row.is-dead .endgame-row__mark {
+  color: rgba(255, 154, 138, 1);
+}
+.endgame-row__name {
+  font-family: var(--nz-font-hand);
+  font-size: 14px;
+  color: var(--nz-cream);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.endgame-row__you {
+  margin-left: 6px;
+  font-family: var(--nz-font-display);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--nz-red);
+}
+.endgame-row__animal {
+  font-family: var(--nz-font-display);
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  color: var(--nz-cream-dim);
+}
+.endgame-row__lives {
+  font-family: serif;
+  font-size: 12px;
+  color: rgba(214, 64, 46, 1);
+  letter-spacing: 0.04em;
+}
+.endgame-row.is-dead .endgame-row__lives {
+  color: var(--nz-cream-dim);
+}
+.endgame-empty {
+  font-size: 13px;
+  padding: 6px 0;
+}
+
+.endgame-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 4px;
+}
+.endgame-actions button {
+  min-height: 44px;
+  padding: 0 18px;
+  font-size: 14px;
+  letter-spacing: 0.12em;
+}
+
 /* OB lobby start row */
 .ob-start-row {
   display: flex;
