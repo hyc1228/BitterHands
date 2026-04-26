@@ -938,29 +938,6 @@
         .joystick { display: block; }
       }
 
-      /* Floating language toggle — click to flip zh ↔ en. The parent
-         React app's NZ_PLAYER_SYNC.lang still wins when it arrives. */
-      .lang-toggle {
-        position: absolute;
-        top: 56px;
-        right: 14px;
-        z-index: 28;
-        background: rgba(0, 0, 0, 0.55);
-        color: #fff;
-        border: 1.5px solid rgba(255, 255, 255, 0.45);
-        border-radius: 8px;
-        padding: 3px 10px;
-        font-family: "Patrick Hand", cursive;
-        font-size: 13px;
-        font-weight: 700;
-        cursor: pointer;
-        pointer-events: auto;
-        user-select: none;
-        backdrop-filter: blur(2px);
-        -webkit-backdrop-filter: blur(2px);
-      }
-      .lang-toggle:active { transform: scale(0.94); }
-
       /* ---------- Self-cam preview (bottom-right, local-only) ---------- */
       /* Same <video> element that feeds FaceMesh, just made visible in a
          circular frame. Mirrored so the player sees a natural mirror view.
@@ -1371,8 +1348,6 @@
         <div class="death-flash" id="deathFlash" aria-hidden="true"></div>
         <div class="lock-warn-ring" id="lockWarnRing" aria-hidden="true"></div>
 
-        <!-- Language toggle — manual override for zh ↔ en. -->
-        <button class="lang-toggle" id="langToggle" type="button" aria-label="Language">中</button>
         <!-- Monitor challenge bar (top): when flashlight lands on you. -->
         <div id="challengeOverlay" class="action-bar action-bar-top">
           <div class="bar-fill" id="chal-bar-fill"></div>
@@ -1615,10 +1590,6 @@
         const ds = document.querySelector("#deathOverlay .death-sub");
         if (ds) ds.textContent = t("deathSub");
         setText("spectatorBadge", t("spectatorBadge"));
-        // Toggle button shows the OTHER language as a hint of what
-        // clicking it will do.
-        const langBtn = document.getElementById("langToggle");
-        if (langBtn) langBtn.textContent = currentLang === "zh" ? "EN" : "中";
       }
 
       const VIEW_W = 300;
@@ -2286,7 +2257,7 @@
         joyX: 0,    // virtual joystick analog input, -1..1
         joyY: 0,
         tap: null, // world coordinates
-        timer: 2 * 60 + 43,
+        timer: 120, // seconds; mirrors server.durationMs (2 min). Reset on roomStarted flip.
         cam: { x: 0, y: 0 },
         nodes: {
           me: null,
@@ -3304,7 +3275,10 @@
       const logList = document.getElementById("logList");
       const logBox = document.querySelector(".log");
       function fmtNow() {
-        const elapsed = 4 * 60 - state.timer;
+        const total = (typeof state.roundDurationSec === "number" && state.roundDurationSec > 0)
+          ? state.roundDurationSec
+          : 120;
+        const elapsed = total - state.timer;
         const m = Math.floor(Math.max(0, elapsed) / 60);
         const s = Math.max(0, elapsed) % 60;
         return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
@@ -3566,8 +3540,10 @@
         } catch (e) {}
       }
 
-      // Timer ticking
+      // Timer ticking — only runs while the room is actually started, so the
+      // HUD doesn't drain time during the lobby / waiting room.
       setInterval(() => {
+        if (!state.roomStarted) return;
         if (state.timer > 0) {
           state.timer -= 1;
           renderTimer();
@@ -4356,22 +4332,6 @@
       // Initial render of localized static UI.
       const _initialHint = document.getElementById("moveHint");
       if (_initialHint) _initialHint.textContent = t("hint");
-      const _initialLangBtn = document.getElementById("langToggle");
-      if (_initialLangBtn) {
-        // When this scene is embedded inside the React SPA (window.top !== window),
-        // the parent shell's <LangDock /> already provides a language toggle and is
-        // the single source of truth (NZ_PLAYER_SYNC.lang). Hide the in-iframe button
-        // there to avoid two toggles getting out of sync. Standalone tests still see it.
-        const _embedded = window.top !== window;
-        if (_embedded) {
-          _initialLangBtn.style.display = "none";
-        } else {
-          _initialLangBtn.textContent = currentLang === "zh" ? "EN" : "中";
-          _initialLangBtn.addEventListener("click", () => {
-            setLang(currentLang === "zh" ? "en" : "zh");
-          });
-        }
-      }
       requestAnimationFrame(frame);
 
       // -----------------------------------------------------------------
@@ -4541,6 +4501,31 @@
         state.netSelfId = selfId;
         var wasStarted = state.roomStarted;
         state.roomStarted = Boolean(raw.roomStarted);
+        // Server-authoritative round timing. `state.timer` stays in seconds
+        // (mirrors the existing renderTimer code path).
+        var serverDurationMs = Number(raw.durationMs);
+        if (Number.isFinite(serverDurationMs) && serverDurationMs > 0) {
+          state.roundDurationSec = Math.round(serverDurationMs / 1000);
+        }
+        if (state.roomStarted) {
+          var startedAt = Number(raw.startedAt);
+          var totalSec = (typeof state.roundDurationSec === "number" && state.roundDurationSec > 0)
+            ? state.roundDurationSec
+            : 120;
+          if (Number.isFinite(startedAt) && startedAt > 0) {
+            var remainingMs = (startedAt + (totalSec * 1000)) - Date.now();
+            state.timer = Math.max(0, Math.round(remainingMs / 1000));
+          } else if (!wasStarted) {
+            state.timer = totalSec;
+          }
+          renderTimer();
+        } else {
+          // Lobby / pre-round: hold the HUD at the configured round length.
+          state.timer = (typeof state.roundDurationSec === "number" && state.roundDurationSec > 0)
+            ? state.roundDurationSec
+            : 120;
+          renderTimer();
+        }
         // BGM kicks in the moment the room flips to "started" (player has just entered the
         // live scene). Looping handled by the audio element; stops on timer-end below.
         // Plus a brief amber flash + haptic so the round transition lands.
