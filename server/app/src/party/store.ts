@@ -100,27 +100,37 @@ function partykitHostFromEnv(): string | null {
 }
 
 /**
- * Stable per-browser id used as PartyKit's `?_pk=` connection id, so refreshes / reconnects
- * reuse the same room slot (otherwise every new socket gets a fresh `conn.id`, which
- * eats `MAX_ROOM_PLAYERS` until the platform finally GCs stale slots).
+ * Stable PER-TAB id used as PartyKit's `?_pk=` connection id, so a refresh on
+ * the same tab reuses the same room slot (otherwise every new socket gets a
+ * fresh `conn.id` and eats `MAX_ROOM_PLAYERS` until the platform finally GCs
+ * stale slots).
  *
- * `mode` matters: same browser opening a player tab AND an OB tab needs DIFFERENT conn.ids
- * (otherwise the server sees the OB connection as an already-joined player and blocks
- * `START` with `start_forbidden_player`). We segregate by storing one id per role.
+ * IMPORTANT: stored in `sessionStorage`, NOT `localStorage`. localStorage is
+ * shared across ALL tabs of the same origin, which means two player tabs in
+ * the same browser used to share the same `_pk` — the server then treated
+ * tab #2 as a reconnect of tab #1 and the room appeared "stuck at 1 player".
+ * sessionStorage is per-tab, so each tab gets its own slot, but a refresh in
+ * place still resolves to the same id (sessionStorage survives reloads).
+ *
+ * `mode` matters: same browser opening a player tab AND an OB tab needs
+ * DIFFERENT conn.ids (otherwise the server sees the OB connection as an
+ * already-joined player and blocks `START` with `start_forbidden_player`).
+ * Different keys per role, even though sessionStorage already isolates by tab.
  */
 function stableConnectionId(mode: "player" | "ob" = "player"): string {
   const k = mode === "ob" ? "nz.connId.ob" : "nz.connId";
+  const fresh = () =>
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
   try {
-    const v = localStorage.getItem(k);
+    const v = sessionStorage.getItem(k);
     if (v && /^[a-zA-Z0-9_-]{8,64}$/.test(v)) return v;
-    const fresh =
-      typeof crypto !== "undefined" && "randomUUID" in crypto
-        ? crypto.randomUUID()
-        : `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-    localStorage.setItem(k, fresh);
-    return fresh;
+    const f = fresh();
+    sessionStorage.setItem(k, f);
+    return f;
   } catch {
-    return `c_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+    return fresh();
   }
 }
 
