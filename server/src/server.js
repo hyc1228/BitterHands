@@ -509,6 +509,11 @@ export default class Server {
         }
         this.mainSceneItemsRemoved.add(itemId);
         const meta = this._mainSceneItemRegistry.get(itemId);
+        // Heart restores 1 HP (capped at 3 — GDD).
+        if (meta.type === "heart" && player.lives < 3) {
+          player.lives += 1;
+          this._broadcast(ServerEventTypes.PLAYER_UPDATED, this._publicPlayer(player));
+        }
         this._broadcast(ServerEventTypes.MAIN_SCENE_ITEM_TAKEN, {
           itemId,
           itemType: meta.type,
