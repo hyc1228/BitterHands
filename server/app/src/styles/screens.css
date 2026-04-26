@@ -2811,6 +2811,166 @@
   font-size: 13px;
 }
 
+/* OB-mode bigger ceremony — scales medals / winner / collage tiles up
+   so it reads from across the room on a big screen. */
+.endgame-stage--ob {
+  width: min(880px, 100%);
+}
+.endgame-stage--ob .endgame-award-stage__medal {
+  font-size: 72px;
+}
+.endgame-stage--ob .endgame-award-stage__name {
+  font-size: clamp(28px, 5.4vw, 40px);
+}
+.endgame-stage--ob .endgame-award-stage__winner-line {
+  font-size: clamp(28px, 5.6vw, 38px);
+}
+.endgame-stage--ob .endgame-collage {
+  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
+  gap: 12px;
+}
+.endgame-stage--ob .endgame-headline {
+  font-size: clamp(34px, 7.6vw, 56px);
+}
+
+/* Spotlight ray sweeping behind the medal during the award stage. */
+.endgame-award-stage__title {
+  position: relative;
+  isolation: isolate;
+}
+.endgame-award-stage__spot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 280%;
+  height: 220%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: -1;
+  background: radial-gradient(
+    ellipse at 50% 30%,
+    rgba(255, 220, 90, 0.45) 0%,
+    rgba(255, 220, 90, 0) 55%
+  );
+  opacity: 0;
+  animation: nz-spot-sweep 2200ms ease-out 200ms 1 both;
+}
+@keyframes nz-spot-sweep {
+  0%   { opacity: 0; transform: translate(-50%, -50%) scale(0.6); }
+  35%  { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
+  100% { opacity: 0.55; transform: translate(-50%, -50%) scale(1); }
+}
+
+/* Wrapper that anchors the drumroll overlay over the collage. */
+.endgame-collage-wrap {
+  position: relative;
+}
+
+/* 3-2-1 drumroll overlay: huge digit fades in/out per step. */
+.endgame-drumroll {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 5;
+  background: radial-gradient(
+    circle at 50% 50%,
+    rgba(0, 0, 0, 0.55) 0%,
+    rgba(0, 0, 0, 0) 70%
+  );
+}
+.endgame-drumroll__digit {
+  font-family: var(--nz-font-display);
+  font-size: clamp(96px, 18vw, 160px);
+  color: var(--nz-cream);
+  text-shadow:
+    0 4px 0 rgba(0, 0, 0, 0.6),
+    0 0 32px rgba(255, 220, 90, 0.6),
+    0 0 80px rgba(214, 64, 46, 0.6);
+  animation: nz-drum-pulse 700ms cubic-bezier(0.2, 1.4, 0.3, 1) 1;
+  will-change: transform, opacity;
+}
+.endgame-stage--ob .endgame-drumroll__digit {
+  font-size: clamp(140px, 22vw, 220px);
+}
+@keyframes nz-drum-pulse {
+  0%   { opacity: 0; transform: scale(0.4) rotate(-8deg); }
+  35%  { opacity: 1; transform: scale(1.18) rotate(2deg); }
+  70%  { opacity: 1; transform: scale(1) rotate(0deg); }
+  100% { opacity: 0; transform: scale(1.4); }
+}
+
+/* Reserved-space placeholder so the layout doesn't jump when winner
+   block hasn't appeared yet during collage / countdown phases. */
+.endgame-award-stage__placeholder {
+  height: clamp(72px, 12vw, 110px);
+}
+.endgame-stage--ob .endgame-award-stage__placeholder {
+  height: clamp(110px, 14vw, 150px);
+}
+
+/* Winner block sits on a relative-positioned host so confetti can ride
+   on top of it without breaking the rounded gold border. */
+.endgame-award-stage__winner {
+  position: relative;
+  overflow: visible;
+}
+
+/* Confetti burst — 14 shards launched out of the winner block. */
+.endgame-confetti {
+  position: absolute;
+  left: 50%;
+  top: 24%;
+  width: 1px;
+  height: 1px;
+  pointer-events: none;
+}
+.endgame-confetti__shard {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 8px;
+  height: 14px;
+  margin-left: -4px;
+  margin-top: -7px;
+  opacity: 0;
+  transform: translate(0, 0) rotate(0deg);
+  animation: nz-confetti-fly 1100ms cubic-bezier(0.18, 0.7, 0.3, 1) var(--cd, 0ms) 1 both;
+  will-change: transform, opacity;
+}
+.endgame-confetti__shard--circle {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+@keyframes nz-confetti-fly {
+  0%   { opacity: 0; transform: translate(0, 0) rotate(0deg); }
+  10%  { opacity: 1; }
+  100% {
+    opacity: 0;
+    /* Falls var(--cy) px down (defaults to 220, OB overrides to 320). */
+    transform: translate(var(--cx, 0px), var(--cy, 220px)) rotate(var(--cr, 360deg));
+  }
+}
+.endgame-stage--ob .endgame-confetti__shard {
+  width: 12px;
+  height: 18px;
+  --cy: 320px;
+}
+.endgame-stage--ob .endgame-confetti__shard--circle {
+  width: 14px;
+  height: 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .endgame-confetti,
+  .endgame-drumroll,
+  .endgame-award-stage__spot {
+    display: none !important;
+  }
+}
+
 /* Per-player face-action stats (player view only) */
 .endgame-stats {
   display: grid;

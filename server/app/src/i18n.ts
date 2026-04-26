@@ -149,6 +149,9 @@ interface Dict {
   endGameNext: string;
   endGameSave: string;
   endGameSaved: string;
+  /** "Save Clip" button — exports the winner's burst as a short looping video. */
+  endGameSaveClip: string;
+  endGameSaveClipHint: string;
   /** Operator-only auth gate for `/ob` so casual visitors can't open OB */
   obAuthTitle: string;
   obAuthHint: string;
@@ -301,6 +304,8 @@ const en: Dict = {
   endGameNext: "Next →",
   endGameSave: "💾 Save card",
   endGameSaved: "✓ Saved",
+  endGameSaveClip: "🎞️ Save clip",
+  endGameSaveClipHint: "Animated highlight (~2s) — share or save to camera roll",
   obAuthTitle: "Operator only",
   obAuthHint: "OB is the operator console. Enter your operator key to continue. The key stays on this device.",
   obAuthKeyLabel: "Operator key",
@@ -451,6 +456,8 @@ const zh: Dict = {
   endGameNext: "下一项 →",
   endGameSave: "💾 保存图片",
   endGameSaved: "✓ 已保存",
+  endGameSaveClip: "🎞️ 保存动图",
+  endGameSaveClipHint: "约 2 秒精彩瞬间 · 可分享或存到相册",
   obAuthTitle: "仅限操作员",
   obAuthHint: "OB 是操作员控制台。输入你的密钥继续，密钥仅保存在本设备。",
   obAuthKeyLabel: "操作员密钥",
