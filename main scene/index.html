@@ -2211,6 +2211,53 @@
         } catch (_) {}
       }
 
+      // ---- Background music (loop) -----------------------------------
+      // Starts when the room transitions to `started` (player has just been
+      // brought into the live scene). Loops until the game ends or the
+      // page unloads. Volume kept low so SFX + Monitor PA stay readable.
+      const bgm = new Audio("../resource/midnight-gate-rules.mp3");
+      bgm.loop = true;
+      bgm.preload = "auto";
+      bgm.volume = 0.35;
+      bgm.setAttribute("playsinline", "");
+      bgm.setAttribute("webkit-playsinline", "");
+      let bgmStarted = false;
+      let bgmGestureBound = false;
+      function startBgm() {
+        if (bgmStarted) return;
+        try {
+          const p = bgm.play();
+          if (p && typeof p.then === "function") {
+            p.then(() => {
+              bgmStarted = true;
+            }).catch(() => {
+              // Mobile autoplay can reject the first attempt — retry on the next
+              // user gesture inside the iframe (any tap/key counts).
+              bindBgmUnlockOnce();
+            });
+          } else {
+            bgmStarted = true;
+          }
+        } catch (_) {
+          bindBgmUnlockOnce();
+        }
+      }
+      function bindBgmUnlockOnce() {
+        if (bgmGestureBound) return;
+        bgmGestureBound = true;
+        const evts = ["pointerdown", "touchstart", "click", "keydown"];
+        const fire = () => {
+          for (const e of evts) window.removeEventListener(e, fire);
+          bgmGestureBound = false;
+          startBgm();
+        };
+        for (const e of evts) window.addEventListener(e, fire, { passive: true, once: true });
+      }
+      function stopBgm() {
+        try { bgm.pause(); } catch (_) { /* ignore */ }
+        bgmStarted = false;
+      }
+
       // Alarm: play a short window of the file (it's longer than we need)
       // and ease the volume to 0 in the final stretch so it doesn't just
       // cut off abruptly.
@@ -3016,6 +3063,11 @@
         if (state.timer > 0) {
           state.timer -= 1;
           renderTimer();
+          if (state.timer === 0) {
+            // Game just ended — stop the looping BGM. Per-event Monitor PA + SFX
+            // can still play (they're separate audio elements).
+            stopBgm();
+          }
         }
       }, 1000);
 
@@ -3757,7 +3809,11 @@
         var selfId = raw.selfId || "";
         var selfName = String(raw.selfName || "");
         state.netSelfId = selfId;
+        var wasStarted = state.roomStarted;
         state.roomStarted = Boolean(raw.roomStarted);
+        // BGM kicks in the moment the room flips to "started" (player has just entered the
+        // live scene). Looping handled by the audio element; stops on timer-end below.
+        if (state.roomStarted && !wasStarted) startBgm();
         if (raw.spectator != null) state.spectator = Boolean(raw.spectator);
         var toRem = raw.itemsRemoved;
         if (Array.isArray(toRem) && toRem.length) {
