@@ -182,6 +182,29 @@ export function startMonitorVoiceService(): void {
     }
     tryAdvance();
   }, 200);
+
+  // Game-end stop: bug was that a voice line queued seconds before GAME_ENDED
+  // would keep playing through the award ceremony. Watch for the `started`
+  // flag flipping false (or `gameEnded` arriving) and immediately pause +
+  // clear the queue. Re-arm `lastByKind` so the next round isn't deduped.
+  let lastStarted = !!usePartyStore.getState().snapshot?.started;
+  let lastGameEndedSeen = !!usePartyStore.getState().gameEnded;
+  usePartyStore.subscribe((s) => {
+    const nowStarted = !!s.snapshot?.started;
+    const nowEnded = !!s.gameEnded;
+    const justEnded = (lastStarted && !nowStarted) || (!lastGameEndedSeen && nowEnded);
+    lastStarted = nowStarted;
+    lastGameEndedSeen = nowEnded;
+    if (justEnded) {
+      if (LOG) console.log(TAG, "game ended → stopping voice + clearing queue", { queued: queue.length, playing: playing?.kind });
+      try { audioEl.pause(); } catch { /* ignore */ }
+      audioEl.currentTime = 0;
+      playing = null;
+      queue.length = 0;
+      lastByKind.clear();
+      lastEndedAt = Date.now();
+    }
+  });
 }
 
 /**

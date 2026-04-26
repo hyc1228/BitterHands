@@ -2830,25 +2830,69 @@
 }
 
 /* OB-mode bigger ceremony — scales medals / winner / collage tiles up
-   so it reads from across the room on a big screen. */
+   so it reads from across the room on a big screen. Designed for
+   landscape (the OB console is always wide); on tall screens the rules
+   gracefully fall back to the portrait stack. */
 .endgame-stage--ob {
-  width: min(880px, 100%);
+  width: min(1200px, 96vw);
+  max-width: 96vw;
+}
+.endgame-stage--ob .endgame-card {
+  /* Card was capped at 640px which left huge empty bars on a 1920-wide OB
+     monitor. Let the card grow to fill the wider stage now. */
+  width: 100%;
+  max-width: min(1200px, 96vw);
+  padding: 28px 32px 26px;
+  max-height: min(94vh, 920px);
+  overflow-y: auto;
 }
 .endgame-stage--ob .endgame-award-stage__medal {
-  font-size: 72px;
+  font-size: clamp(72px, 8vw, 112px);
 }
 .endgame-stage--ob .endgame-award-stage__name {
-  font-size: clamp(28px, 5.4vw, 40px);
+  font-size: clamp(28px, 4vw, 48px);
 }
 .endgame-stage--ob .endgame-award-stage__winner-line {
-  font-size: clamp(28px, 5.6vw, 38px);
+  font-size: clamp(28px, 4.2vw, 50px);
 }
 .endgame-stage--ob .endgame-collage {
-  grid-template-columns: repeat(auto-fit, minmax(112px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 14px;
 }
 .endgame-stage--ob .endgame-headline {
-  font-size: clamp(34px, 7.6vw, 56px);
+  font-size: clamp(34px, 5.6vw, 64px);
+}
+.endgame-stage--ob .endgame-eyebrow {
+  font-size: 13px;
+}
+.endgame-stage--ob .endgame-sub {
+  font-size: clamp(15px, 1.6vw, 18px);
+}
+
+/* Award stage two-column layout when OB has horizontal room.
+   Title + medal + winner on the right; collage / drumroll on the left.
+   Activates above 1024px landscape so phones flipped sideways still get
+   the original stacked layout. */
+@media (min-width: 1024px) and (orientation: landscape) {
+  .endgame-stage--ob .endgame-award-stage {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "eyebrow eyebrow"
+      "collage title"
+      "collage winner";
+    gap: 20px 28px;
+    align-items: center;
+  }
+  .endgame-stage--ob .endgame-eyebrow { grid-area: eyebrow; }
+  .endgame-stage--ob .endgame-collage-wrap { grid-area: collage; }
+  .endgame-stage--ob .endgame-award-stage__title { grid-area: title; }
+  .endgame-stage--ob .endgame-award-stage__winner { grid-area: winner; }
+  .endgame-stage--ob .endgame-award-stage__placeholder { grid-area: winner; }
+  .endgame-stage--ob .endgame-collage {
+    /* Bigger tiles when we have a dedicated column for them. */
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  }
 }
 
 /* Spotlight ray sweeping behind the medal during the award stage. */

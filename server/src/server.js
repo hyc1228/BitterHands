@@ -1169,9 +1169,12 @@ export default class Server {
     };
 
     // ----- Alarm lure: tilt toward lure for retargetIn seconds, then resume sweep.
+    // Slowed turn rate: 4 rad/s used to feel like a teleport ("AI immediately
+    // looks over there"); 1.2 rad/s ≈ 70°/s gives the keeper a deliberate
+    // ~1.3 s head turn that reads as "noticing" instead of "snapping".
     if (m.lured) {
       const desired = Math.atan2(m.lured.y - m.y, m.lured.x - m.x);
-      m.aimAngle += clamp(wrap(desired - m.aimAngle), -4 * dt, 4 * dt);
+      m.aimAngle += clamp(wrap(desired - m.aimAngle), -1.2 * dt, 1.2 * dt);
       m.retargetIn -= dt;
       if (m.retargetIn <= 0) {
         m.lured = null;

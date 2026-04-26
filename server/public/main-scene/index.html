@@ -1407,7 +1407,7 @@
           actionShakeLabel:    "SHAKE YOUR HEAD!",
           // Universal rule labels
           universalBlinkLabel: "BLINK ONCE!",
-          universalLeftEyeLabel: "CLOSE LEFT EYE 1s!",
+          universalNoBlinkLabel: "DON'T BLINK 2s!",
           universalMouthLabel: "OPEN MOUTH!",
           universalHeadLabel:  "SHAKE OR NOD!",
           challengeRuleHeader: "Rule",
@@ -1430,8 +1430,8 @@
           statusUniGo:         "Do it!",
           statusBlinking:      "Blinking…",
           statusBlinkPlease:   "Blink!",
-          statusLeftEyeHold:   (s) => `Keep left eye closed ${s}s…`,
-          statusLeftEyePlease: "Close your left eye!",
+          statusNoBlinkHold:   (s) => `Eyes open ${s}s more…`,
+          statusNoBlinkPlease: "Don't blink — keep eyes open!",
           statusHeadKeep:      "Keep going!",
           statusHeadDo:        "Shake or nod!",
           statusSuccess:       "Done!",
@@ -1450,7 +1450,7 @@
           logDeath:       "💀 HP zero — you can enter observer mode.",
           logMonitorAlert:"⚠ Monitor's watching you — perform the rule!",
           logUniBlinkAnnounce: "Universal rule: blink.",
-          logUniLeftEyeAnnounce: "Universal rule: close left eye for 1s.",
+          logUniNoBlinkAnnounce: "Universal rule: don't blink for 2s.",
           logUniMouthAnnounce: "Universal rule: open mouth.",
           deathTitle:     "You died",
           deathSub:       "Enter observer mode to keep watching the round.",
@@ -1486,7 +1486,7 @@
           actionMouthLabel:    "张开嘴巴！",
           actionShakeLabel:    "摇头晃脑！",
           universalBlinkLabel: "眨一下眼！",
-          universalLeftEyeLabel: "闭左眼 1 秒！",
+          universalNoBlinkLabel: "2 秒别眨眼！",
           universalMouthLabel: "张开嘴巴！",
           universalHeadLabel:  "摇头或点头！",
           challengeRuleHeader: "守则",
@@ -1508,8 +1508,8 @@
           statusUniGo:         "请执行！",
           statusBlinking:      "眨眼中…",
           statusBlinkPlease:   "请眨眼！",
-          statusLeftEyeHold:   (s) => `保持闭左眼 ${s} 秒…`,
-          statusLeftEyePlease: "请闭上左眼！",
+          statusNoBlinkHold:   (s) => `再撑 ${s} 秒别眨眼…`,
+          statusNoBlinkPlease: "别眨眼！眼睛保持睁开！",
           statusHeadKeep:      "继续！",
           statusHeadDo:        "摇头或点头！",
           statusSuccess:       "完成！",
@@ -1527,7 +1527,7 @@
           logDeath:       "💀 生命值归零，可进入观察模式。",
           logMonitorAlert:"⚠ 监管者注视你了——执行守则！",
           logUniBlinkAnnounce: "通用规则：请眨眼。",
-          logUniLeftEyeAnnounce: "通用规则：闭左眼 1 秒。",
+          logUniNoBlinkAnnounce: "通用规则：2 秒内别眨眼。",
           logUniMouthAnnounce: "通用规则：请张嘴。",
           deathTitle:     "你已死亡",
           deathSub:       "是否进入观察阶段，继续观看这一轮？",
@@ -2475,6 +2475,8 @@
         const a = new Audio(src);
         a.preload = "auto";
         a.volume = 0.7;
+        a.setAttribute("playsinline", "");
+        a.setAttribute("webkit-playsinline", "");
         sounds[name] = a;
       }
       function playSound(name) {
@@ -2486,6 +2488,39 @@
           if (p && typeof p.catch === "function") p.catch(() => {});
         } catch (_) {}
       }
+      // SFX autoplay unlock — the iframe needs its own user gesture for the
+      // browser to grant <Audio> autoplay permission, otherwise sounds
+      // triggered by network events (alarm broadcast, heart pickup) silently
+      // drop. Prime each SFX element on the first iframe-side gesture by
+      // running a muted play+pause; subsequent .play() calls are unblocked.
+      let sfxUnlocked = false;
+      function unlockSfxOnce() {
+        if (sfxUnlocked) return;
+        sfxUnlocked = true;
+        for (const a of Object.values(sounds)) {
+          try {
+            const wasMuted = a.muted;
+            a.muted = true;
+            const p = a.play();
+            if (p && typeof p.then === "function") {
+              p.then(() => { try { a.pause(); } catch (_) {} a.currentTime = 0; a.muted = wasMuted; })
+               .catch(() => { a.muted = wasMuted; });
+            } else {
+              try { a.pause(); } catch (_) {}
+              a.currentTime = 0;
+              a.muted = wasMuted;
+            }
+          } catch (_) { /* ignore */ }
+        }
+      }
+      (function bindSfxUnlock() {
+        const evts = ["pointerdown", "touchstart", "click", "keydown"];
+        const fire = () => {
+          for (const e of evts) window.removeEventListener(e, fire);
+          unlockSfxOnce();
+        };
+        for (const e of evts) window.addEventListener(e, fire, { passive: true, once: true });
+      })();
 
       // ---- Haptic + visual impact cues -------------------------------
       // Mobile haptic patterns. iOS Safari ignores navigator.vibrate, but
@@ -3054,9 +3089,11 @@
         const m = state.monitor;
 
         // --- Alarm lure: point toward lure position, then resume sweep ---
+        // Mirror server-side turn rate — keep the keeper's "noticing" pace
+        // identical between authoritative and local-fallback paths.
         if (m.lured) {
           const desired = Math.atan2(m.lured.y - m.y, m.lured.x - m.x);
-          m.aimAngle += clamp(wrapAngle(desired - m.aimAngle), -4 * dt, 4 * dt);
+          m.aimAngle += clamp(wrapAngle(desired - m.aimAngle), -1.2 * dt, 1.2 * dt);
           m.retargetIn -= dt;
           if (m.retargetIn <= 0) {
             m.lured = null;
@@ -3359,10 +3396,11 @@
 
       // Periodic new-rule announcements (red, distinct from flavor)
       const UNIVERSAL_RULES = [
-        // u_leftEye replaced the old u_blink: hold the LEFT eye closed for
-        // ~1 s while the right eye stays open (a wink). Harder than a single
-        // blink — players have to consciously perform it.
-        { id: "u_leftEye",  icon: "😉", labelKey: "universalLeftEyeLabel", logKey: "logUniLeftEyeAnnounce" },
+        // u_noblink: keep BOTH eyes open continuously for ~2 s. The earlier
+        // wink-the-left-eye variant was hard to detect on mobile (one-eye
+        // EAR is jittery) and easy to misread. Open-eye hold matches the
+        // ExpressionGate task and is much more reliable.
+        { id: "u_noblink",  icon: "👀", labelKey: "universalNoBlinkLabel", logKey: "logUniNoBlinkAnnounce" },
         { id: "u_mouth",    icon: "😮", labelKey: "universalMouthLabel", logKey: "logUniMouthAnnounce" },
         { id: "u_headmove", icon: "🙂", labelKey: "universalHeadLabel",  logKey: "logUniHeadAnnounce"  },
       ];
@@ -3798,15 +3836,15 @@
         avatarClosedRatio: 0.40,   // ear < baseline*0.40 → eye flat
         avatarOpenRatio:   1.00,   // ear ≥ baseline      → eye round
 
-        // --- u_leftEye (universal "close left eye 1s") --------------
-        // The rule used to be a single blink (2 consecutive closed
-        // frames, both eyes averaged). It was too easy and felt
-        // ambiguous — almost any quick blink during onboarding chatter
-        // would auto-pass. Switched to "close LEFT eye for ~1 second":
-        // checks ONLY the left eye landmarks so the right eye stays
-        // open (a real wink), and requires ~30 frames at the FaceMesh
-        // ~30 fps cadence for the full second.
-        uLeftEyeFramesNeeded: 28,
+        // --- u_noblink (universal "don't blink for 2s") -------------
+        // Tracks frames where eyes are OPEN; any blink event resets the
+        // counter. ~60 frames at 30 fps = 2 seconds. Mobile-friendly:
+        // uses both eyes' EAR average, so single-eye jitter doesn't
+        // count as a blink.
+        uNoBlinkFramesNeeded: 60,
+        // Number of consecutive sub-threshold frames before counting as
+        // a real blink (debounce against MediaPipe single-frame jitter).
+        uNoBlinkResetFrames: 2,
       };
 
       // ---------- Implementation ----------
@@ -4228,6 +4266,7 @@
         universalChallenge.action    = rule.id;
         universalChallenge.timeLeft  = universalChallenge.MAX_TIME;
         universalChallenge.blink     = { frames: 0 };
+        universalChallenge.noblink   = { open: 0, closedStreak: 0 };
         universalChallenge.mouth     = { frames: 0 };
         universalChallenge.headmove  = { hDir: 0, hChanges: 0, vDir: 0, vChanges: 0 };
         uChalIcon.textContent    = rule.icon;
@@ -4275,24 +4314,36 @@
       function processUniversalChallenge(lm) {
         const act = universalChallenge.action;
 
-        if (act === "u_leftEye") {
-          // Only the LEFT eye matters here. The avatar mirror logic notes
-          // that MediaPipe's `earL` corresponds to the user's anatomical
-          // LEFT eye, which is what 闭左眼 / "close left eye" means.
+        if (act === "u_noblink") {
+          // "Don't blink for 2s" — increment frames every tick where BOTH
+          // eyes are open; a debounced blink (consecutive closed frames)
+          // resets the counter. Reusing the per-eye EAR samples we already
+          // computed for the avatar / Owl rule path.
           const earL = earVal(lm, L_EYE_IDX);
-          if (isEyeClosed(earL)) {
-            universalChallenge.blink.frames++;
-            // Show seconds remaining on the status, e.g. "Hold 0.4s more"
-            const need = BLINK_TUNING.uLeftEyeFramesNeeded;
-            const left = Math.max(0, need - universalChallenge.blink.frames);
-            uChalStatus.textContent = t("statusLeftEyeHold", (left / 30).toFixed(1));
-            if (universalChallenge.blink.frames >= need) {
+          const earR = earVal(lm, R_EYE_IDX);
+          const ear = (earL + earR) / 2;
+          const closed = isEyeClosed(ear);
+          if (!universalChallenge.noblink) {
+            universalChallenge.noblink = { open: 0, closedStreak: 0 };
+          }
+          const nb = universalChallenge.noblink;
+          if (closed) {
+            nb.closedStreak++;
+            if (nb.closedStreak >= BLINK_TUNING.uNoBlinkResetFrames) {
+              // Real blink detected — reset the open-eye counter.
+              nb.open = 0;
+              uChalStatus.textContent = t("statusNoBlinkPlease");
+            }
+          } else {
+            nb.closedStreak = 0;
+            nb.open++;
+            const need = BLINK_TUNING.uNoBlinkFramesNeeded;
+            const left = Math.max(0, need - nb.open);
+            uChalStatus.textContent = t("statusNoBlinkHold", (left / 30).toFixed(1));
+            if (nb.open >= need) {
               universalChallenge.completed = true;
               endUniversalChallenge(true);
             }
-          } else {
-            universalChallenge.blink.frames = 0;
-            uChalStatus.textContent = t("statusLeftEyePlease");
           }
         } else if (act === "u_mouth") {
           const mar = lmDist(lm[13], lm[14]) / (lmDist(lm[61], lm[291]) + 1e-6);
