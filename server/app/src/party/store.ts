@@ -311,6 +311,9 @@ function handleServerEnvelope(
   get: () => PartyStoreState
 ) {
   const t = msg.type;
+  // #region agent log
+  _dbgRecvCount(t);
+  // #endregion
   if (t === "error") {
     const e = msg as { type: "error"; error: string; max?: number };
     set({ connectError: e.error });
@@ -322,6 +325,17 @@ function handleServerEnvelope(
       ...raw,
       mainSceneItemsRemoved: raw.mainSceneItemsRemoved ?? []
     };
+    // #region agent log
+    _dbgPost("store.ts:snapshot", "snapshot recv", {
+      hyp: "H1",
+      started: snap.started,
+      startedAt: snap.startedAt,
+      players: snap.players.length,
+      readyCount: snap.readyCount ?? null,
+      itemsRemoved: (snap.mainSceneItemsRemoved ?? []).length,
+      lives: snap.players.map((p) => ({ n: p.name, l: p.lives, a: p.alive }))
+    });
+    // #endregion
     set((s) => {
       const next: Record<string, MainScenePeerState> = { ...s.mainScenePeers };
       const alive = new Set(snap.players.map((p) => p.id));
@@ -461,6 +475,67 @@ function handleServerEnvelope(
     return;
   }
 }
+
+// #region agent log
+// Lightweight runtime logging for the multiplayer debug pass. Inert in production
+// (only fires when running on localhost / LAN dev origins, see _dbgEnabled).
+const _DBG_URL = "http://127.0.0.1:7518/ingest/d4c760a9-8d27-4a7c-8005-12a2cff8b553";
+const _DBG_SID = "b26e2b";
+const _dbgEnabled = (() => {
+  if (typeof window === "undefined") return false;
+  const h = window.location.hostname;
+  return /^(localhost|127\.0\.0\.1|10\.|192\.168\.|172\.)/.test(h);
+})();
+function _dbgPost(location: string, message: string, data: Record<string, unknown>): void {
+  if (!_dbgEnabled) return;
+  try {
+    fetch(_DBG_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": _DBG_SID },
+      body: JSON.stringify({
+        sessionId: _DBG_SID,
+        location,
+        message,
+        data: { tab: _dbgTabId(), ...data },
+        timestamp: Date.now()
+      })
+    }).catch(() => {});
+  } catch { /* ignore */ }
+}
+let _dbgTabIdMemo: string | null = null;
+function _dbgTabId(): string {
+  if (_dbgTabIdMemo) return _dbgTabIdMemo;
+  try {
+    const k = "nz.dbg.tabId";
+    let v = sessionStorage.getItem(k);
+    if (!v) {
+      v = "tab_" + Math.random().toString(36).slice(2, 7);
+      sessionStorage.setItem(k, v);
+    }
+    _dbgTabIdMemo = v;
+    return v;
+  } catch {
+    return "tab_anon";
+  }
+}
+let _dbgRecvBucket: Record<string, number> = {};
+let _dbgRecvFlush = 0;
+function _dbgRecvCount(t: string): void {
+  if (!_dbgEnabled) return;
+  _dbgRecvBucket[t] = (_dbgRecvBucket[t] || 0) + 1;
+  const now = Date.now();
+  if (now - _dbgRecvFlush >= 1000) {
+    if (Object.keys(_dbgRecvBucket).length > 0) {
+      _dbgPost("store.ts:recv-counts", "WS msg counts (last ~1s)", {
+        hyp: "H1+H3",
+        counts: _dbgRecvBucket
+      });
+    }
+    _dbgRecvBucket = {};
+    _dbgRecvFlush = now;
+  }
+}
+// #endregion
 
 function renderSystemMessage(
   sys: { code?: string; params?: Record<string, unknown>; message?: string },

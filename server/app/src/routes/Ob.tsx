@@ -245,6 +245,68 @@ function ObInner() {
   // Array of N CameraFrame objects on every CAMERA_FRAME message (5 fps × N players).
   const liveCount = cameraFrames.size;
 
+  // #region agent log
+  // OB-perf instrumentation: per-player CAMERA_FRAME inter-arrival times. If OB
+  // looks "choppy" we'll see the gap between frames balloon here. Logged every
+  // 2 s as a histogram so we don't flood the endpoint at 5 fps × N players.
+  const _dbgFrameTracker = useRef<{
+    lastByPlayer: Map<string, number>;
+    gaps: Map<string, number[]>;
+    lastFlush: number;
+  }>({ lastByPlayer: new Map(), gaps: new Map(), lastFlush: Date.now() });
+  useEffect(() => {
+    const enabled = /^(localhost|127\.0\.0\.1|10\.|192\.168\.|172\.)/.test(
+      window.location.hostname
+    );
+    if (!enabled) return;
+    const tr = _dbgFrameTracker.current;
+    const now = Date.now();
+    cameraFrames.forEach((frame, pid) => {
+      const last = tr.lastByPlayer.get(pid);
+      if (last && frame.ts !== last) {
+        const gap = frame.ts - last;
+        if (gap > 0 && gap < 5000) {
+          let arr = tr.gaps.get(pid);
+          if (!arr) { arr = []; tr.gaps.set(pid, arr); }
+          arr.push(gap);
+        }
+      }
+      tr.lastByPlayer.set(pid, frame.ts);
+    });
+    if (now - tr.lastFlush >= 2000 && tr.gaps.size > 0) {
+      const summary: Record<string, { n: number; avg: number; max: number; p95: number }> = {};
+      tr.gaps.forEach((arr, pid) => {
+        if (arr.length === 0) return;
+        const sorted = arr.slice().sort((a, b) => a - b);
+        summary[pid.slice(0, 8)] = {
+          n: arr.length,
+          avg: Math.round(arr.reduce((s, x) => s + x, 0) / arr.length),
+          max: sorted[sorted.length - 1],
+          p95: sorted[Math.floor(sorted.length * 0.95)] ?? sorted[sorted.length - 1]
+        };
+      });
+      try {
+        fetch(
+          "http://127.0.0.1:7518/ingest/d4c760a9-8d27-4a7c-8005-12a2cff8b553",
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "b26e2b" },
+            body: JSON.stringify({
+              sessionId: "b26e2b",
+              location: "Ob.tsx:cam-gaps",
+              message: "OB camera-frame inter-arrival (ms) per player",
+              data: { hyp: "H3", players: realPlayers.length, summary },
+              timestamp: now
+            })
+          }
+        ).catch(() => {});
+      } catch { /* ignore */ }
+      tr.gaps.clear();
+      tr.lastFlush = now;
+    }
+  }, [cameraFrames, realPlayers.length]);
+  // #endregion
+
   const pickObFollow = useCallback((id: string) => {
     setObCam({ mode: "follow", followId: id });
   }, []);

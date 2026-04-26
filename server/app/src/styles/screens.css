@@ -585,29 +585,6 @@
   background: #30d080;
 }
 
-/* Game screen */
-.game-grid {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: var(--nz-gap);
-  flex: 1;
-  min-height: 0;
-}
-
-/* Landscape phone in landscape (e.g. iPhone landscape ~ 844x390) — switch to 2 cols */
-@media (orientation: landscape) and (min-width: 720px) {
-  .game-grid {
-    grid-template-columns: minmax(280px, 360px) 1fr;
-  }
-}
-
-/* Desktop landscape — wider left rail */
-@media (min-width: 1024px) and (orientation: landscape) {
-  .game-grid {
-    grid-template-columns: minmax(360px, 420px) 1fr;
-  }
-}
-
 .section-title {
   font-family: var(--nz-font-display);
   font-size: 13px;
@@ -1393,12 +1370,6 @@
 /* Onboarding (photo + quiz): never show fixed REC/clock; Header hides live pill. */
 .app-shell--onboard .rec-badge,
 .app-shell--onboard .timer-badge {
-  display: none !important;
-}
-
-/* Game: same as onboard — no REC, clock, or connection pill in header. */
-.app-shell--game .rec-badge,
-.app-shell--game .timer-badge {
   display: none !important;
 }
 

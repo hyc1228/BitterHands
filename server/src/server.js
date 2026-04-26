@@ -3,6 +3,26 @@ import { fnv1a32, pickLooksRoast, similarityPercentFor } from "./photoAnalysis.j
 import { generateMonitorLine } from "./monitorLines.js";
 import { synthesize as synthesizeVoice, getCachedAudio } from "./voice.js";
 
+// #region agent log
+// Lightweight runtime logging (multiplayer debug pass). Inert when DEBUG_LOG_URL
+// is unreachable (best-effort fetch). Only useful in local PartyKit dev where
+// 127.0.0.1:7518 is reachable from the worker runtime.
+const _DBG_URL = "http://127.0.0.1:7518/ingest/d4c760a9-8d27-4a7c-8005-12a2cff8b553";
+const _DBG_SID = "b26e2b";
+function _dbgPost(location, message, data) {
+  try {
+    fetch(_DBG_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": _DBG_SID },
+      body: JSON.stringify({
+        sessionId: _DBG_SID, location, message,
+        data: data || {}, timestamp: Date.now()
+      })
+    }).catch(() => {});
+  } catch { /* ignore */ }
+}
+// #endregion
+
 /** Max players (JOIN) per room — matches GDD 5–10; hard cap 10. */
 const MAX_ROOM_PLAYERS = 10;
 /** End-game ceremony: how many action-edge stills the server keeps per kind, per player. */
@@ -89,6 +109,28 @@ export default class Server {
     this.mainSceneItemsRemoved = new Set();
     /** @type {Map<string, (typeof MAIN_SCENE_ITEM_DEFS)[0]>} */
     this._mainSceneItemRegistry = new Map(MAIN_SCENE_ITEM_DEFS.map((d) => [d.id, d]));
+
+    // #region agent log
+    // Per-2s message counters for the multiplayer debug pass.
+    this._dbg = {
+      counts: { broadcast: 0, cameraFrame: 0, highlight: 0, highlightBytes: 0, mainSceneState: 0, monitorBroadcast: 0 },
+      itemTaken: [],
+      lastFlush: Date.now(),
+    };
+    this._dbgInterval = setInterval(() => {
+      const c = this._dbg.counts;
+      const took = this._dbg.itemTaken.splice(0);
+      _dbgPost("server.js:per-sec", "broadcast counts (last ~2s)", {
+        hyp: "H2+H3+H6",
+        room: this.party && this.party.id,
+        players: this.players.size,
+        counts: c,
+        itemTaken: took
+      });
+      this._dbg.counts = { broadcast: 0, cameraFrame: 0, highlight: 0, highlightBytes: 0, mainSceneState: 0, monitorBroadcast: 0 };
+      this._dbg.lastFlush = Date.now();
+    }, 2000);
+    // #endregion
 
     /** Monotonic counter for monitor_voice ids when no audio hash is available. */
     this._monitorVoiceSeq = 0;
@@ -563,6 +605,13 @@ export default class Server {
         if (!this.started) return;
         const kind = msg && msg.kind;
         if (kind !== "mouth" && kind !== "shake" && kind !== "blink") return;
+        // #region agent log
+        if (this._dbg) {
+          this._dbg.counts.highlight += 1;
+          const frames = Array.isArray(msg && msg.frames) ? msg.frames : (msg && msg.dataUrl ? [msg.dataUrl] : []);
+          for (const f of frames) if (typeof f === "string") this._dbg.counts.highlightBytes += f.length;
+        }
+        // #endregion
         // New shape: { frames: string[] } (each frame a 96² JPEG dataURL). We
         // also accept the legacy { dataUrl } shape so older clients still drop
         // a single still in.
@@ -620,6 +669,9 @@ export default class Server {
           return;
         }
         if (this.mainSceneItemsRemoved.has(itemId)) {
+          // #region agent log
+          if (this._dbg) this._dbg.itemTaken.push({ id: itemId, by: player.name, race: "lost" });
+          // #endregion
           conn.send(
             JSON.stringify({
               type: ServerEventTypes.MAIN_SCENE_ITEMS_RESYNC,
@@ -629,6 +681,9 @@ export default class Server {
           return;
         }
         this.mainSceneItemsRemoved.add(itemId);
+        // #region agent log
+        if (this._dbg) this._dbg.itemTaken.push({ id: itemId, by: player.name, race: "won" });
+        // #endregion
         const meta = this._mainSceneItemRegistry.get(itemId);
         // Heart restores 1 HP (capped at 3 — GDD).
         if (meta.type === "heart" && player.lives < 3) {
@@ -1042,6 +1097,14 @@ export default class Server {
 
   _broadcast(type, data) {
     this.party.broadcast(JSON.stringify({ type, data }));
+    // #region agent log
+    if (this._dbg) {
+      this._dbg.counts.broadcast += 1;
+      if (type === ServerEventTypes.CAMERA_FRAME) this._dbg.counts.cameraFrame += 1;
+      if (type === ServerEventTypes.MAIN_SCENE_BROADCAST) this._dbg.counts.mainSceneState += 1;
+      if (type === ServerEventTypes.MONITOR_STATE) this._dbg.counts.monitorBroadcast += 1;
+    }
+    // #endregion
   }
 
   _publicPlayer(p) {

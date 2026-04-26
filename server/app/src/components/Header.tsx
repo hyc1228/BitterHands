@@ -8,8 +8,7 @@ export default function Header() {
   const t = dict(lang);
 
   const isOb = loc.pathname.startsWith("/ob");
-  const hideHeaderTools =
-    loc.pathname.startsWith("/onboard") || loc.pathname.startsWith("/game");
+  const hideHeaderTools = loc.pathname.startsWith("/onboard");
   const homeTo = isOb ? "/ob" : "/";
 
   return (

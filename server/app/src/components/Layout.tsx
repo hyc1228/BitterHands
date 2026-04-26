@@ -31,7 +31,6 @@ export default function Layout({ children }: PropsWithChildren) {
     );
   }
   const isOnboard = loc.pathname.startsWith("/onboard");
-  const isGame = loc.pathname.startsWith("/game");
   // The REC dot + clock that used to live on `/ob` was removed: the in-game scene already
   // shows them in its own HUD, so a duplicate at the SPA shell level is just visual noise.
   return (
@@ -39,8 +38,7 @@ export default function Layout({ children }: PropsWithChildren) {
       className={
         "app-shell" +
         (isOb ? " ob-shell" : "") +
-        (isOnboard ? " app-shell--onboard" : "") +
-        (isGame ? " app-shell--game" : "")
+        (isOnboard ? " app-shell--onboard" : "")
       }
     >
       <Header />

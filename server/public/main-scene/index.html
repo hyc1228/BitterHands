@@ -4501,6 +4501,37 @@
         if (!raw || typeof raw !== "object") return;
         var pl = raw.players;
         if (!Array.isArray(pl)) return;
+        // #region agent log
+        try {
+          var _h = window.location && window.location.hostname || "";
+          if (/^(localhost|127\.0\.0\.1|10\.|192\.168\.|172\.)/.test(_h)) {
+            var _summary = pl.map(function (q) {
+              return { n: String((q && q.name) || "?").slice(0, 8), a: q && q.alive !== false };
+            });
+            var _key = JSON.stringify(_summary);
+            if (window.__nzLastApplyKey !== _key) {
+              window.__nzLastApplyKey = _key;
+              fetch("http://127.0.0.1:7518/ingest/d4c760a9-8d27-4a7c-8005-12a2cff8b553", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "b26e2b" },
+                body: JSON.stringify({
+                  sessionId: "b26e2b",
+                  location: "main scene/index.html:applyRoomPlayers",
+                  message: "iframe applied room player liveness",
+                  data: {
+                    hyp: "H1",
+                    self: String(raw.selfName || raw.selfId || "?").slice(0, 8),
+                    started: !!raw.roomStarted,
+                    spectator: !!raw.spectator,
+                    players: _summary,
+                  },
+                  timestamp: Date.now()
+                })
+              }).catch(function () {});
+            }
+          }
+        } catch (e) { /* ignore */ }
+        // #endregion
         var selfId = raw.selfId || "";
         var selfName = String(raw.selfName || "");
         state.netSelfId = selfId;
