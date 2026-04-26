@@ -2767,18 +2767,28 @@
           }
 
           // Check which players are inside the cone
+          // Build candidate list, marking each with its alive status so the Monitor
+          // can ignore corpses (server-authoritative `alive` from NZ_ROOM_PLAYERS).
           const allPlayers = [
-            { id: "me", x: state.me.x, y: state.me.y },
-            ...state.others.map((p) => ({ id: p.id, x: p.x, y: p.y })),
+            { id: "me", x: state.me.x, y: state.me.y, alive: !state.me.dead },
+            ...state.others.map((p) => ({
+              id: p.id,
+              x: p.x,
+              y: p.y,
+              alive: p.alive !== false,
+            })),
           ];
           const inCone = allPlayers.filter((p) =>
             isInCone(m.x, m.y, m.aimAngle, p.x, p.y)
           );
-          // Don't re-target "me" while challenge is on cooldown
-          // Skip dead self (now a ghost) and the post-challenge cooldown.
-          const eligible = inCone.filter(
-            (p) => !(p.id === "me" && (challenge.cooldown > 0 || state.me.dead))
-          );
+          // Skip:
+          //  - any dead player (locking a corpse used to freeze the Monitor in place)
+          //  - "me" while challenge is on cooldown
+          const eligible = inCone.filter((p) => {
+            if (!p.alive) return false;
+            if (p.id === "me" && (challenge.cooldown > 0 || state.me.dead)) return false;
+            return true;
+          });
           if (eligible.length > 0) {
             const pick = eligible[Math.floor(Math.random() * eligible.length)];
             m.targetId  = pick.id;
@@ -2806,7 +2816,20 @@
             m.targetId === "me"
               ? state.me
               : state.others.find((p) => p.id === m.targetId);
-          if (!target) { m.mode = "sweep"; m.sweepTimer = 1; return; }
+          // Release immediately if the target vanished OR died — otherwise the
+          // Monitor camps the corpse forever, which from other clients looks like
+          // it's "stuck" and from the dying player breaks the challenge bar.
+          const targetAlive =
+            m.targetId === "me"
+              ? !state.me.dead
+              : !!(target && target.alive !== false);
+          if (!target || !targetAlive) {
+            if (challenge.active && m.targetId === "me") endChallenge(false);
+            m.mode = "sweep";
+            m.targetId = null;
+            m.sweepTimer = 1;
+            return;
+          }
 
           const desired = Math.atan2(target.y - m.y, target.x - m.x);
           m.aimAngle += clamp(wrapAngle(desired - m.aimAngle), -8 * dt, 8 * dt);
@@ -4011,6 +4034,9 @@
             animKey: "idle",
             facing: 0,
             netRemote: true,
+            // Server-authoritative liveness. The Monitor AI uses this to skip
+            // corpses so it doesn't lock onto a dead body and freeze in place.
+            alive: q.alive !== false,
           };
           state.others.push(row);
           var g = makeAnimalAvatar({ animal: an, isMe: false, name: row.name });

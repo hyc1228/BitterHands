@@ -64,6 +64,8 @@ export interface NzRoomPlayerRow {
   id: string;
   name: string;
   sceneAnimal: NzPlayerSyncPayload["sceneAnimal"];
+  /** Server-authoritative; iframe uses this so the local Monitor AI doesn't lock onto a corpse. */
+  alive: boolean;
 }
 
 export function buildRoomPlayersPayload(
@@ -97,7 +99,8 @@ export function buildRoomPlayersPayload(
   const players: NzRoomPlayerRow[] = roster.map((p) => ({
     id: p.id,
     name: p.name,
-    sceneAnimal: mapAnimalToMainScene(p.animal)
+    sceneAnimal: mapAnimalToMainScene(p.animal),
+    alive: p.alive !== false
   }));
   return {
     selfId,
