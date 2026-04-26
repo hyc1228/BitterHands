@@ -1,3 +1,21 @@
+<!-- Pitch deck preview — interactive React deck lives in `pitch/`, run with `cd pitch && npm install && npm run dev` -->
+
+<p align="center">
+  <img src="pitch/preview/slide-01-hook.png" alt="Nocturne Zoo — a 2-minute AI horror social game" width="100%" />
+</p>
+
+<p align="center">
+  <img src="pitch/preview/slide-02-gameplay.png" alt="How it plays" width="32%" />
+  <img src="pitch/preview/slide-03-ai.png" alt="Where the AI lives" width="32%" />
+  <img src="pitch/preview/slide-04-qr.png" alt="Your phone is the controller" width="32%" />
+</p>
+
+<p align="center">
+  <sub><a href="pitch/">▶ Live deck source</a> · arrow keys to navigate · 4 slides</sub>
+</p>
+
+---
+
 # Nocturne Zoo / 深夜动物园
 
 AI 规则怪谈社交游戏（Hackathon Edition, GDD v0.7 / April 2026）。
