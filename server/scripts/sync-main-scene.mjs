@@ -28,7 +28,34 @@ function syncDir(srcRel, destRel) {
   fs.mkdirSync(path.dirname(dest), { recursive: true });
   fs.rmSync(dest, { recursive: true, force: true });
   fs.cpSync(src, dest, { recursive: true });
+  // Force writable perms — sources copied from sandboxed apps (e.g. WeChat container)
+  // can land here as read-only, which then makes Vite's `prepareOutDir` copy step fail
+  // with EACCES when it tries to overwrite the file in `server/public/`.
+  chmodWritable(dest);
   console.log(`[sync] ${srcRel} → app/public/${destRel}`);
+}
+
+function chmodWritable(p) {
+  let stat;
+  try {
+    stat = fs.statSync(p);
+  } catch {
+    return;
+  }
+  try {
+    fs.chmodSync(p, stat.isDirectory() ? 0o755 : 0o644);
+  } catch {
+    /* ignore */
+  }
+  if (stat.isDirectory()) {
+    let entries = [];
+    try {
+      entries = fs.readdirSync(p);
+    } catch {
+      return;
+    }
+    for (const e of entries) chmodWritable(path.join(p, e));
+  }
 }
 
 syncDir("main scene", "main-scene");
