@@ -19,13 +19,17 @@ interface Opts {
  * Outputs a SQUARE thumbnail (center-cropped from the source video) because OB
  * renders these inside circular avatars — a 16:9 source going through
  * `object-fit: cover` clips the sides and pushes the face off-center.
+ *
+ * Defaults are tuned for a smooth-looking OB feed (5 fps, ~4 KB / frame) without
+ * crushing mobile uplink: 10 players × 5 fps × ~5 KB ≈ 250 KB/s aggregate at OB.
+ * Mobile JPEG encoding at 128² is ~2 ms per frame on a modern phone (negligible).
  */
 export function useCameraFrameUpload({
   enabled,
   videoEl,
-  size = 144,
-  intervalMs = 800,
-  quality = 0.5
+  size = 128,
+  intervalMs = 200,
+  quality = 0.42
 }: Opts) {
   const send = usePartyStore((s) => s.send);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);

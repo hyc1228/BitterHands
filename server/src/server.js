@@ -434,12 +434,16 @@ export default class Server {
 
         const ts = Date.now();
         this.lastCameraFrameByPlayerId.set(conn.id, { dataUrl, ts });
-        this._broadcast(ServerEventTypes.CAMERA_FRAME, {
-          playerId: conn.id,
-          playerName: player.name,
-          dataUrl,
-          ts
-        });
+        // Don't echo the frame back to the sender — they don't render their own
+        // tile in the OB face wall, and at 5 fps × N players this saves a lot of
+        // pointless WS bytes on each client's downlink.
+        this.party.broadcast(
+          JSON.stringify({
+            type: ServerEventTypes.CAMERA_FRAME,
+            data: { playerId: conn.id, playerName: player.name, dataUrl, ts }
+          }),
+          [conn.id]
+        );
         return;
       }
 
