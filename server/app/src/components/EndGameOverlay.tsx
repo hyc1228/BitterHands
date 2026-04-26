@@ -312,41 +312,55 @@ function AwardPanel({
     window.setTimeout(() => setSavedHint(false), 1600);
   }, []);
 
+  // `is-busy` shimmer states for the save buttons while their async work
+  // (canvas → PNG, gif.js encode) runs. Without this the button would
+  // appear to do nothing for 1–2 s on slower phones.
+  const [savingImg, setSavingImg] = useState(false);
+  const [savingGif, setSavingGif] = useState(false);
+
   const handleSave = useCallback(async () => {
     if (!saveBurst || saveBurst.length === 0) return;
-    // Save just one face (the viewer's own action-edge still, or the
-    // winner's as a fallback). No collage, no card chrome.
-    const blob = await dataUrlToBlob(saveBurst[0]);
-    if (!blob) return;
-    const ext = blob.type.includes("png") ? "png" : "jpg";
-    await shareOrDownload(
-      blob,
-      `${baseFileBase()}.${ext}`,
-      blob.type || "image/jpeg",
-      titleStr,
-      baseShareText
-    );
-    flashSavedHint();
-  }, [saveBurst, baseFileBase, titleStr, baseShareText, flashSavedHint]);
+    if (savingImg) return;
+    setSavingImg(true);
+    try {
+      const blob = await dataUrlToBlob(saveBurst[0]);
+      if (!blob) return;
+      const ext = blob.type.includes("png") ? "png" : "jpg";
+      await shareOrDownload(
+        blob,
+        `${baseFileBase()}.${ext}`,
+        blob.type || "image/jpeg",
+        titleStr,
+        baseShareText
+      );
+      flashSavedHint();
+    } finally {
+      setSavingImg(false);
+    }
+  }, [saveBurst, savingImg, baseFileBase, titleStr, baseShareText, flashSavedHint]);
 
   const handleSaveClip = useCallback(async () => {
+    if (savingGif) return;
     if (!saveBurst || saveBurst.length < 2) {
-      // Fall through to the still-image path so the button still does
-      // *something* useful when the burst is too short to animate.
       await handleSave();
       return;
     }
-    const blob = await encodeBurstAsGif(saveBurst, {
-      frameDelayMs: 110,
-      loops: 3
-    });
-    if (!blob) {
-      await handleSave();
-      return;
+    setSavingGif(true);
+    try {
+      const blob = await encodeBurstAsGif(saveBurst, {
+        frameDelayMs: 110,
+        loops: 3
+      });
+      if (!blob) {
+        await handleSave();
+        return;
+      }
+      await shareOrDownload(blob, `${baseFileBase()}.gif`, "image/gif", titleStr, baseShareText);
+      flashSavedHint();
+    } finally {
+      setSavingGif(false);
     }
-    await shareOrDownload(blob, `${baseFileBase()}.gif`, "image/gif", titleStr, baseShareText);
-    flashSavedHint();
-  }, [saveBurst, baseFileBase, titleStr, baseShareText, flashSavedHint, handleSave]);
+  }, [saveBurst, savingGif, baseFileBase, titleStr, baseShareText, flashSavedHint, handleSave]);
 
   return (
     <div
@@ -396,9 +410,9 @@ function AwardPanel({
       <div className="endgame-actions">
         <button
           type="button"
-          className="ghost"
+          className={"ghost" + (savingImg ? " is-busy" : "")}
           onClick={(e) => { e.stopPropagation(); handleSave(); }}
-          disabled={phase !== "reveal" || !hasSaveImage}
+          disabled={phase !== "reveal" || !hasSaveImage || savingImg}
           title={!hasSaveImage ? t.endGameAwardNone : undefined}
         >
           {savedHint ? t.endGameSaved : t.endGameSave}
@@ -406,9 +420,9 @@ function AwardPanel({
         {hasSaveGif ? (
           <button
             type="button"
-            className="ghost"
+            className={"ghost" + (savingGif ? " is-busy" : "")}
             onClick={(e) => { e.stopPropagation(); handleSaveClip(); }}
-            disabled={phase !== "reveal"}
+            disabled={phase !== "reveal" || savingGif}
             title={t.endGameSaveClipHint}
           >
             {t.endGameSaveClip}

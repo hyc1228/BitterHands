@@ -203,12 +203,17 @@ function ObInner() {
     send(ClientMessageTypes.START);
   }
 
+  const [aiFlashKey, setAiFlashKey] = useState(0);
   function handleSpawnAi() {
     send(ClientMessageTypes.OB_SPAWN_AI, { count: 4 });
+    // Re-trigger the AI counter flash animation each click. The keyed
+    // wrapper below remounts so the CSS animation actually replays.
+    setAiFlashKey((k) => k + 1);
   }
 
   function handleDespawnAi() {
     send(ClientMessageTypes.OB_DESPAWN_AI);
+    setAiFlashKey((k) => k + 1);
   }
 
   async function handleConnect() {
@@ -365,7 +370,13 @@ function ObInner() {
               {t.obStartGame}
             </button>
             <span className="muted ob-start-meta">
-              {t.obReadyCount(readyCount, totalPlayers)}
+              {/* keyed wrappers re-mount each tick the count flips so the
+                  nz-num-pop CSS animation actually replays. */}
+              <span key={`r-${readyCount}`} className="nz-num-pop">{readyCount}</span>
+              {" / "}
+              <span key={`t-${totalPlayers}`} className="nz-num-pop">{totalPlayers}</span>
+              {" "}
+              {t.lobbyReadyLabel ?? "ready"}
             </span>
           </div>
         ) : null}
@@ -387,7 +398,13 @@ function ObInner() {
           >
             Clear AI
           </button>
-          <span className="muted ob-ai-meta">{aiCount} AI in room</span>
+          <span
+            key={aiFlashKey}
+            className="muted ob-ai-meta is-flash"
+          >
+            <span key={`ai-${aiCount}`} className="nz-num-pop">{aiCount}</span>
+            {" AI in room"}
+          </span>
         </div>
         <div>
           <div className="section-title">
@@ -756,6 +773,9 @@ const ObFaceSlot = memo(
         )}
       </>
     );
+    // "Live" if the latest frame is fresher than ~3 s; the upload runs at 5 fps,
+    // so anything older than that means the player's camera is paused / lost.
+    const isLive = !!frame && Date.now() - frame.ts < 3000;
     return (
       <div
         className={`ob-face-slot${followSelected ? " ob-pick-on" : ""}`}
@@ -767,6 +787,7 @@ const ObFaceSlot = memo(
             className="ob-face-circle ob-face-pick"
             title={player.name}
             onClick={onPickPlayer}
+            data-nz-ripple
             aria-label={t.obCamFollow + ": " + player.name}
           >
             {face}
@@ -776,6 +797,7 @@ const ObFaceSlot = memo(
             {face}
           </div>
         )}
+        {isLive ? <span className="ob-live-dot" aria-hidden /> : null}
         {player ? (
           <div className="ob-face-label">
             <div className="ob-face-name" title={player.name}>

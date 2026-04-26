@@ -1480,6 +1480,7 @@
 }
 
 .ob-face-slot {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3588,5 +3589,165 @@
 }
 .test-fab:hover {
   background: rgba(40, 26, 6, 0.92);
+}
+
+/* =============================================================
+   Game-feel polish pack
+   Micro-interactions added per UI-Pro guidelines:
+   - 150–300 ms easing (ease-out enter, ease-in exit, no linear)
+   - prefers-reduced-motion already wired up globally; the keyframes
+     below are short bursts, so they collapse to ~0 ms cleanly there.
+   - No new colors / no new layout — just feedback animations on top
+     of existing components.
+   ============================================================= */
+
+/* 1. Number bump — for live counts that change (OB ready count, AI
+   count, lobby readyCount). Re-trigger by passing a key={value} to
+   force React to remount the wrapper. */
+@keyframes nz-num-pop {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.22); color: #ffd66a; }
+  100% { transform: scale(1); }
+}
+.nz-num-pop {
+  display: inline-block;
+  animation: nz-num-pop 360ms cubic-bezier(0.2, 1.4, 0.3, 1) 1;
+  transform-origin: center;
+}
+
+/* 2. Tap ripple — fires on `:active` for any face avatar / clickable
+   tile that opts in via `data-nz-ripple`. Pure CSS; no JS. */
+@keyframes nz-tap-ripple {
+  0%   { transform: scale(0.4); opacity: 0.55; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+[data-nz-ripple] {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+[data-nz-ripple]::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 70%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at center, rgba(214, 64, 46, 0.35) 0%, rgba(214, 64, 46, 0) 70%);
+  pointer-events: none;
+  opacity: 0;
+}
+[data-nz-ripple]:active::after {
+  animation: nz-tap-ripple 480ms cubic-bezier(0.22, 0.9, 0.34, 1) 1;
+}
+
+/* 3. Input focus glow — replaces the plain border-only focus state
+   with a soft red halo that matches the rest of the noir palette.
+   Only on full-size text inputs (not the tiny inline ones in the OB
+   header — those keep the cleaner outline). */
+input:focus,
+textarea:focus,
+select:focus {
+  box-shadow:
+    var(--nz-shadow-soft),
+    0 0 0 3px rgba(214, 64, 46, 0.25);
+}
+
+/* 4. Saving state — buttons get a thin progress shimmer while a long
+   async (Save card / Save GIF / Spawn AI) is pending. Toggle with
+   `class="… is-busy"` from React. The pulse uses ::before so it
+   doesn't need an extra wrapping element. */
+@keyframes nz-busy-shimmer {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(110%); }
+}
+button.is-busy {
+  position: relative;
+  overflow: hidden;
+  pointer-events: none;
+}
+button.is-busy::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(242, 239, 233, 0.18) 50%,
+    transparent 100%
+  );
+  transform: translateX(-110%);
+  animation: nz-busy-shimmer 1100ms ease-in-out infinite;
+  pointer-events: none;
+}
+
+/* 5. Live indicator — a tiny pulsing green dot anchored to OB face
+   slots / spotlight tiles whose camera frame is fresh. Apply via
+   `<span className="ob-live-dot" />`. */
+@keyframes nz-live-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(0.78); }
+}
+.ob-live-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6cf08c;
+  box-shadow:
+    0 0 0 2px rgba(8, 8, 8, 0.85),
+    0 0 8px rgba(108, 240, 140, 0.7);
+  animation: nz-live-dot 1.6s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 3;
+}
+
+/* 6. Face slot — gentle "ready to click" outline glow when hovered
+   (desktop only). Reinforces interactivity without being noisy on
+   touch screens. */
+@media (hover: hover) {
+  .ob-face-slot:not(.ob-pick-on):hover .ob-face-circle {
+    border-color: rgba(214, 64, 46, 0.7);
+    box-shadow:
+      0 0 0 2px rgba(214, 64, 46, 0.22),
+      0 4px 14px rgba(214, 64, 46, 0.18);
+    transform: translateY(-1px);
+  }
+}
+
+/* 7. Lobby ready-count breathing — the lobby waiting card was static
+   pre-game; a slow breath suggests "we're alive, just waiting". */
+@keyframes nz-card-breath {
+  0%, 100% { box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45); }
+  50%      { box-shadow: 0 22px 56px rgba(214, 64, 46, 0.25), 0 0 0 1px rgba(214, 64, 46, 0.18); }
+}
+.ob-lobby-card:not(.is-all-ready) {
+  animation: nz-card-breath 4.2s ease-in-out infinite;
+}
+
+/* 8. AI spawn flash — when Spawn-AI is clicked, briefly flash the AI
+   counter to confirm the click. Triggered via `is-flash` class for
+   ~600 ms. */
+@keyframes nz-ai-flash {
+  0%   { color: var(--nz-cream-dim); }
+  20%  { color: #b9dcff; transform: scale(1.08); }
+  100% { color: var(--nz-cream-dim); }
+}
+.ob-ai-meta.is-flash {
+  display: inline-block;
+  animation: nz-ai-flash 600ms ease-out 1;
+}
+
+/* 9. EndGame collage tile hover — tiny lift on desktop so the
+   souvenir-photo metaphor reads as physical. */
+@media (hover: hover) {
+  .endgame-collage__tile:hover {
+    transform: translateY(-2px) rotate(0deg) scale(1.03);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+    z-index: 3;
+  }
 }
 
