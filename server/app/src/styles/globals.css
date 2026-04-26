@@ -219,6 +219,16 @@ button.primary {
   box-shadow: var(--nz-shadow-hard);
 }
 
+/* Slight lift on desktop hover for the primary CTA — gives the
+   click target a tangible "ready" feel before the press. Mobile
+   devices skip this (no :hover state on touch). */
+@media (hover: hover) {
+  button.primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 0 rgba(0, 0, 0, 0.4), 0 12px 28px rgba(214, 64, 46, 0.32);
+  }
+}
+
 button.ghost {
   background: transparent;
   border: 1.5px dashed var(--nz-cream-line);
