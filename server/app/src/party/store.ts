@@ -323,7 +323,13 @@ function handleServerEnvelope(
       for (const k of Object.keys(next)) {
         if (!alive.has(k)) delete next[k];
       }
-      return { snapshot: snap, mainScenePeers: next };
+      // A new round starts → wipe last round's GAME_ENDED so the ceremony
+      // overlay (still in-state from the previous game) doesn't sit on top
+      // of the live scene.
+      const wasStarted = !!s.snapshot?.started;
+      const nowStarted = !!snap.started;
+      const clearEnded = !wasStarted && nowStarted ? { gameEnded: null } : null;
+      return { snapshot: snap, mainScenePeers: next, ...(clearEnded ?? {}) };
     });
     return;
   }

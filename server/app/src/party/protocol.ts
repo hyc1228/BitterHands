@@ -43,7 +43,9 @@ export const ClientMessageTypes = {
   MAIN_SCENE_STATE: "main_scene_state",
   MAIN_SCENE_ITEM_PICKUP: "main_scene_item_pickup",
   /** Per-client cumulative face-action counters reported every few seconds. */
-  FACE_COUNTS: "face_counts"
+  FACE_COUNTS: "face_counts",
+  /** Webcam still at action-edge time, used to build the end-game ceremony collage. */
+  HIGHLIGHT: "highlight"
 } as const;
 
 export type Lang = "en" | "zh";
@@ -139,6 +141,13 @@ export interface GameEndedAward {
   count: number;
 }
 
+export interface PlayerHighlights {
+  /** Up to N JPEG dataURLs captured at action-edge times (3 per kind on server). */
+  mouth: string[];
+  shake: string[];
+  blink: string[];
+}
+
 export interface GameEnded {
   endedAt: number;
   reveal: {
@@ -150,6 +159,7 @@ export interface GameEnded {
     lives?: number;
     violations?: number;
     faceCounts?: FaceCounts;
+    highlights?: PlayerHighlights;
   }[];
   /** Mario Party–style "best at" winners per face action, OB end screen. */
   awards?: {

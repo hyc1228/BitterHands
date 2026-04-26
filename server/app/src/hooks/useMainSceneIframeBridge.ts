@@ -5,6 +5,7 @@ import {
   NZ_MSG_OUT_ITEM,
   NZ_MSG_OUT_VIOLATION,
   NZ_MSG_OUT_FACE_COUNTS,
+  NZ_MSG_OUT_HIGHLIGHT,
   NZ_MSG_SOURCE
 } from "../mainSync/protocol";
 import { usePartyStore } from "../party/store";
@@ -57,6 +58,18 @@ export function useMainSceneIframeBridge() {
     [send, started]
   );
 
+  const onHighlight = useCallback(
+    (payload: { kind?: string; dataUrl?: string }) => {
+      if (!started) return;
+      const kind = payload?.kind;
+      const dataUrl = typeof payload?.dataUrl === "string" ? payload.dataUrl : "";
+      if (kind !== "mouth" && kind !== "shake" && kind !== "blink") return;
+      if (!dataUrl.startsWith("data:image/")) return;
+      send(ClientMessageTypes.HIGHLIGHT, { kind, dataUrl });
+    },
+    [send, started]
+  );
+
   useEffect(() => {
     const onMessage = (ev: MessageEvent) => {
       const d = ev.data;
@@ -69,9 +82,11 @@ export function useMainSceneIframeBridge() {
         onViolation();
       } else if (d.type === NZ_MSG_OUT_FACE_COUNTS) {
         onFaceCounts(d.payload as Record<string, number>);
+      } else if (d.type === NZ_MSG_OUT_HIGHLIGHT) {
+        onHighlight(d.payload as Record<string, string>);
       }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [onOut, onItemOut, onViolation, onFaceCounts]);
+  }, [onOut, onItemOut, onViolation, onFaceCounts, onHighlight]);
 }

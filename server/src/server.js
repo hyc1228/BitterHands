@@ -5,6 +5,8 @@ import { synthesize as synthesizeVoice, getCachedAudio } from "./voice.js";
 
 /** Max players (JOIN) per room — matches GDD 5–10; hard cap 10. */
 const MAX_ROOM_PLAYERS = 10;
+/** End-game ceremony: how many action-edge stills the server keeps per kind, per player. */
+const HIGHLIGHTS_MAX_PER_KIND = 3;
 
 /** Must match `main scene/index.html` MAP_W / MAP_H and `state.items` ids/positions. */
 const MAP_W_MS = 1080;
@@ -208,7 +210,10 @@ export default class Server {
             ready: false,
             // Cumulative face-action counts (incremented client-side, reported via FACE_COUNTS).
             // Used at GAME_ENDED for personal stats + Mario Party–style awards.
-            faceCounts: { mouthOpens: 0, headShakes: 0, blinks: 0 }
+            faceCounts: { mouthOpens: 0, headShakes: 0, blinks: 0 },
+            // Action-edge webcam stills used to build the end-game ceremony collage.
+            // Server caps each kind at HIGHLIGHTS_MAX_PER_KIND; oldest is dropped.
+            highlights: { mouth: [], shake: [], blink: [] }
           };
           this.players.set(conn.id, player);
           this._broadcast(ServerEventTypes.PLAYER_JOINED, this._publicPlayer(player));
@@ -495,6 +500,21 @@ export default class Server {
         return;
       }
 
+      case ClientMessageTypes.HIGHLIGHT: {
+        const player = this.players.get(conn.id);
+        if (!player) return;
+        if (!this.started) return;
+        const kind = msg && msg.kind;
+        const dataUrl = msg && typeof msg.dataUrl === "string" ? msg.dataUrl : "";
+        if (kind !== "mouth" && kind !== "shake" && kind !== "blink") return;
+        if (!dataUrl.startsWith("data:image/")) return;
+        if (dataUrl.length > 60_000) return; // guardrail; 96² jpeg is ~3-5 KB
+        const bucket = player.highlights[kind];
+        bucket.push(dataUrl);
+        if (bucket.length > HIGHLIGHTS_MAX_PER_KIND) bucket.shift();
+        return;
+      }
+
       case ClientMessageTypes.FACE_COUNTS: {
         const player = this.players.get(conn.id);
         if (!player) return;
@@ -720,7 +740,12 @@ export default class Server {
       alive: p.alive,
       lives: p.lives,
       violations: p.violations,
-      faceCounts: { ...p.faceCounts }
+      faceCounts: { ...p.faceCounts },
+      highlights: {
+        mouth: p.highlights.mouth.slice(),
+        shake: p.highlights.shake.slice(),
+        blink: p.highlights.blink.slice()
+      }
     }));
     // Mario Party–style awards: highest count per face-action (only among players who
     // actually scored ≥1, ties broken by joined-order). OB renders a dedicated podium.

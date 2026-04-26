@@ -3831,18 +3831,63 @@
       // Edge-triggered counters on the raw FaceMesh stream so we don't double-count
       // a single sustained action. Reported to the parent shell (and on through
       // PartyKit) every FACE_COUNT_REPORT_MS so the server can rank players for
-      // the end-of-game awards.
+      // the end-of-game awards. We also snapshot the webcam at action-edge time —
+      // these tiny stills are the "highlight reel" frames the end-game ceremony
+      // collages together when it announces each award.
       const FACE_COUNT_REPORT_MS = 3000;
       const FACE_MOUTH_OPEN_MAR = 0.45;       // hysteresis: open above this …
       const FACE_MOUTH_CLOSE_MAR = 0.30;      // … close back below this
       const FACE_SHAKE_NX_THRESH = 0.10;      // |nose_x - center| / face_w
+      // Don't spam the server with highlight stills — at most one per kind per
+      // HIGHLIGHT_COOLDOWN_MS. Server caps at 3 stored per kind regardless.
+      const HIGHLIGHT_COOLDOWN_MS = 3500;
+      const HIGHLIGHT_SIZE = 96;              // square JPEG edge for highlights
+      const HIGHLIGHT_QUALITY = 0.45;
       state.faceTracker = {
         mouthOpen: false,
         nxDir: 0, // -1 left, 0 center, +1 right
         eyeClosed: false,
         lastReportAt: 0,
+        lastHighlight: { mouth: 0, shake: 0, blink: 0 },
       };
       state.faceCounts = { mouthOpens: 0, headShakes: 0, blinks: 0 };
+      const _hlCanvas = document.createElement("canvas");
+      _hlCanvas.width = HIGHLIGHT_SIZE;
+      _hlCanvas.height = HIGHLIGHT_SIZE;
+      const _hlCtx = _hlCanvas.getContext("2d", { alpha: false });
+
+      function maybeSendHighlight(kind, now) {
+        const ft = state.faceTracker;
+        if (now - (ft.lastHighlight[kind] || 0) < HIGHLIGHT_COOLDOWN_MS) return;
+        if (!_hlCtx || !webcamVideo) return;
+        const vw = webcamVideo.videoWidth;
+        const vh = webcamVideo.videoHeight;
+        if (!vw || !vh) return;
+        // Center-crop to a square so the face stays in frame; mirror the X axis
+        // because the player has been seeing the mirrored selfie all round.
+        const side = Math.min(vw, vh);
+        const sx = (vw - side) / 2;
+        const sy = (vh - side) / 2;
+        try {
+          _hlCtx.save();
+          _hlCtx.translate(HIGHLIGHT_SIZE, 0);
+          _hlCtx.scale(-1, 1);
+          _hlCtx.drawImage(webcamVideo, sx, sy, side, side, 0, 0, HIGHLIGHT_SIZE, HIGHLIGHT_SIZE);
+          _hlCtx.restore();
+          const dataUrl = _hlCanvas.toDataURL("image/jpeg", HIGHLIGHT_QUALITY);
+          ft.lastHighlight[kind] = now;
+          if (window !== window.top) {
+            window.parent.postMessage(
+              {
+                type: "NZ_OUT_HIGHLIGHT",
+                source: "nocturne-zoo",
+                payload: { kind, dataUrl, ts: Date.now() },
+              },
+              "*"
+            );
+          }
+        } catch (e) { /* ignore — webcam not warm yet, etc. */ }
+      }
 
       function tallyFaceActions(lm, now) {
         const ft = state.faceTracker;
@@ -3852,6 +3897,7 @@
         if (!ft.mouthOpen && mar > FACE_MOUTH_OPEN_MAR) {
           ft.mouthOpen = true;
           fc.mouthOpens += 1;
+          maybeSendHighlight("mouth", now);
         } else if (ft.mouthOpen && mar < FACE_MOUTH_CLOSE_MAR) {
           ft.mouthOpen = false;
         }
@@ -3863,7 +3909,10 @@
           const nx = (nose.x - cx) / fw;
           const dir = nx > FACE_SHAKE_NX_THRESH ? 1 : nx < -FACE_SHAKE_NX_THRESH ? -1 : 0;
           if (dir !== 0 && dir !== ft.nxDir) {
-            if (ft.nxDir !== 0) fc.headShakes += 1; // count only true flips
+            if (ft.nxDir !== 0) {
+              fc.headShakes += 1; // count only true flips
+              maybeSendHighlight("shake", now);
+            }
             ft.nxDir = dir;
           } else if (dir === 0) {
             // pass — keep last direction so consecutive same-side reads don't add
@@ -3877,6 +3926,7 @@
         if (!ft.eyeClosed && closedNow) {
           ft.eyeClosed = true;
           fc.blinks += 1;
+          maybeSendHighlight("blink", now);
         } else if (ft.eyeClosed && !closedNow) {
           ft.eyeClosed = false;
         }

@@ -46,6 +46,8 @@ export const ClientMessageTypes = /** @type {const} */ ({
   /** Request picking up a map item (id matches main-scene h1, a1, …). */
   MAIN_SCENE_ITEM_PICKUP: "main_scene_item_pickup",
   /** Per-client cumulative face-action counts (mouth opens / head shakes / blinks). */
-  FACE_COUNTS: "face_counts"
+  FACE_COUNTS: "face_counts",
+  /** A still snapshot of the player's webcam at the moment a face-action triggered. */
+  HIGHLIGHT: "highlight"
 });
 

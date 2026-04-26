@@ -2648,6 +2648,198 @@
   letter-spacing: 0.12em;
 }
 
+/* Multi-stage ceremony container — wraps each stage so we can swap with key. */
+.endgame-stage {
+  width: min(640px, 100%);
+  max-height: 100%;
+  display: grid;
+  gap: 14px;
+  animation: nz-endgame-stage 380ms cubic-bezier(0.2, 1.2, 0.4, 1) both;
+}
+@keyframes nz-endgame-stage {
+  0%   { opacity: 0; transform: translateY(10px) scale(0.985); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.endgame-skip {
+  position: fixed;
+  top: max(env(safe-area-inset-top), 14px);
+  right: max(env(safe-area-inset-right), 14px);
+  z-index: 80;
+}
+.endgame-skip button {
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  opacity: 0.85;
+}
+
+/* Intro card — short, big title. */
+.endgame-intro {
+  text-align: center;
+  padding: 32px 22px;
+}
+.endgame-intro__head {
+  font-size: clamp(30px, 7vw, 46px);
+  letter-spacing: 0.1em;
+  color: var(--nz-cream);
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.45), 0 8px 24px rgba(214, 64, 46, 0.32);
+  animation: nz-stamp-in 760ms cubic-bezier(0.2, 1.4, 0.3, 1) 1;
+}
+
+/* Award stage card */
+.endgame-award-stage {
+  text-align: center;
+  padding: 22px 18px 18px;
+  display: grid;
+  gap: 14px;
+}
+.endgame-award-stage__title {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: center;
+}
+.endgame-award-stage__medal {
+  font-size: 44px;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.55));
+  animation: nz-medal-spin 720ms cubic-bezier(0.2, 1.4, 0.3, 1) both;
+}
+@keyframes nz-medal-spin {
+  0%   { opacity: 0; transform: rotate(-60deg) scale(0.6); }
+  60%  { opacity: 1; transform: rotate(15deg) scale(1.1); }
+  100% { transform: rotate(0) scale(1); }
+}
+.endgame-award-stage__name {
+  font-family: var(--nz-font-display);
+  font-size: clamp(22px, 4.6vw, 28px);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--nz-cream);
+  margin: 0;
+}
+.endgame-award-stage__sub {
+  font-family: var(--nz-font-hand);
+  font-size: 13px;
+  margin-top: 2px;
+}
+
+/* Polaroid-style collage of action-edge stills */
+.endgame-collage {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(78px, 1fr));
+  gap: 8px;
+  padding: 6px;
+  border-radius: var(--nz-radius);
+  border: 1px dashed var(--nz-cream-line);
+  background: rgba(0, 0, 0, 0.32);
+  min-height: 100px;
+}
+.endgame-collage--empty {
+  display: grid;
+  place-items: center;
+  height: 120px;
+}
+.endgame-collage__empty {
+  font-size: 56px;
+  opacity: 0.85;
+}
+.endgame-collage__tile {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: var(--nz-radius-sm);
+  border: 2px solid rgba(242, 239, 233, 0.55);
+  background: var(--nz-black);
+  overflow: hidden;
+  transform-origin: center;
+  animation: nz-collage-pop 420ms cubic-bezier(0.2, 1.4, 0.3, 1) both;
+  /* Slight random-ish polaroid tilt via :nth-child for personality. */
+}
+.endgame-collage__tile:nth-child(3n)   { transform: rotate(-2.5deg); }
+.endgame-collage__tile:nth-child(3n+1) { transform: rotate(1.6deg); }
+.endgame-collage__tile:nth-child(3n+2) { transform: rotate(-1deg); }
+.endgame-collage__tile.is-winner {
+  border-color: rgba(255, 220, 90, 0.95);
+  box-shadow: 0 0 0 3px rgba(255, 220, 90, 0.4), 0 0 14px rgba(255, 220, 90, 0.5);
+  z-index: 2;
+}
+@keyframes nz-collage-pop {
+  0%   { opacity: 0; transform: rotate(0) scale(0.7); }
+  100% { opacity: 1; transform: rotate(0) scale(1); }
+}
+.endgame-collage__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.endgame-collage__initial {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-family: var(--nz-font-display);
+  font-size: 26px;
+  color: var(--nz-cream);
+  background: linear-gradient(135deg, rgba(214, 64, 46, 0.25), rgba(0, 0, 0, 0.45));
+}
+
+/* Winner reveal block */
+.endgame-award-stage__teaser {
+  font-size: 13px;
+  font-family: var(--nz-font-hand);
+  letter-spacing: 0.06em;
+  padding: 6px 0 10px;
+  animation: nz-blink-fade 1.4s ease-in-out infinite;
+}
+.endgame-award-stage__winner {
+  display: grid;
+  gap: 4px;
+  padding: 14px 10px;
+  border-radius: var(--nz-radius);
+  border: 2px solid rgba(255, 220, 90, 0.65);
+  background: linear-gradient(135deg, rgba(255, 220, 90, 0.16), rgba(0, 0, 0, 0.4));
+  animation: nz-stamp-in 760ms cubic-bezier(0.2, 1.4, 0.3, 1) both;
+}
+.endgame-award-stage__winner.is-self {
+  border-color: rgba(255, 220, 90, 1);
+  box-shadow: 0 0 0 2px rgba(255, 220, 90, 0.6), 0 0 24px rgba(255, 220, 90, 0.45);
+}
+.endgame-award-stage__winner-line {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 8px;
+  font-family: var(--nz-font-display);
+  font-size: clamp(20px, 4.6vw, 28px);
+  letter-spacing: 0.1em;
+  color: var(--nz-cream);
+}
+.endgame-award-stage__star {
+  font-size: 22px;
+  color: rgba(255, 220, 90, 1);
+  text-shadow: 0 0 8px rgba(255, 220, 90, 0.5);
+}
+.endgame-award-stage__wname {
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.45);
+}
+.endgame-award-stage__you {
+  font-family: var(--nz-font-display);
+  font-size: 11px;
+  letter-spacing: 0.32em;
+  color: rgba(255, 220, 90, 1);
+}
+.endgame-award-stage__wmeta {
+  font-family: var(--nz-font-hand);
+  font-size: 13px;
+  color: var(--nz-cream-dim);
+}
+.endgame-award-stage__none {
+  padding: 14px 0;
+  font-size: 13px;
+}
+
 /* Per-player face-action stats (player view only) */
 .endgame-stats {
   display: grid;
