@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { DEFAULT_ROOM_ID } from "../constants";
+import { readStoredRoomId } from "../constants";
 import { ClientMessageTypes } from "../party/protocol";
 import { usePartyStore } from "../party/store";
 
@@ -60,13 +60,7 @@ export default function Test() {
   const sentAnswers = useRef(false);
   const sentReady = useRef(false);
 
-  const room = (() => {
-    try {
-      return localStorage.getItem("nz.roomId") || DEFAULT_ROOM_ID;
-    } catch {
-      return DEFAULT_ROOM_ID;
-    }
-  })();
+  const room = readStoredRoomId("nz.roomId");
 
   // Flag MainScene's "End now" overlay (the same hook used to show test-only UI).
   useEffect(() => {

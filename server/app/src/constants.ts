@@ -1,5 +1,27 @@
-/** Default PartyKit room id when none is stored in localStorage */
-export const DEFAULT_ROOM_ID = "junction";
+/** Default PartyKit room id when none is stored in localStorage. Matches the
+ *  Hackathon demo branding so a fresh visitor lands in the same room as the OB. */
+export const DEFAULT_ROOM_ID = "Hackathon";
+
+/** Older defaults we want to overwrite if a returning visitor still has them in
+ *  localStorage; otherwise they'd silently keep landing in the wrong room. */
+const STALE_DEFAULT_ROOM_IDS = new Set(["junction", "main", "lobby", "default", "test-room"]);
+
+/** Read the user's chosen room from localStorage but auto-clear if it's just
+ *  the previous default — so the new DEFAULT_ROOM_ID actually takes effect on
+ *  return visits without forcing the user to manually retype. */
+export function readStoredRoomId(storageKey: "nz.roomId" | "nz.obRoom" = "nz.roomId"): string {
+  try {
+    const raw = localStorage.getItem(storageKey);
+    if (!raw) return DEFAULT_ROOM_ID;
+    if (STALE_DEFAULT_ROOM_IDS.has(raw)) {
+      localStorage.removeItem(storageKey);
+      return DEFAULT_ROOM_ID;
+    }
+    return raw;
+  } catch {
+    return DEFAULT_ROOM_ID;
+  }
+}
 
 /**
  * Iframe page for the in-zoo prototype, relative to the SPA origin. Source of truth: repo

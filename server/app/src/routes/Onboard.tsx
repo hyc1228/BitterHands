@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import CameraCircle, { type CameraCircleHandle } from "../components/CameraCircle";
 import ExpressionGate from "../components/ExpressionGate";
 import PermissionGate from "../components/PermissionGate";
-import { DEFAULT_ROOM_ID } from "../constants";
+import { readStoredRoomId } from "../constants";
 import { getRandomQuestions } from "../data/quizLibrary";
 import { dict, animalLocalized } from "../i18n";
 import { ClientMessageTypes, type Lang } from "../party/protocol";
@@ -34,13 +34,7 @@ export default function Onboard() {
   const autoRetried = useRef(false);
   const finalSubmitBusy = useRef(false);
 
-  const room = (() => {
-    try {
-      return localStorage.getItem("nz.roomId") || DEFAULT_ROOM_ID;
-    } catch {
-      return DEFAULT_ROOM_ID;
-    }
-  })();
+  const room = readStoredRoomId("nz.roomId");
 
   // Drop stale rules card from a previous visit so "Analyzing" can complete.
   useEffect(() => {

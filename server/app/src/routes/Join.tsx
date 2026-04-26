@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { DEFAULT_ROOM_ID, pickRandomDefaultName } from "../constants";
+import { pickRandomDefaultName, readStoredRoomId } from "../constants";
 import { dict } from "../i18n";
 import { usePartyStore } from "../party/store";
 
@@ -12,13 +12,7 @@ export default function Join() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [roomId, setRoomId] = useState(() => {
-    try {
-      return localStorage.getItem("nz.roomId") || DEFAULT_ROOM_ID;
-    } catch {
-      return DEFAULT_ROOM_ID;
-    }
-  });
+  const [roomId, setRoomId] = useState(() => readStoredRoomId("nz.roomId"));
   /** Fun random default each time you open Join; not read from localStorage (submit still saves). */
   const [name, setName] = useState(() => pickRandomDefaultName());
 

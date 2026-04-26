@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import EndGameOverlay from "../components/EndGameOverlay";
-import { DEFAULT_ROOM_ID, getMainSceneFrameSrc, OB_FACE_SLOTS } from "../constants";
+import { getMainSceneFrameSrc, OB_FACE_SLOTS, readStoredRoomId } from "../constants";
 import { isObAuthorized, isObKeyMatch, writeStoredObKey } from "../lib/obAuth";
 import { animalLocalized, dict } from "../i18n";
 import { useMainSceneIframeBridge } from "../hooks/useMainSceneIframeBridge";
@@ -140,11 +140,7 @@ function ObInner() {
     const params = new URLSearchParams(location.hash.split("?")[1] || "");
     const fromQuery = params.get("room");
     if (fromQuery) return fromQuery;
-    try {
-      return localStorage.getItem("nz.obRoom") || DEFAULT_ROOM_ID;
-    } catch {
-      return DEFAULT_ROOM_ID;
-    }
+    return readStoredRoomId("nz.obRoom");
   });
   const [error, setError] = useState<string | null>(null);
   const [obCam, setObCam] = useState<ObCamState>({ mode: "centroid", followId: null });
