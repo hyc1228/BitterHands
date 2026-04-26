@@ -1,0 +1,77 @@
+/* SVG diagram styling for slide presentations */
+
+/* Node fills */
+.diagram-node--active rect,
+.diagram-node--active circle {
+  fill: var(--sl-accent-soft);
+  stroke: var(--sl-accent);
+  stroke-width: 2;
+}
+
+.diagram-node--neutral rect,
+.diagram-node--neutral circle {
+  fill: var(--sl-bg);
+  stroke: var(--sl-text-muted);
+  stroke-width: 2;
+}
+
+.diagram-node--warning rect,
+.diagram-node--warning circle {
+  fill: var(--sl-danger-soft);
+  stroke: var(--sl-danger);
+  stroke-width: 2;
+}
+
+/* Node defaults */
+.diagram-node rect {
+  rx: 12;
+  ry: 12;
+}
+
+/* Text inside nodes */
+.diagram-text {
+  font-family: 'Fredoka', sans-serif;
+  font-weight: 500;
+  fill: var(--sl-text);
+  text-anchor: middle;
+  dominant-baseline: central;
+  font-size: 16px;
+}
+
+.diagram-text--small {
+  font-size: 13px;
+  fill: var(--sl-text-muted);
+}
+
+/* Connectors */
+.diagram-connector {
+  stroke: var(--sl-text-muted);
+  stroke-width: 2;
+  fill: none;
+}
+
+.diagram-connector--accent {
+  stroke: var(--sl-accent);
+}
+
+/* Arrow marker (define in SVG <defs>) */
+.diagram-arrow {
+  fill: var(--sl-text-muted);
+}
+
+.diagram-arrow--accent {
+  fill: var(--sl-accent);
+}
+
+/* Diagram container */
+.diagram-wrap {
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.diagram-wrap svg {
+  max-width: 100%;
+  height: auto;
+}
