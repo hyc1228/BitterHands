@@ -618,8 +618,6 @@ const ObFaceSlot = memo(
             className="ob-cam-image"
             src={frame.dataUrl}
             alt={player ? `${player.name} face` : "camera"}
-            width={160}
-            height={90}
             decoding="async"
           />
         ) : (
