@@ -1,4 +1,6 @@
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { useCameraFrameUpload } from "../hooks/useCameraFrameUpload";
+import { usePartyStore } from "../party/store";
 
 export interface CameraCircleHandle {
   /** Returns a (mirrored) JPEG dataURL snapshot of the current video frame, or null if unavailable. */
@@ -19,6 +21,16 @@ const CameraCircle = forwardRef<CameraCircleHandle, Props>(function CameraCircle
 ) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Pipe the photo-step camera into OB's face wall so operators see players
+  // mid-onboarding. Same video element used for the live preview — `videoEl`
+  // state below mirrors `videoRef` so the hook re-runs when React mounts the
+  // <video>.
+  const [videoEl, setVideoElState] = useState<HTMLVideoElement | null>(null);
+  const conn = usePartyStore((s) => s.conn);
+  useCameraFrameUpload({
+    enabled: conn === "open" && !!stream && !!videoEl,
+    videoEl
+  });
   /** Bumps each time `shotDataUrl` transitions to a fresh non-null value, so the snap-flash
    *  CSS keyframe re-runs (re-mounting the overlay via `key`). */
   const [flashKey, setFlashKey] = useState(0);
@@ -40,6 +52,7 @@ const CameraCircle = forwardRef<CameraCircleHandle, Props>(function CameraCircle
   const setVideoEl = useCallback(
     (el: HTMLVideoElement | null) => {
       videoRef.current = el;
+      setVideoElState(el);
       if (!el) return;
       if (stream) {
         if (el.srcObject !== stream) el.srcObject = stream;

@@ -147,6 +147,9 @@ function ObInner() {
   const obCamRef = useRef(obCam);
   obCamRef.current = obCam;
   const mainSceneIframeRef = useRef<HTMLIFrameElement | null>(null);
+  // Spectate modal: clicking any face avatar opens a big-camera + stage view
+  // for that player. Works in any phase (onboarding / lobby / in-game).
+  const [spectateId, setSpectateId] = useState<string | null>(null);
 
   const mainSceneSrc = useMemo(() => getMainSceneFrameSrc(), []);
   const gameLive = Boolean(snapshot?.started);
@@ -320,6 +323,15 @@ function ObInner() {
     setObCam({ mode: "follow", followId: id });
   }, []);
 
+  /** Click on any player face → open the spectate modal so the operator can
+   *  see that player even when the iframe scene isn't relevant (onboarding /
+   *  lobby). The modal also lets them jump to "Follow in main scene" when the
+   *  game is live. */
+  const openSpectate = useCallback((id: string) => {
+    setSpectateId(id);
+  }, []);
+  const closeSpectate = useCallback(() => setSpectateId(null), []);
+
   return (
     <>
     <div className="ob-grid">
@@ -390,7 +402,7 @@ function ObInner() {
                   key={p.id}
                   player={p}
                   lang={lang}
-                  onPickFollow={gameLive && p.name.toLowerCase() !== "ob" ? () => pickObFollow(p.id) : undefined}
+                  onPickFollow={p.name.toLowerCase() !== "ob" ? () => openSpectate(p.id) : undefined}
                   followPicked={obCam.mode === "follow" && obCam.followId === p.id}
                 />
               ))
@@ -435,7 +447,7 @@ function ObInner() {
                     player={player}
                     frame={player ? cameraFrames.get(player.id) ?? null : null}
                     lang={lang}
-                    onPickPlayer={player ? () => pickObFollow(player.id) : undefined}
+                    onPickPlayer={player ? () => openSpectate(player.id) : undefined}
                     followSelected={Boolean(player) && obCam.mode === "follow" && obCam.followId === player?.id}
                     pickable={Boolean(player)}
                   />
@@ -473,7 +485,7 @@ function ObInner() {
                     player={player}
                     frame={player ? cameraFrames.get(player.id) ?? null : null}
                     lang={lang}
-                    onPickPlayer={player ? () => pickObFollow(player.id) : undefined}
+                    onPickPlayer={player ? () => openSpectate(player.id) : undefined}
                     followSelected={Boolean(player) && obCam.mode === "follow" && obCam.followId === player?.id}
                     pickable={Boolean(player)}
                   />
@@ -497,7 +509,7 @@ function ObInner() {
                     player={player}
                     frame={player ? cameraFrames.get(player.id) ?? null : null}
                     lang={lang}
-                    onPickPlayer={player ? () => pickObFollow(player.id) : undefined}
+                    onPickPlayer={player ? () => openSpectate(player.id) : undefined}
                     followSelected={Boolean(player) && obCam.mode === "follow" && obCam.followId === player?.id}
                     pickable={Boolean(player)}
                   />
@@ -598,7 +610,7 @@ function ObInner() {
                     player={player}
                     frame={player ? cameraFrames.get(player.id) ?? null : null}
                     lang={lang}
-                    onPickPlayer={player ? () => pickObFollow(player.id) : undefined}
+                    onPickPlayer={player ? () => openSpectate(player.id) : undefined}
                     followSelected={Boolean(player) && obCam.mode === "follow" && obCam.followId === player?.id}
                     pickable={Boolean(player)}
                   />
@@ -610,6 +622,19 @@ function ObInner() {
       </section>
     </div>
     <EndGameOverlay viewerRole="ob" homePath="/ob" />
+    {spectateId ? (
+      <ObSpectateModal
+        player={realPlayers.find((p) => p.id === spectateId) ?? null}
+        frame={cameraFrames.get(spectateId) ?? null}
+        lang={lang}
+        gameLive={gameLive}
+        onClose={closeSpectate}
+        onFollow={() => {
+          pickObFollow(spectateId);
+          closeSpectate();
+        }}
+      />
+    ) : null}
     </>
   );
 }
@@ -891,6 +916,110 @@ function ObFollowHud({
         {player.alive === false ? (
           <div className="ob-follow-hud__dead" aria-label="eliminated">💀</div>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Spectate modal: opens when OB clicks any player avatar / face slot. Big
+ * camera feed + the player's current "stage" + their stats. Works in any
+ * phase (onboarding / lobby / in-game / eliminated).
+ */
+function derivePlayerStage(p: PublicPlayer, gameLive: boolean): {
+  key: "onboarding" | "quiz" | "reveal" | "lobby" | "ingame" | "eliminated";
+  zh: string;
+  en: string;
+} {
+  if (gameLive) {
+    if (p.alive === false) return { key: "eliminated", zh: "已淘汰 · 观察阶段", en: "Eliminated · spectating" };
+    return { key: "ingame", zh: "比赛中", en: "In game" };
+  }
+  if (p.ready) return { key: "lobby", zh: "等待大厅", en: "Lobby (ready)" };
+  if (p.animal) return { key: "reveal", zh: "揭晓 / Final Check", en: "Reveal / Final Check" };
+  if (p.avatarUrl) return { key: "quiz", zh: "答题中", en: "Quiz" };
+  return { key: "onboarding", zh: "入场中", en: "Onboarding" };
+}
+
+function ObSpectateModal({
+  player,
+  frame,
+  lang,
+  gameLive,
+  onClose,
+  onFollow
+}: {
+  player: PublicPlayer | null;
+  frame: CameraFrame | null;
+  lang: Lang;
+  gameLive: boolean;
+  onClose: () => void;
+  onFollow: () => void;
+}) {
+  const t = dict(lang);
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  if (!player) return null;
+  const stage = derivePlayerStage(player, gameLive);
+  const stageLabel = lang === "zh" ? stage.zh : stage.en;
+  const animal = obAnimalLabel(lang, player.animal, t.ownAnimalUnknown);
+  const animalIcon = animalEmoji(player.animal);
+  const lives = Math.max(0, Math.min(3, player.lives ?? 0));
+  return (
+    <div
+      className="ob-spectate-mask"
+      role="dialog"
+      aria-modal="true"
+      aria-label={player.name}
+      onClick={onClose}
+    >
+      <div className="ob-spectate-card" onClick={(e) => e.stopPropagation()}>
+        <button type="button" className="ob-spectate-close" onClick={onClose} aria-label="close">×</button>
+        <div className={"ob-spectate-feed" + (frame ? "" : " is-empty")}>
+          {frame ? (
+            <img src={frame.dataUrl} alt={`${player.name} live camera`} />
+          ) : (
+            <span className="ob-spectate-initial" aria-hidden>
+              {player.name.charAt(0).toUpperCase()}
+            </span>
+          )}
+          <span className={"ob-spectate-stage stage-" + stage.key}>{stageLabel}</span>
+        </div>
+        <div className="ob-spectate-meta">
+          <h3 className="ob-spectate-name" title={player.name}>{player.name}</h3>
+          <div className="ob-spectate-animal">
+            <span aria-hidden>{animalIcon}</span> {animal}
+          </div>
+          {gameLive ? (
+            <>
+              <div className="ob-spectate-hearts" aria-label={`${lives} lives`}>
+                {Array.from({ length: 3 }, (_, i) => (
+                  <span
+                    key={i}
+                    className={"ob-spectate-heart" + (i < lives ? "" : " is-off")}
+                    aria-hidden
+                  >
+                    {"\u2665\uFE0E"}
+                  </span>
+                ))}
+              </div>
+              <div className="ob-spectate-violations">⚠ {player.violations ?? 0}</div>
+            </>
+          ) : null}
+        </div>
+        <div className="ob-spectate-actions">
+          {gameLive ? (
+            <button type="button" className="primary" onClick={onFollow}>
+              {t.obCamFollow ?? "Follow in scene"}
+            </button>
+          ) : null}
+          <button type="button" className="ghost" onClick={onClose}>
+            {lang === "zh" ? "关闭" : "Close"}
+          </button>
+        </div>
       </div>
     </div>
   );

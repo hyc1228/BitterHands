@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { dict } from "../i18n";
 import { usePartyStore } from "../party/store";
+import { useCameraFrameUpload } from "../hooks/useCameraFrameUpload";
 import { useCameraStream } from "../hooks/useCameraStream";
 import { useFaceMesh } from "../hooks/useFaceMesh";
 import {
@@ -75,6 +76,14 @@ export default function ExpressionGate({ onPassed }: Props) {
     enabled: enabled && !!stream,
     videoEl,
     onLandmarks
+  });
+
+  // Same video element drives the OB face wall during Final Check so OB sees
+  // the player while they're being graded on the 3 tasks.
+  const conn = usePartyStore((s) => s.conn);
+  useCameraFrameUpload({
+    enabled: conn === "open" && enabled && !!stream && !!videoEl,
+    videoEl
   });
 
   const allDone =
