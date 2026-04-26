@@ -2753,6 +2753,16 @@
   object-fit: cover;
   display: block;
 }
+/* Fallback portrait sources (player avatar / character SVG) — letterbox so
+   the full body / face is visible instead of a head-crop. */
+.endgame-collage__img[src$=".svg"],
+.endgame-collage__img[src*="/main-scene/"],
+.endgame-collage__img[src*="/avatars/"],
+.endgame-collage__img[src*="__nz_avatar"] {
+  object-fit: contain;
+  background: rgba(20, 14, 4, 0.45);
+  padding: 4px;
+}
 .endgame-collage__initial {
   position: absolute;
   inset: 0;

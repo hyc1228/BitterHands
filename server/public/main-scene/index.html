@@ -3980,9 +3980,13 @@
       // Each highlight is a tiny "GIF" — a short burst of frames captured around
       // the action-edge moment that the end-game ceremony replays in a loop.
       const HIGHLIGHT_COOLDOWN_MS = 3500;
-      const HIGHLIGHT_SIZE = 96;              // square JPEG edge for highlights
-      const HIGHLIGHT_QUALITY = 0.42;
-      const HIGHLIGHT_FRAMES = 4;             // total frames per highlight burst
+      // Sharper frames: collage tiles render up to ~150 px on OB (112-px min
+      // grid + auto-fit), so 96² q0.42 was visibly blocky/fuzzy. 144² q0.7
+      // roughly triples per-frame bytes; we drop 4→3 frames to keep total
+      // bandwidth ~= 2x baseline (still well under the per-message limit).
+      const HIGHLIGHT_SIZE = 144;
+      const HIGHLIGHT_QUALITY = 0.7;
+      const HIGHLIGHT_FRAMES = 3;             // total frames per highlight burst
       const HIGHLIGHT_FRAME_INTERVAL_MS = 90;
       state.faceTracker = {
         mouthOpen: false,

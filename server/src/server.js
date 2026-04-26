@@ -1242,21 +1242,29 @@ export default class Server {
       this._endTimer = null;
     }
 
-    const revealList = Array.from(this.players.values()).map((p) => ({
-      id: p.id,
-      name: p.name,
-      animal: p.animal,
-      verdict: p.verdict,
-      alive: p.alive,
-      lives: p.lives,
-      violations: p.violations,
-      faceCounts: { ...p.faceCounts },
-      highlights: {
-        mouth: p.highlights.mouth.slice(),
-        shake: p.highlights.shake.slice(),
-        blink: p.highlights.blink.slice()
-      }
-    }));
+    const revealList = Array.from(this.players.values()).map((p) => {
+      // Last live camera frame this player sent in. Used by the ceremony as a
+      // fallback portrait so the collage can still show every player's face
+      // even if their highlight bursts are sparse / empty.
+      const lastFrame = this.lastCameraFrameByPlayerId.get(p.id);
+      return {
+        id: p.id,
+        name: p.name,
+        animal: p.animal,
+        verdict: p.verdict,
+        alive: p.alive,
+        lives: p.lives,
+        violations: p.violations,
+        faceCounts: { ...p.faceCounts },
+        highlights: {
+          mouth: p.highlights.mouth.slice(),
+          shake: p.highlights.shake.slice(),
+          blink: p.highlights.blink.slice()
+        },
+        avatarUrl: p.avatarUrl ?? null,
+        lastFrame: lastFrame ? lastFrame.dataUrl : null
+      };
+    });
     // Mario Party–style awards: highest count per face-action (only among players who
     // actually scored ≥1, ties broken by joined-order). OB renders a dedicated podium.
     const realPlayers = revealList.filter((p) => p.name.toLowerCase() !== "ob");

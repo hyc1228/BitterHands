@@ -170,6 +170,11 @@ export interface GameEnded {
     violations?: number;
     faceCounts?: FaceCounts;
     highlights?: PlayerHighlights;
+    /** Static profile photo (stored avatar) — used as fallback portrait. */
+    avatarUrl?: string | null;
+    /** Last live camera frame the server saw — used as fallback portrait when
+     *  a player has no highlight bursts (e.g. they just held still all round). */
+    lastFrame?: string | null;
   }[];
   /** Mario Party–style "best at" winners per face action, OB end screen. */
   awards?: {

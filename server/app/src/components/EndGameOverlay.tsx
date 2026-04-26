@@ -678,39 +678,64 @@ interface CollageTile {
   isWinner: boolean;
 }
 
+/**
+ * Build the collage so the audience always sees AS MANY DIFFERENT FACES as we
+ * have players (was previously bursts-only, which left the wall empty when a
+ * round was light on action).
+ *
+ * Per player, in priority order:
+ *   1. their bursts for this award kind (animated GIF tiles)
+ *   2. their last live camera frame (single-frame "burst")
+ *   3. their static avatar / profile photo (single-frame "burst")
+ *   4. initials letter (final fallback — already what tiles render at length 0)
+ *
+ * Then we extend with extra bursts up to MAX_TILES so chatty players still
+ * appear multiple times (animated GIFs are visually richer than a single
+ * still). Winner tiles are always kept by sorting them to the front.
+ */
+const COLLAGE_MAX_TILES = 12;
+
 function collageTiles(
   players: RevealEntry[],
   kind: AwardKey,
   winnerId: string | null
 ): CollageTile[] {
-  // Each tile = one burst (so a single player can contribute up to 3 tiles).
-  const buckets: { player: RevealEntry; bursts: HighlightBurst[] }[] = players.map((p) => {
+  const primary: CollageTile[] = [];
+  const extras: CollageTile[] = [];
+  for (const p of players) {
     const hl: PlayerHighlights | undefined = p.highlights;
     const bursts = (hl?.[kind] ?? []).slice(0, 3);
-    return { player: p, bursts };
-  });
-  const all: CollageTile[] = [];
-  for (const b of buckets) {
-    if (b.bursts.length === 0) continue;
-    for (const burst of b.bursts) {
-      all.push({
-        frames: burst,
-        initial: b.player.name.charAt(0).toUpperCase(),
-        isWinner: !!winnerId && b.player.id === winnerId
-      });
+    const isWinner = !!winnerId && p.id === winnerId;
+    const initial = p.name.charAt(0).toUpperCase();
+    let primaryFrames: HighlightBurst | null = null;
+    if (bursts.length > 0) {
+      primaryFrames = bursts[0];
+    } else if (p.lastFrame) {
+      primaryFrames = [p.lastFrame];
+    } else if (p.avatarUrl) {
+      primaryFrames = [p.avatarUrl];
+    }
+    primary.push({
+      frames: primaryFrames ?? [],
+      initial,
+      isWinner
+    });
+    // Extra bursts (the rest of this player's GIFs, if any).
+    for (let i = 1; i < bursts.length; i++) {
+      extras.push({ frames: bursts[i], initial, isWinner });
     }
   }
-  if (all.length === 0) {
-    return players.slice(0, 9).map((p) => ({
-      frames: [],
-      initial: p.name.charAt(0).toUpperCase(),
-      isWinner: !!winnerId && p.id === winnerId
-    }));
-  }
-  // Sort winner tiles to the front so they read first (and we keep them when
-  // capping to 9).
-  all.sort((a, b) => Number(b.isWinner) - Number(a.isWinner));
-  return all.slice(0, 9);
+  // Winners first, then sort by "has frames" so the most visual tiles are kept
+  // when we cap at MAX.
+  const sortFn = (a: CollageTile, b: CollageTile) => {
+    if (a.isWinner !== b.isWinner) return Number(b.isWinner) - Number(a.isWinner);
+    if (a.frames.length === 0 && b.frames.length > 0) return 1;
+    if (b.frames.length === 0 && a.frames.length > 0) return -1;
+    return 0;
+  };
+  primary.sort(sortFn);
+  extras.sort(sortFn);
+  return [...primary, ...extras].slice(0, COLLAGE_MAX_TILES);
 }
 
 function Collage({ tiles, fallbackEmoji }: { tiles: CollageTile[]; fallbackEmoji: string }) {
