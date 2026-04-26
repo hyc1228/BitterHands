@@ -19,6 +19,8 @@ export const ServerEventTypes = /** @type {const} */ ({
   /** Broadcast each client's main-scene pose (movement + animation) to the room. */
   MAIN_SCENE_BROADCAST: "main_scene_broadcast",
   MAIN_SCENE_ITEM_TAKEN: "main_scene_item_taken",
+  /** A previously-taken item has come back (server respawn). */
+  MAIN_SCENE_ITEM_RESPAWN: "main_scene_item_respawn",
   /** Private: client requested an already-taken item — strip local props. */
   MAIN_SCENE_ITEMS_RESYNC: "main_scene_items_resync",
   /**

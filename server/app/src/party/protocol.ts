@@ -23,6 +23,7 @@ export const ServerEventTypes = {
   PRIVATE_OWL_ROSTER: "private_owl_roster",
   MAIN_SCENE_BROADCAST: "main_scene_broadcast",
   MAIN_SCENE_ITEM_TAKEN: "main_scene_item_taken",
+  MAIN_SCENE_ITEM_RESPAWN: "main_scene_item_respawn",
   MAIN_SCENE_ITEMS_RESYNC: "main_scene_items_resync",
   MONITOR_VOICE: "monitor_voice",
   MONITOR_STATE: "monitor_state"
@@ -208,8 +209,17 @@ export interface MainSceneItemTaken {
   alarmLured: { x: number; y: number } | null;
 }
 
+/** Server respawned a previously-taken item; iframe re-creates the SVG node. */
+export interface MainSceneItemRespawn {
+  itemId: string;
+  itemType: "heart" | "alarm";
+  x: number;
+  y: number;
+}
+
 export type MainSceneItemInboxEntry =
   | { kind: "taken"; data: MainSceneItemTaken }
+  | { kind: "respawn"; data: MainSceneItemRespawn }
   | { kind: "resync"; removedItemIds: string[] };
 
 /** Authoritative Monitor (AI flashlight) pose, broadcast at ~10 Hz. */
@@ -255,6 +265,7 @@ export type ServerEnvelope =
   | { type: typeof ServerEventTypes.PRIVATE_OWL_ROSTER; data: OwlRosterEntry[] }
   | { type: typeof ServerEventTypes.MAIN_SCENE_BROADCAST; data: MainScenePeerState }
   | { type: typeof ServerEventTypes.MAIN_SCENE_ITEM_TAKEN; data: MainSceneItemTaken }
+  | { type: typeof ServerEventTypes.MAIN_SCENE_ITEM_RESPAWN; data: MainSceneItemRespawn }
   | { type: typeof ServerEventTypes.MAIN_SCENE_ITEMS_RESYNC; data: { removedItemIds: string[] } }
   | { type: typeof ServerEventTypes.MONITOR_VOICE; data: MonitorVoiceMessage }
   | { type: typeof ServerEventTypes.MONITOR_STATE; data: MonitorStateMessage }

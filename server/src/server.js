@@ -44,10 +44,20 @@ const MAIN_SCENE_ITEM_DEFS = [
   { id: "h1", type: "heart", x: CX_MS - 80, y: CY_MS - 340 },
   { id: "h2", type: "heart", x: CX_MS - 320, y: CY_MS - 60 },
   { id: "h3", type: "heart", x: CX_MS + 270, y: CY_MS + 380 },
+  // Alarm field — densified so the room has a steady stream of luring
+  // distractions for the Monitor. Spread across the playfield so multiple
+  // players can grab one without colliding.
   { id: "a1", type: "alarm", x: CX_MS + 140, y: CY_MS + 40 },
   { id: "a2", type: "alarm", x: CX_MS - 200, y: CY_MS + 220 },
-  { id: "a3", type: "alarm", x: CX_MS + 320, y: CY_MS - 260 }
+  { id: "a3", type: "alarm", x: CX_MS + 320, y: CY_MS - 260 },
+  { id: "a4", type: "alarm", x: CX_MS - 360, y: CY_MS - 280 },
+  { id: "a5", type: "alarm", x: CX_MS + 400, y: CY_MS + 180 },
+  { id: "a6", type: "alarm", x: CX_MS - 80, y: CY_MS + 320 },
+  { id: "a7", type: "alarm", x: CX_MS + 200, y: CY_MS - 80 }
 ];
+/** How long a taken item stays gone before the server respawns it.
+ * Hearts are scarcer (HP-restoring), alarms refresh fast for action density. */
+const ITEM_RESPAWN_MS = { heart: 18_000, alarm: 7_000 };
 
 /**
  * @typedef {object} Player
@@ -109,6 +119,14 @@ export default class Server {
     this.mainSceneItemsRemoved = new Set();
     /** @type {Map<string, (typeof MAIN_SCENE_ITEM_DEFS)[0]>} */
     this._mainSceneItemRegistry = new Map(MAIN_SCENE_ITEM_DEFS.map((d) => [d.id, d]));
+    /** Per-item respawn handles so we can cancel them on game end. */
+    /** @type {Map<string, ReturnType<typeof setTimeout>>} */
+    this._itemRespawnTimers = new Map();
+    /** When each player was last picked as a Monitor lock target. Used to
+     * spread attention across multiple players in the cone instead of
+     * camping the unlucky one. Cleared on game start. */
+    /** @type {Map<string, number>} */
+    this._monitorLastLockAt = new Map();
 
     // #region agent log
     // Per-2s message counters for the multiplayer debug pass. Skip the
@@ -587,6 +605,7 @@ export default class Server {
         this.mainSceneItemsRemoved = new Set();
         this.monitor = this._initialMonitorState();
         this._playerPositions.clear();
+        this._monitorLastLockAt.clear();
         this._startMonitorTick();
 
         this._broadcast(ServerEventTypes.GAME_STARTED, {
@@ -771,6 +790,7 @@ export default class Server {
         this.mainSceneItemsRemoved = new Set();
         this.monitor = this._initialMonitorState();
         this._playerPositions.clear();
+        this._monitorLastLockAt.clear();
         this._startMonitorTick();
 
         this._broadcast(ServerEventTypes.GAME_STARTED, {
@@ -939,6 +959,9 @@ export default class Server {
           priority: meta.type === "alarm" ? 7 : 4,
           ttlMs: 7000
         });
+        // Schedule a respawn so the field stays populated. Type-specific delays:
+        // alarms come back fast (action density), hearts slow (HP scarcity).
+        this._scheduleItemRespawn(itemId, meta);
         this._sendRoomSnapshot();
         return;
       }
@@ -1197,10 +1220,23 @@ export default class Server {
         inCone(m.x, m.y, m.aimAngle, p.x, p.y)
       );
       if (eligible.length > 0) {
-        const pick = eligible[Math.floor(Math.random() * eligible.length)];
+        // Spread the love: pick the eligible player whose last lock-on is
+        // OLDEST (or who has never been locked yet), so when the cone has
+        // multiple players the Monitor rotates attention round-robin instead
+        // of repeatedly singling out the same unlucky one. Random jitter
+        // breaks ties so two players locked at the same tick still alternate.
+        const now = Date.now();
+        eligible.sort((a, b) => {
+          const la = this._monitorLastLockAt.get(a.id) ?? 0;
+          const lb = this._monitorLastLockAt.get(b.id) ?? 0;
+          if (la !== lb) return la - lb;
+          return Math.random() - 0.5;
+        });
+        const pick = eligible[0];
         m.targetId = pick.id;
         m.mode = "locked";
         m.lockTimer = CHAL_MAX;
+        this._monitorLastLockAt.set(pick.id, now);
       }
       return;
     }
@@ -1238,10 +1274,39 @@ export default class Server {
     m.y = clamp(m.y, MAP_BORDER, MAP_H_MS - MAP_BORDER);
   }
 
+  /**
+   * Schedule a taken item to come back after a type-specific delay.
+   * Cancels any existing timer for the same id (safety net — there shouldn't
+   * normally be one). Skipped after _endGame so respawns don't fire post-round.
+   */
+  _scheduleItemRespawn(itemId, meta) {
+    const prev = this._itemRespawnTimers.get(itemId);
+    if (prev) clearTimeout(prev);
+    const delay = ITEM_RESPAWN_MS[meta.type] ?? 10_000;
+    const handle = setTimeout(() => {
+      this._itemRespawnTimers.delete(itemId);
+      // If the room ended (or restarted) while we were waiting, drop silently.
+      if (!this.started) return;
+      if (!this.mainSceneItemsRemoved.has(itemId)) return;
+      this.mainSceneItemsRemoved.delete(itemId);
+      this._broadcast(ServerEventTypes.MAIN_SCENE_ITEM_RESPAWN, {
+        itemId,
+        itemType: meta.type,
+        x: meta.x,
+        y: meta.y
+      });
+      this._sendRoomSnapshot();
+    }, delay);
+    this._itemRespawnTimers.set(itemId, handle);
+  }
+
   _endGame() {
     if (!this.started) return;
     this.started = false;
     this._stopMonitorTick();
+    // Cancel any in-flight respawn timers so they don't fire post-round.
+    for (const h of this._itemRespawnTimers.values()) clearTimeout(h);
+    this._itemRespawnTimers.clear();
     if (this._endTimer) {
       clearTimeout(this._endTimer);
       this._endTimer = null;

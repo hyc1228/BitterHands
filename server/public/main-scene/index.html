@@ -1407,6 +1407,7 @@
           actionShakeLabel:    "SHAKE YOUR HEAD!",
           // Universal rule labels
           universalBlinkLabel: "BLINK ONCE!",
+          universalLeftEyeLabel: "CLOSE LEFT EYE 1s!",
           universalMouthLabel: "OPEN MOUTH!",
           universalHeadLabel:  "SHAKE OR NOD!",
           challengeRuleHeader: "Rule",
@@ -1429,6 +1430,8 @@
           statusUniGo:         "Do it!",
           statusBlinking:      "Blinking…",
           statusBlinkPlease:   "Blink!",
+          statusLeftEyeHold:   (s) => `Keep left eye closed ${s}s…`,
+          statusLeftEyePlease: "Close your left eye!",
           statusHeadKeep:      "Keep going!",
           statusHeadDo:        "Shake or nod!",
           statusSuccess:       "Done!",
@@ -1447,6 +1450,7 @@
           logDeath:       "💀 HP zero — you can enter observer mode.",
           logMonitorAlert:"⚠ Monitor's watching you — perform the rule!",
           logUniBlinkAnnounce: "Universal rule: blink.",
+          logUniLeftEyeAnnounce: "Universal rule: close left eye for 1s.",
           logUniMouthAnnounce: "Universal rule: open mouth.",
           deathTitle:     "You died",
           deathSub:       "Enter observer mode to keep watching the round.",
@@ -1482,6 +1486,7 @@
           actionMouthLabel:    "张开嘴巴！",
           actionShakeLabel:    "摇头晃脑！",
           universalBlinkLabel: "眨一下眼！",
+          universalLeftEyeLabel: "闭左眼 1 秒！",
           universalMouthLabel: "张开嘴巴！",
           universalHeadLabel:  "摇头或点头！",
           challengeRuleHeader: "守则",
@@ -1503,6 +1508,8 @@
           statusUniGo:         "请执行！",
           statusBlinking:      "眨眼中…",
           statusBlinkPlease:   "请眨眼！",
+          statusLeftEyeHold:   (s) => `保持闭左眼 ${s} 秒…`,
+          statusLeftEyePlease: "请闭上左眼！",
           statusHeadKeep:      "继续！",
           statusHeadDo:        "摇头或点头！",
           statusSuccess:       "完成！",
@@ -1520,6 +1527,7 @@
           logDeath:       "💀 生命值归零，可进入观察模式。",
           logMonitorAlert:"⚠ 监管者注视你了——执行守则！",
           logUniBlinkAnnounce: "通用规则：请眨眼。",
+          logUniLeftEyeAnnounce: "通用规则：闭左眼 1 秒。",
           logUniMouthAnnounce: "通用规则：请张嘴。",
           deathTitle:     "你已死亡",
           deathSub:       "是否进入观察阶段，继续观看这一轮？",
@@ -2249,9 +2257,14 @@
           { id: "h1", type: "heart", x: cx - 80, y: cy - 340 },
           { id: "h2", type: "heart", x: cx - 320, y: cy - 60 },
           { id: "h3", type: "heart", x: cx + 270, y: cy + 380 },
+          // Densified alarm field — must mirror server's MAIN_SCENE_ITEM_DEFS.
           { id: "a1", type: "alarm", x: cx + 140, y: cy + 40 },
           { id: "a2", type: "alarm", x: cx - 200, y: cy + 220 },
           { id: "a3", type: "alarm", x: cx + 320, y: cy - 260 },
+          { id: "a4", type: "alarm", x: cx - 360, y: cy - 280 },
+          { id: "a5", type: "alarm", x: cx + 400, y: cy + 180 },
+          { id: "a6", type: "alarm", x: cx - 80,  y: cy + 320 },
+          { id: "a7", type: "alarm", x: cx + 200, y: cy - 80  },
         ],
         keys: { up: false, down: false, left: false, right: false },
         joyX: 0,    // virtual joystick analog input, -1..1
@@ -2279,6 +2292,10 @@
           { id: "a1", type: "alarm", x: cxi + 140, y: cyi + 40 },
           { id: "a2", type: "alarm", x: cxi - 200, y: cyi + 220 },
           { id: "a3", type: "alarm", x: cxi + 320, y: cyi - 260 },
+          { id: "a4", type: "alarm", x: cxi - 360, y: cyi - 280 },
+          { id: "a5", type: "alarm", x: cxi + 400, y: cyi + 180 },
+          { id: "a6", type: "alarm", x: cxi - 80,  y: cyi + 320 },
+          { id: "a7", type: "alarm", x: cxi + 200, y: cyi - 80  },
         ];
       }
       function reseedMapItems() {
@@ -2902,12 +2919,29 @@
           if (!ev || !ev.kind) continue;
           if (ev.kind === "taken") {
             applyItemTakenEvent(ev.data);
+          } else if (ev.kind === "respawn" && ev.data) {
+            applyItemRespawnEvent(ev.data);
           } else if (ev.kind === "resync" && ev.removedItemIds) {
             for (var j = 0; j < ev.removedItemIds.length; j++) {
               removeItemByIdNoEffects(ev.removedItemIds[j]);
             }
           }
         }
+      }
+
+      // Server respawned an item that had been picked up. Re-spawn its SVG node
+      // so all clients see it pop back at its original spot. Idempotent — if
+      // the item is somehow already in `state.items`, do nothing.
+      function applyItemRespawnEvent(d) {
+        if (!d || !d.itemId || !d.itemType) return;
+        if (state.items.some((it) => it.id === d.itemId)) return;
+        const it = { id: d.itemId, type: d.itemType, x: Number(d.x), y: Number(d.y) };
+        state.items.push(it);
+        const node = it.type === "heart" ? makeHeart() : makeAlarm();
+        node.setAttribute("transform", "translate(" + it.x + " " + it.y + ")");
+        layers.items.appendChild(node);
+        state.nodes.items.set(it.id, node);
+        if (state._pickupReq) state._pickupReq.delete(it.id);
       }
 
       function flashHeartGain() {
@@ -3325,7 +3359,10 @@
 
       // Periodic new-rule announcements (red, distinct from flavor)
       const UNIVERSAL_RULES = [
-        { id: "u_blink",    icon: "👁️", labelKey: "universalBlinkLabel", logKey: "logUniBlinkAnnounce" },
+        // u_leftEye replaced the old u_blink: hold the LEFT eye closed for
+        // ~1 s while the right eye stays open (a wink). Harder than a single
+        // blink — players have to consciously perform it.
+        { id: "u_leftEye",  icon: "😉", labelKey: "universalLeftEyeLabel", logKey: "logUniLeftEyeAnnounce" },
         { id: "u_mouth",    icon: "😮", labelKey: "universalMouthLabel", logKey: "logUniMouthAnnounce" },
         { id: "u_headmove", icon: "🙂", labelKey: "universalHeadLabel",  logKey: "logUniHeadAnnounce"  },
       ];
@@ -3761,11 +3798,15 @@
         avatarClosedRatio: 0.40,   // ear < baseline*0.40 → eye flat
         avatarOpenRatio:   1.00,   // ear ≥ baseline      → eye round
 
-        // --- u_blink (universal "please blink") ---------------------
-        // How many consecutive smoothed-closed frames count as one
-        // blink event. 2 = a quick selfie blink registers. Increase to
-        // 3 if false positives reappear.
-        uBlinkFramesNeeded: 2,
+        // --- u_leftEye (universal "close left eye 1s") --------------
+        // The rule used to be a single blink (2 consecutive closed
+        // frames, both eyes averaged). It was too easy and felt
+        // ambiguous — almost any quick blink during onboarding chatter
+        // would auto-pass. Switched to "close LEFT eye for ~1 second":
+        // checks ONLY the left eye landmarks so the right eye stays
+        // open (a real wink), and requires ~30 frames at the FaceMesh
+        // ~30 fps cadence for the full second.
+        uLeftEyeFramesNeeded: 28,
       };
 
       // ---------- Implementation ----------
@@ -4234,20 +4275,24 @@
       function processUniversalChallenge(lm) {
         const act = universalChallenge.action;
 
-        if (act === "u_blink") {
-          const ear = smoothedEar(
-            (earVal(lm, L_EYE_IDX) + earVal(lm, R_EYE_IDX)) / 2
-          );
-          if (isEyeClosed(ear)) {
+        if (act === "u_leftEye") {
+          // Only the LEFT eye matters here. The avatar mirror logic notes
+          // that MediaPipe's `earL` corresponds to the user's anatomical
+          // LEFT eye, which is what 闭左眼 / "close left eye" means.
+          const earL = earVal(lm, L_EYE_IDX);
+          if (isEyeClosed(earL)) {
             universalChallenge.blink.frames++;
-            uChalStatus.textContent = t("statusBlinking");
-            if (universalChallenge.blink.frames >= BLINK_TUNING.uBlinkFramesNeeded) {
+            // Show seconds remaining on the status, e.g. "Hold 0.4s more"
+            const need = BLINK_TUNING.uLeftEyeFramesNeeded;
+            const left = Math.max(0, need - universalChallenge.blink.frames);
+            uChalStatus.textContent = t("statusLeftEyeHold", (left / 30).toFixed(1));
+            if (universalChallenge.blink.frames >= need) {
               universalChallenge.completed = true;
               endUniversalChallenge(true);
             }
           } else {
             universalChallenge.blink.frames = 0;
-            uChalStatus.textContent = t("statusBlinkPlease");
+            uChalStatus.textContent = t("statusLeftEyePlease");
           }
         } else if (act === "u_mouth") {
           const mar = lmDist(lm[13], lm[14]) / (lmDist(lm[61], lm[291]) + 1e-6);
