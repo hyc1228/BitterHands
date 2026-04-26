@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { toBlob as htiToBlob } from "html-to-image";
+import GIF from "gif.js";
+import gifWorkerUrl from "gif.js/dist/gif.worker.js?url";
 import { animalLocalized, dict } from "../i18n";
 import { usePartyStore } from "../party/store";
 import type {
@@ -269,19 +272,11 @@ function AwardPanel({
     if (phase !== "reveal") setPhase("reveal");
   }, [phase]);
 
-  const winnerBurst: HighlightBurst | null = useMemo(() => {
-    if (!award) return null;
-    const winner = players.find((p) => p.id === award.id);
-    const bursts = winner?.highlights?.[kind];
-    return bursts && bursts.length > 0 ? bursts[0] : null;
-  }, [players, award, kind]);
-  // MediaRecorder + canvas.captureStream support gates the clip button.
-  // iOS Safari 14.5+ supports both, but very old browsers won't.
-  const canExportClip = typeof window !== "undefined"
-    && typeof window.MediaRecorder !== "undefined"
-    && typeof HTMLCanvasElement !== "undefined"
-    && "captureStream" in HTMLCanvasElement.prototype
-    && (winnerBurst?.length ?? 0) >= 2;
+  // GIF capture works anywhere html-to-image + Web Workers do (i.e. any modern
+  // browser). The button only matters during the reveal phase where the card
+  // is fully laid out; the burst tiles cycle naturally so the GIF has motion
+  // even when there's no explicit "winner" assigned.
+  const canExportClip = typeof window !== "undefined" && typeof Worker !== "undefined";
 
   const baseShareText = award?.name ? `${meta.medal} ${award.name}` : titleStr;
   const baseFileBase = useCallback(() => {
@@ -297,42 +292,34 @@ function AwardPanel({
   }, []);
 
   const handleSave = useCallback(async () => {
-    const blob = await composeAwardCardPng({
-      medal: meta.medal,
-      title: titleStr,
-      sub: subStr,
-      tiles,
-      winnerName: award?.name ?? null,
-      winnerCount: award?.count ?? null,
-      winnerAnimal: winnerEntry ? winnerAnimal : null
-    });
+    const node = cardRef.current;
+    if (!node) return;
+    // Snapshot whatever the user is actually looking at — collage, headline,
+    // winner block, drumroll, all of it. Was previously a hand-rolled
+    // canvas re-implementation that diverged from the on-screen card.
+    const blob = await captureNodeAsPng(node);
     if (!blob) return;
     await shareOrDownload(blob, `${baseFileBase()}.png`, "image/png", titleStr, baseShareText);
     flashSavedHint();
-  }, [meta.medal, titleStr, subStr, tiles, award, winnerEntry, winnerAnimal, baseFileBase, baseShareText, flashSavedHint]);
+  }, [baseFileBase, titleStr, baseShareText, flashSavedHint]);
 
   const handleSaveClip = useCallback(async () => {
-    if (!winnerBurst) return;
-    const blob = await composeAwardClipWebm(
-      {
-        medal: meta.medal,
-        title: titleStr,
-        winnerName: award?.name ?? null,
-        winnerCount: award?.count ?? null,
-        winnerAnimal: winnerEntry ? winnerAnimal : null
-      },
-      winnerBurst
-    );
+    const node = cardRef.current;
+    if (!node) return;
+    // Capture ~12 frames of the live card over ~1.8s, encode as a real GIF.
+    // Native gifs replay everywhere (including iOS Photos / WeChat) without
+    // depending on a video player, which is what the user asked for.
+    const blob = await captureNodeAsGif(node, {
+      frames: 12,
+      intervalMs: 150
+    });
     if (!blob) {
-      // Encoder failure — fall back to the static PNG so the user still gets
-      // something. Better than a silent no-op.
       await handleSave();
       return;
     }
-    const ext = blob.type.includes("webm") ? "webm" : "mp4";
-    await shareOrDownload(blob, `${baseFileBase()}.${ext}`, blob.type || "video/webm", titleStr, baseShareText);
+    await shareOrDownload(blob, `${baseFileBase()}.gif`, "image/gif", titleStr, baseShareText);
     flashSavedHint();
-  }, [winnerBurst, meta.medal, titleStr, award, winnerEntry, winnerAnimal, baseFileBase, baseShareText, flashSavedHint, handleSave]);
+  }, [baseFileBase, titleStr, baseShareText, flashSavedHint, handleSave]);
 
   return (
     <div
@@ -444,191 +431,99 @@ async function shareOrDownload(
 }
 
 /**
- * Render the winner's highlight burst as a short looping video clip
- * (`video/webm`, ~2 s). Each frame draws a card layout (medal / title at
- * top, current burst frame in the middle, winner block at the bottom),
- * then captures the canvas via MediaRecorder for sharing/download.
- *
- * Returns null if MediaRecorder isn't available or the burst is too short
- * to be a useful clip.
+ * Capture the actual on-screen card (any DOM node) as a PNG. We snapshot
+ * what the user is looking at — no hand-rolled canvas mock.
  */
-async function composeAwardClipWebm(
-  opts: {
-    medal: string;
-    title: string;
-    winnerName: string | null;
-    winnerCount: number | null;
-    winnerAnimal: string | null;
-  },
-  frames: HighlightBurst
-): Promise<Blob | null> {
-  if (!frames || frames.length < 2) return null;
-  if (typeof MediaRecorder === "undefined") return null;
-  const W = 480;
-  const H = 720;
-  const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-
-  const imgs = await Promise.all(
-    frames.map((src) =>
-      loadImage(src).catch(() => null)
-    )
-  );
-  const validImgs = imgs.filter((x): x is HTMLImageElement => !!x);
-  if (validImgs.length < 2) return null;
-
-  const captureCtx = canvas as HTMLCanvasElement & { captureStream?: (fps: number) => MediaStream };
-  if (typeof captureCtx.captureStream !== "function") return null;
-  const stream = captureCtx.captureStream(30);
-  const candidates = [
-    "video/webm;codecs=vp9",
-    "video/webm;codecs=vp8",
-    "video/webm",
-    "video/mp4"
-  ];
-  let mime = "";
-  for (const c of candidates) {
-    if (MediaRecorder.isTypeSupported(c)) { mime = c; break; }
-  }
-  let rec: MediaRecorder;
+async function captureNodeAsPng(node: HTMLElement): Promise<Blob | null> {
   try {
-    rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
-  } catch {
+    const blob = await htiToBlob(node, {
+      backgroundColor: "#0a0a0a",
+      cacheBust: true,
+      pixelRatio: Math.min(2, window.devicePixelRatio || 1),
+      // Some animated emoji fonts can stall toBlob; the tiles already use
+      // crossOrigin-friendly URLs (data: + same-origin /main-scene/), so
+      // skipFonts isn't strictly necessary, but it speeds up the snapshot.
+      skipFonts: false
+    });
+    return blob;
+  } catch (err) {
+    if (typeof console !== "undefined") console.warn("[endgame] PNG capture failed", err);
     return null;
   }
-  const chunks: Blob[] = [];
-  rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
-
-  return new Promise<Blob | null>((resolve) => {
-    let stopped = false;
-    const finish = () => {
-      if (stopped) return;
-      stopped = true;
-      try { rec.stop(); } catch { /* ignore */ }
-    };
-    rec.onstop = () => {
-      const out = new Blob(chunks, { type: rec.mimeType || mime || "video/webm" });
-      resolve(out.size > 0 ? out : null);
-    };
-    // Hard timeout so a stuck encoder never traps the UI.
-    const timeout = window.setTimeout(finish, 8000);
-
-    rec.start();
-
-    const FRAME_MS = 110;          // ≈ 9 fps, matches the in-page playback rate
-    const LOOPS = 3;
-    const totalFrames = validImgs.length * LOOPS;
-    let i = 0;
-
-    function drawOnce() {
-      drawClipFrame(ctx!, W, H, opts, validImgs[i % validImgs.length]!);
-      i++;
-      if (i >= totalFrames) {
-        // Hold the last frame briefly so the video doesn't end mid-motion.
-        window.setTimeout(() => {
-          window.clearTimeout(timeout);
-          finish();
-        }, 220);
-        return;
-      }
-      window.setTimeout(drawOnce, FRAME_MS);
-    }
-    drawOnce();
-  });
 }
 
-function drawClipFrame(
-  ctx: CanvasRenderingContext2D,
-  W: number,
-  H: number,
-  opts: {
-    medal: string;
-    title: string;
-    winnerName: string | null;
-    winnerCount: number | null;
-    winnerAnimal: string | null;
-  },
-  img: HTMLImageElement
-): void {
-  // Background
-  const bg = ctx.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, "#1a1314");
-  bg.addColorStop(1, "#070707");
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, W, H);
-  // Spotlight halo behind the medal
-  const sp = ctx.createRadialGradient(W / 2, 90, 0, W / 2, 90, W * 0.55);
-  sp.addColorStop(0, "rgba(255, 220, 90, 0.32)");
-  sp.addColorStop(1, "rgba(255, 220, 90, 0)");
-  ctx.fillStyle = sp;
-  ctx.fillRect(0, 0, W, H);
-
-  // Medal + title
-  ctx.fillStyle = "#f2efe9";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "alphabetic";
-  ctx.font = "60px serif";
-  ctx.fillText(opts.medal, W / 2, 80);
-  ctx.font = "600 22px Helvetica, Arial, sans-serif";
-  ctx.fillText(opts.title.toUpperCase(), W / 2, 118);
-
-  // Burst frame in the middle
-  const FX = 30;
-  const FY = 140;
-  const FW = W - 60;
-  const FH = 360;
-  ctx.fillStyle = "#000";
-  roundedRect(ctx, FX, FY, FW, FH, 14);
-  ctx.fill();
-  ctx.save();
-  roundedRect(ctx, FX, FY, FW, FH, 14);
-  ctx.clip();
-  // Cover-fit the image into the slot
-  const ar = img.naturalWidth / Math.max(1, img.naturalHeight);
-  const slotAr = FW / FH;
-  let dw = FW, dh = FH, dx = FX, dy = FY;
-  if (ar > slotAr) {
-    dh = FH;
-    dw = FH * ar;
-    dx = FX - (dw - FW) / 2;
-  } else {
-    dw = FW;
-    dh = FW / ar;
-    dy = FY - (dh - FH) / 2;
+/**
+ * Capture the live card as an actual GIF. We sample the DOM N times spaced
+ * `intervalMs` apart, stitching each PNG into a gif.js encoder. Tiles cycle
+ * naturally between captures, so the resulting GIF has motion.
+ *
+ * Returns null on encoder/Worker failure.
+ */
+async function captureNodeAsGif(
+  node: HTMLElement,
+  opts: { frames: number; intervalMs: number }
+): Promise<Blob | null> {
+  const frameBlobs: Blob[] = [];
+  for (let i = 0; i < opts.frames; i++) {
+    try {
+      const b = await htiToBlob(node, {
+        backgroundColor: "#0a0a0a",
+        cacheBust: i === 0,
+        // Slightly lower pixelRatio than PNG path — GIF is palette-limited,
+        // so the extra resolution mostly inflates file size with no benefit.
+        pixelRatio: 1,
+        skipFonts: false
+      });
+      if (b) frameBlobs.push(b);
+    } catch {
+      /* one bad frame is fine, the gif still has motion */
+    }
+    if (i < opts.frames - 1) {
+      await new Promise<void>((r) => window.setTimeout(r, opts.intervalMs));
+    }
   }
-  ctx.drawImage(img, dx, dy, dw, dh);
-  ctx.restore();
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = "rgba(255, 220, 90, 0.7)";
-  roundedRect(ctx, FX, FY, FW, FH, 14);
-  ctx.stroke();
+  if (frameBlobs.length < 2) return null;
 
-  // Winner band
-  const WY = FY + FH + 26;
-  ctx.fillStyle = "rgba(255, 220, 90, 0.10)";
-  roundedRect(ctx, 30, WY, W - 60, 110, 16);
-  ctx.fill();
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = "rgba(255, 220, 90, 0.85)";
-  roundedRect(ctx, 30, WY, W - 60, 110, 16);
-  ctx.stroke();
-  ctx.fillStyle = "#f2efe9";
-  ctx.font = "600 30px Helvetica, Arial, sans-serif";
-  ctx.fillText(`★  ${opts.winnerName ?? "—"}`, W / 2, WY + 50);
-  ctx.fillStyle = "rgba(242, 239, 233, 0.7)";
-  ctx.font = "16px Helvetica, Arial, sans-serif";
-  const meta = [opts.winnerAnimal, opts.winnerCount != null ? `×${opts.winnerCount}` : null]
-    .filter(Boolean)
-    .join("  ·  ");
-  ctx.fillText(meta || "—", W / 2, WY + 80);
+  const imgs = await Promise.all(
+    frameBlobs.map(
+      (b) =>
+        new Promise<HTMLImageElement | null>((resolve) => {
+          const url = URL.createObjectURL(b);
+          const img = new Image();
+          img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
+          img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+          img.src = url;
+        })
+    )
+  );
+  const valid = imgs.filter((x): x is HTMLImageElement => !!x);
+  if (valid.length < 2) return null;
 
-  // Footer wordmark
-  ctx.fillStyle = "rgba(242, 239, 233, 0.55)";
-  ctx.font = "11px Helvetica, Arial, sans-serif";
-  ctx.fillText("NOCTURNE ZOO · NIGHT SHIFT", W / 2, H - 24);
+  const W = valid[0].naturalWidth;
+  const H = valid[0].naturalHeight;
+  return new Promise<Blob | null>((resolve) => {
+    try {
+      const gif = new GIF({
+        workers: 2,
+        // 1–30; lower = better color but slower. 10 is a good middle.
+        quality: 10,
+        width: W,
+        height: H,
+        // Bundled by Vite at build time — no runtime path resolution.
+        workerScript: gifWorkerUrl
+      });
+      const delay = opts.intervalMs;
+      for (const img of valid) {
+        gif.addFrame(img, { delay, copy: true });
+      }
+      gif.on("finished", (b: Blob) => resolve(b));
+      gif.on("abort", () => resolve(null));
+      gif.render();
+    } catch (err) {
+      if (typeof console !== "undefined") console.warn("[endgame] GIF encode failed", err);
+      resolve(null);
+    }
+  });
 }
 
 function formatDateSlug(): string {
@@ -796,184 +691,6 @@ function BurstImage({ frames }: { frames: HighlightBurst }) {
     };
   }, [frames.length]);
   return <img className="endgame-collage__img" src={frames[i] ?? frames[0]} alt="" />;
-}
-
-/* ------------------------------------------------------------------ */
-/* Save card (Canvas-composed PNG, no extra dep)                       */
-/* ------------------------------------------------------------------ */
-
-interface SaveOpts {
-  medal: string;
-  title: string;
-  sub: string;
-  tiles: CollageTile[];
-  winnerName: string | null;
-  winnerCount: number | null;
-  winnerAnimal: string | null;
-}
-
-async function composeAwardCardPng(opts: SaveOpts): Promise<Blob | null> {
-  const W = 720;
-  const H = 920;
-  const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-
-  // Background — same noir gradient as the live card.
-  const bg = ctx.createLinearGradient(0, 0, 0, H);
-  bg.addColorStop(0, "#1a1314");
-  bg.addColorStop(1, "#070707");
-  ctx.fillStyle = bg;
-  ctx.fillRect(0, 0, W, H);
-
-  // Top spotlight
-  const sp = ctx.createRadialGradient(W / 2, H * 0.18, 0, W / 2, H * 0.18, W * 0.55);
-  sp.addColorStop(0, "rgba(214, 64, 46, 0.36)");
-  sp.addColorStop(1, "rgba(214, 64, 46, 0)");
-  ctx.fillStyle = sp;
-  ctx.fillRect(0, 0, W, H);
-
-  // Medal + title
-  ctx.fillStyle = "#f2efe9";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "alphabetic";
-  ctx.font = "92px serif";
-  ctx.fillText(opts.medal, W / 2, 130);
-  ctx.font = "600 30px Helvetica, Arial, sans-serif";
-  ctx.fillText(opts.title.toUpperCase(), W / 2, 190);
-  ctx.fillStyle = "rgba(242, 239, 233, 0.62)";
-  ctx.font = "16px Helvetica, Arial, sans-serif";
-  ctx.fillText(opts.sub, W / 2, 218);
-
-  // Collage 3×3 (or whatever fits)
-  const COLS = 3;
-  const ROWS = 3;
-  const PAD = 60;
-  const GAP = 18;
-  const gridTop = 250;
-  const cellW = (W - PAD * 2 - GAP * (COLS - 1)) / COLS;
-  const cellH = cellW;
-  const visible = opts.tiles.slice(0, COLS * ROWS);
-  await Promise.all(
-    visible.map(async (tile, i) => {
-      const col = i % COLS;
-      const row = Math.floor(i / COLS);
-      const x = PAD + col * (cellW + GAP);
-      const y = gridTop + row * (cellH + GAP);
-      // Slight per-tile rotation for polaroid feel.
-      const rot = ((i * 7) % 5) * 0.018 - 0.04;
-      ctx.save();
-      ctx.translate(x + cellW / 2, y + cellH / 2);
-      ctx.rotate(rot);
-      ctx.translate(-cellW / 2, -cellH / 2);
-      ctx.fillStyle = "#000";
-      roundedRect(ctx, 0, 0, cellW, cellH, 12);
-      ctx.fill();
-      const src = tile.frames[0] ?? null;
-      if (src) {
-        try {
-          const img = await loadImage(src);
-          ctx.save();
-          roundedRect(ctx, 0, 0, cellW, cellH, 12);
-          ctx.clip();
-          ctx.drawImage(img, 0, 0, cellW, cellH);
-          ctx.restore();
-        } catch (e) { /* ignore single tile failure */ }
-      } else {
-        ctx.fillStyle = "rgba(214, 64, 46, 0.32)";
-        ctx.fillRect(0, 0, cellW, cellH);
-        ctx.fillStyle = "#f2efe9";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.font = "600 64px Helvetica, Arial, sans-serif";
-        ctx.fillText(tile.initial, cellW / 2, cellH / 2);
-      }
-      // Winner border in gold
-      if (tile.isWinner) {
-        ctx.lineWidth = 5;
-        ctx.strokeStyle = "rgba(255, 220, 90, 0.95)";
-        roundedRect(ctx, 2, 2, cellW - 4, cellH - 4, 12);
-        ctx.stroke();
-      } else {
-        ctx.lineWidth = 2;
-        ctx.strokeStyle = "rgba(242, 239, 233, 0.55)";
-        roundedRect(ctx, 1, 1, cellW - 2, cellH - 2, 12);
-        ctx.stroke();
-      }
-      ctx.restore();
-    })
-  );
-
-  // Winner block
-  const winnerY = gridTop + ROWS * cellH + ROWS * GAP + 18;
-  if (opts.winnerName) {
-    // gold framed band
-    ctx.fillStyle = "rgba(255, 220, 90, 0.10)";
-    roundedRect(ctx, PAD, winnerY, W - PAD * 2, 110, 16);
-    ctx.fill();
-    ctx.lineWidth = 3;
-    ctx.strokeStyle = "rgba(255, 220, 90, 0.85)";
-    roundedRect(ctx, PAD, winnerY, W - PAD * 2, 110, 16);
-    ctx.stroke();
-    ctx.fillStyle = "#f2efe9";
-    ctx.textAlign = "center";
-    ctx.font = "600 36px Helvetica, Arial, sans-serif";
-    ctx.fillText(`★  ${opts.winnerName}`, W / 2, winnerY + 50);
-    ctx.fillStyle = "rgba(242, 239, 233, 0.7)";
-    ctx.font = "18px Helvetica, Arial, sans-serif";
-    const meta = [opts.winnerAnimal, opts.winnerCount != null ? `×${opts.winnerCount}` : null]
-      .filter(Boolean)
-      .join("  ·  ");
-    ctx.fillText(meta || "—", W / 2, winnerY + 84);
-  } else {
-    ctx.fillStyle = "rgba(242, 239, 233, 0.5)";
-    ctx.font = "18px Helvetica, Arial, sans-serif";
-    ctx.textAlign = "center";
-    ctx.fillText("—", W / 2, winnerY + 60);
-  }
-
-  // Footer wordmark
-  ctx.fillStyle = "rgba(242, 239, 233, 0.55)";
-  ctx.font = "12px Helvetica, Arial, sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText("NOCTURNE ZOO · NIGHT SHIFT", W / 2, H - 28);
-
-  return new Promise((resolve) => {
-    canvas.toBlob((b) => resolve(b), "image/png", 0.92);
-  });
-}
-
-function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    img.onload = () => resolve(img);
-    img.onerror = reject;
-    img.src = src;
-  });
-}
-
-function roundedRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number
-): void {
-  const rr = Math.min(r, w / 2, h / 2);
-  ctx.beginPath();
-  ctx.moveTo(x + rr, y);
-  ctx.lineTo(x + w - rr, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + rr);
-  ctx.lineTo(x + w, y + h - rr);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - rr, y + h);
-  ctx.lineTo(x + rr, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - rr);
-  ctx.lineTo(x, y + rr);
-  ctx.quadraticCurveTo(x, y, x + rr, y);
-  ctx.closePath();
 }
 
 function SummaryPanel({

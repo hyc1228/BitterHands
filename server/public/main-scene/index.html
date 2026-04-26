@@ -3842,9 +3842,12 @@
         // uses both eyes' EAR average, so single-eye jitter doesn't
         // count as a blink.
         uNoBlinkFramesNeeded: 60,
-        // Number of consecutive sub-threshold frames before counting as
-        // a real blink (debounce against MediaPipe single-frame jitter).
-        uNoBlinkResetFrames: 2,
+        // Reset on ANY single closed frame — the previous 2-frame debounce
+        // let very fast blinks slip through, so the rule "did not blink"
+        // could pass even right after a real blink. Phones running
+        // MediaPipe at 15 fps may capture a real blink in just one frame,
+        // which is what the user reported as "blinking succeeds the task".
+        uNoBlinkResetFrames: 1,
       };
 
       // ---------- Implementation ----------

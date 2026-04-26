@@ -35,9 +35,10 @@ export const DETECTION_DEFAULTS = {
    *  mobile selfie cams — which run lower EAR due to wide-angle distortion + downward angle
    *  + low-res landmarks — pass naturally without forcing the user to bug their eyes out). */
   gateEyesOpenThresh: 0.13,
-  /** Onboard gate de-bounce: a single noisy sub-threshold frame won't reset the 2 s timer;
-   *  needs `gateBlinkResetFrames` consecutive sub-threshold frames to count as a real blink. */
-  gateBlinkResetFrames: 2
+  /** Onboard gate reset: any single closed-eye frame resets the timer. The earlier 2-frame
+   *  debounce was too forgiving — fast blinks (1 frame on lower-fps mobile cameras) could
+   *  slip through, leading to the bug "blinking succeeds the don't-blink task". */
+  gateBlinkResetFrames: 1
 } as const;
 
 function dist(

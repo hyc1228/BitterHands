@@ -599,6 +599,31 @@
   gap: 8px;
 }
 
+/* OB-only: with up to 10 players the left column gets cramped — split the
+   roster into two side-by-side columns once the panel is wide enough.
+   Each row stays self-contained (avatar + name + stats), so the 2-column
+   grid just packs them tighter. */
+.ob-shell .players-list {
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+}
+@media (max-width: 720px) {
+  .ob-shell .players-list {
+    grid-template-columns: 1fr;
+  }
+}
+.ob-shell .player {
+  padding: 8px 10px;
+  font-size: 13px;
+  min-width: 0;
+}
+.ob-shell .player .player-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .player {
   display: flex;
   align-items: center;

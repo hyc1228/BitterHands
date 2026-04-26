@@ -20,3 +20,45 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+// gif.js ships as plain JS without bundled types. We only use the constructor
+// + addFrame + render + on(event, cb), so a thin declaration is enough.
+declare module "gif.js" {
+  interface GifOptions {
+    workers?: number;
+    quality?: number;
+    width?: number;
+    height?: number;
+    workerScript?: string;
+    background?: string;
+    transparent?: number | null;
+    repeat?: number;
+    dither?: false | "FloydSteinberg" | "FalseFloydSteinberg" | "Stucki" | "Atkinson";
+  }
+  interface AddFrameOptions {
+    delay?: number;
+    copy?: boolean;
+    dispose?: number;
+  }
+  type GifFrameInput =
+    | HTMLImageElement
+    | HTMLCanvasElement
+    | CanvasRenderingContext2D
+    | ImageData;
+  export default class GIF {
+    constructor(opts?: GifOptions);
+    addFrame(image: GifFrameInput, opts?: AddFrameOptions): void;
+    render(): void;
+    abort(): void;
+    on(event: "start", cb: () => void): void;
+    on(event: "progress", cb: (pct: number) => void): void;
+    on(event: "abort", cb: () => void): void;
+    on(event: "finished", cb: (blob: Blob) => void): void;
+  }
+}
+
+// Vite's `?url` import for the gif.js worker script.
+declare module "gif.js/dist/gif.worker.js?url" {
+  const url: string;
+  export default url;
+}
