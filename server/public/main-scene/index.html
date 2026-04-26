@@ -538,6 +538,27 @@
       .animal .eye.closed .eye-open-part { display: none; }
       .animal .eye.closed .eye-blink-img { display: block; }
 
+      /* Ghost: replaces the animal avatar when the player dies.
+         Slow vertical float for "spirit drifting" feel + brief fade-in
+         when the ghost first appears. The ghost is purely cosmetic —
+         no face detection, no challenges. */
+      .ghost {
+        animation: ghostFadeIn 0.8s ease-out;
+      }
+      @keyframes ghostFadeIn {
+        from { opacity: 0; }
+        to   { opacity: 1; }
+      }
+      .ghost-float {
+        transform-box: fill-box;
+        transform-origin: 50% 50%;
+        animation: ghostFloat 3.2s ease-in-out infinite;
+      }
+      @keyframes ghostFloat {
+        0%, 100% { transform: translateY(0); }
+        50%      { transform: translateY(-6px); }
+      }
+
       /* Mouth — bbox-centered so face detection can scaleY it for open/close.
          A subtle idle "breathing" animation makes it feel alive until real
          mouth tracking is wired in. */
@@ -1773,6 +1794,42 @@
         return root;
       }
 
+      // Ghost avatar — replaces the player's animal once HP hits zero.
+      // Cosmetic only: it just floats in place where the player died, and
+      // is never targeted by face detection or challenges (driveLive2D's
+      // querySelector(".eye-l") simply finds nothing on a ghost node).
+      function makeGhost({ name = "" } = {}) {
+        const root = el("g", { class: "entity ghost" });
+        const inner = el("g", { class: "ghost-float" });
+        const W = 70;
+        const H = 91;
+        inner.appendChild(
+          el("image", {
+            href: "ghost.svg",
+            x: -W / 2,
+            y: -H / 2,
+            width: W,
+            height: H,
+            preserveAspectRatio: "xMidYMid meet",
+          })
+        );
+        if (name) {
+          const nameEl = el("text", {
+            x: 0,
+            y: -H / 2 - 8,
+            "text-anchor": "middle",
+            "font-family": "Patrick Hand, cursive",
+            "font-size": 13,
+            fill: "rgba(255,255,255,0.55)",
+            "letter-spacing": 1,
+          });
+          nameEl.textContent = name;
+          inner.appendChild(nameEl);
+        }
+        root.appendChild(inner);
+        return root;
+      }
+
       // ZooKeeper (the monitor) — black bunny silhouette with red outline +
       // red mouth + red nose, all from ZooKeeper.svg. We add only the EYES
       // procedurally: a soft red glow halo, a solid red eye, and a small
@@ -2365,15 +2422,20 @@
           `translate(${state.monitor.x} ${state.monitor.y})`
         );
         state.nodes.monitor.classList.toggle("walking", state.monitor.moving);
-        // me (not in pure spectator / OB)
-        if (!state.spectator && state.nodes.me) {
+        // Position state.nodes.me every frame regardless of spectator —
+        // a dead player's ghost still needs a transform so it renders at
+        // the death location instead of (0, 0). Only the walking anim is
+        // skipped when not actively playing (OB / dead).
+        if (state.nodes.me) {
           state.nodes.me.setAttribute(
             "transform",
             `translate(${state.me.x} ${state.me.y})`
           );
-          const mak = state.me.moving ? "walk" : "idle";
-          state.nodes.me.setAttribute("data-anim", mak);
-          state.nodes.me.classList.toggle("walking", state.me.moving);
+          if (!state.spectator) {
+            const mak = state.me.moving ? "walk" : "idle";
+            state.nodes.me.setAttribute("data-anim", mak);
+            state.nodes.me.classList.toggle("walking", state.me.moving);
+          }
         }
 
         // Cone + torch share the same world transform: they rotate around
@@ -2700,8 +2762,9 @@
             isInCone(m.x, m.y, m.aimAngle, p.x, p.y)
           );
           // Don't re-target "me" while challenge is on cooldown
+          // Skip dead self (now a ghost) and the post-challenge cooldown.
           const eligible = inCone.filter(
-            (p) => !(p.id === "me" && challenge.cooldown > 0)
+            (p) => !(p.id === "me" && (challenge.cooldown > 0 || state.me.dead))
           );
           if (eligible.length > 0) {
             const pick = eligible[Math.floor(Math.random() * eligible.length)];
@@ -2788,7 +2851,34 @@
         state.obCamMode = "free";
         state.obFreeTarget.x = state.me.x;
         state.obFreeTarget.y = state.me.y;
-        if (state.nodes.me) state.nodes.me.setAttribute("visibility", "hidden");
+        // Replace the animal avatar with a ghost. The ghost stays at the
+        // death position (render() keeps writing translate(me.x, me.y)),
+        // floats gently via CSS, and is invisible to the rule system —
+        // driveLive2D / startChallenge / triggerUniversalRule all bail
+        // out on state.me.dead so nothing tries to drive its (missing)
+        // eyes / mouth, and the monitor never targets it.
+        if (state.nodes.me && state.nodes.me.parentNode) {
+          state.nodes.me.parentNode.removeChild(state.nodes.me);
+        }
+        const ghost = makeGhost({ name: state.lastMainSyncName || "" });
+        layers.me.appendChild(ghost);
+        state.nodes.me = ghost;
+        // Freeze movement so the ghost just hovers in place.
+        state.me.moving = false;
+        // If the monitor was already locked onto us, release immediately
+        // so the flashlight stops chasing a corpse / ghost.
+        if (state.monitor.targetId === "me") {
+          state.monitor.mode = "sweep";
+          state.monitor.targetId = null;
+          state.monitor.sweepTimer = 1;
+        }
+        // Reuse the OB spectator CSS rules to clean up the HUD (hide
+        // hearts, joystick, cam preview, challenge bars, hint, alert).
+        // applyMSView only fires for the React-driven OB role, so we
+        // toggle this class manually for died regular players.
+        if (typeof document !== "undefined" && document.body) {
+          document.body.classList.add("is-spectator");
+        }
         challenge.active = false;
         challenge.completed = false;
         chalOverlay.className = "action-bar action-bar-top";
@@ -3739,11 +3829,27 @@
         if (typeof p.lives === "number") {
           state.me.lives = Math.max(0, Math.min(3, Math.floor(p.lives)));
         }
+        // Server-authoritative death: if the snapshot says we're out (lives 0
+        // or alive=false), enter spectator mode even if the local rule-fail
+        // path didn't fire (e.g. rejoin, snapshot-driven death, or any future
+        // server-side mechanism).
+        const serverDead =
+          (typeof p.alive === "boolean" && p.alive === false) ||
+          state.me.lives <= 0;
+        if (serverDead && !state.me.dead) {
+          handleDeath();
+          if (p.ruleText) addLog(t("logRulePrefix") + String(p.ruleText), null, { rule: true });
+          if (p.winText) addLog(t("logWinPrefix") + String(p.winText), null, {});
+          return;
+        }
         const nm = typeof p.playerName === "string" ? p.playerName : "";
         if (state.nodes.me && state.nodes.me.parentNode) {
           state.nodes.me.parentNode.removeChild(state.nodes.me);
         }
         const newMe = makeAnimalAvatar({ animal: a, isMe: true, name: nm });
+        // Already-dead players (e.g. snapshot fired handleDeath in a previous
+        // pass) must not have their avatar reappear when the snapshot churns.
+        if (state.me.dead) newMe.setAttribute("visibility", "hidden");
         layers.me.appendChild(newMe);
         state.nodes.me = newMe;
         renderLives();

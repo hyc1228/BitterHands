@@ -23,6 +23,8 @@ export interface NzPlayerSyncPayload {
   ruleText?: string;
   winText?: string;
   lives: number;
+  /** Server-authoritative — false once lives reach 0 server-side; iframe transitions to spectator. */
+  alive: boolean;
 }
 
 export function mapAnimalToMainScene(a: AnimalCode | string | null | undefined): NzPlayerSyncPayload["sceneAnimal"] {
@@ -38,16 +40,22 @@ export function buildPlayerSyncPayload(opts: {
   rulesCard: RulesCard | null;
   lang: Lang;
   lives?: number;
+  alive?: boolean;
 }): NzPlayerSyncPayload {
   const ruleText = opts.rulesCard?.rule?.trim();
   const winText = opts.rulesCard?.win?.trim();
+  const lives = typeof opts.lives === "number" ? Math.max(0, Math.min(3, opts.lives)) : 3;
+  // If the caller didn't pass `alive`, derive it from lives so callers that
+  // can't see the snapshot still get a consistent signal.
+  const alive = typeof opts.alive === "boolean" ? opts.alive : lives > 0;
   return {
     playerName: opts.myName || "—",
     sceneAnimal: mapAnimalToMainScene(opts.myAnimal),
     lang: opts.lang,
     ruleText: ruleText || undefined,
     winText: winText || undefined,
-    lives: typeof opts.lives === "number" ? Math.max(0, Math.min(3, opts.lives)) : 3
+    lives,
+    alive
   };
 }
 
