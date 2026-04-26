@@ -613,6 +613,11 @@ export default class Server {
       }
 
       case ClientMessageTypes.VIOLATION: {
+        // Gate by game-running state. Otherwise a stray VIOLATION before
+        // the round starts (e.g. a stale iframe rule timer firing during
+        // onboarding, or a flaky client) would leak HP into the snapshot
+        // and the player walks in already wounded.
+        if (!this.started) return;
         const player = this.players.get(conn.id);
         if (!player || !player.alive) return;
 
