@@ -13,6 +13,8 @@ export const NZ_MSG_OUT_VIOLATION = "NZ_OUT_VIOLATION" as const;
 export const NZ_MSG_TYPE_ITEM = "NZ_MS_ITEM" as const;
 /** OB: main map camera — centroid, follow a player, or free pan. */
 export const NZ_MSG_TYPE_OB_CAM = "NZ_OB_CAMERA" as const;
+/** Server-authoritative Monitor (AI flashlight) pose, forwarded into the iframe. */
+export const NZ_MSG_TYPE_MONITOR = "NZ_MONITOR_STATE" as const;
 
 /** Payload applied inside `main scene/index.html` (MainSync bridge). */
 export interface NzPlayerSyncPayload {

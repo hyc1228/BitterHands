@@ -13,6 +13,7 @@ import {
   type MainSceneItemInboxEntry,
   type MainSceneItemTaken,
   type MainScenePeerState,
+  type MonitorStateMessage,
   type MonitorVoiceMessage,
   type RulesCard,
   type ServerEnvelope,
@@ -53,6 +54,8 @@ interface PartyStoreState {
   /** Push-only inbox of Monitor PA broadcasts; the audio hook drains this. */
   monitorVoiceInbox: MonitorVoiceMessage[];
   drainMonitorVoiceInbox: () => MonitorVoiceMessage[];
+  /** Latest server-authoritative Monitor (AI flashlight) pose, or null pre-game. */
+  monitorState: MonitorStateMessage | null;
   /** Last GAME_ENDED payload — drives the settlement overlay; null between matches. */
   gameEnded: GameEnded | null;
   clearGameEnded: () => void;
@@ -153,6 +156,7 @@ export const usePartyStore = create<PartyStoreState>((set, get) => ({
   mainScenePeers: {},
   mainSceneItemInbox: [],
   monitorVoiceInbox: [],
+  monitorState: null,
   gameEnded: null,
 
   clearGameEnded: () => set({ gameEnded: null }),
@@ -292,6 +296,7 @@ export const usePartyStore = create<PartyStoreState>((set, get) => ({
       mainScenePeers: {},
       mainSceneItemInbox: [],
       monitorVoiceInbox: [],
+      monitorState: null,
       gameEnded: null
     })
 }));
@@ -347,12 +352,19 @@ function handleServerEnvelope(
   }
   if (t === ServerEventTypes.MONITOR_VOICE) {
     const data = msg.data as MonitorVoiceMessage;
-    console.log("[nz-voice] WS recv MONITOR_VOICE", data?.kind, data?.audioUrl);
-    if (!data || typeof data.captions !== "string") {
-      console.warn("[nz-voice] dropped: bad payload", data);
+    if (!data || typeof data.captions !== "string") return;
+    set((s) => ({ monitorVoiceInbox: [...s.monitorVoiceInbox, data] }));
+    return;
+  }
+  if (t === ServerEventTypes.MONITOR_STATE) {
+    const data = msg.data as MonitorStateMessage;
+    if (!data) return;
+    // Drop frames older than what we already have (handles WS reorder edge cases).
+    const prev = get().monitorState;
+    if (prev && typeof prev.ts === "number" && typeof data.ts === "number" && data.ts < prev.ts) {
       return;
     }
-    set((s) => ({ monitorVoiceInbox: [...s.monitorVoiceInbox, data] }));
+    set({ monitorState: data });
     return;
   }
   if (t === ServerEventTypes.MAIN_SCENE_BROADCAST) {

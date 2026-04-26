@@ -24,7 +24,8 @@ export const ServerEventTypes = {
   MAIN_SCENE_BROADCAST: "main_scene_broadcast",
   MAIN_SCENE_ITEM_TAKEN: "main_scene_item_taken",
   MAIN_SCENE_ITEMS_RESYNC: "main_scene_items_resync",
-  MONITOR_VOICE: "monitor_voice"
+  MONITOR_VOICE: "monitor_voice",
+  MONITOR_STATE: "monitor_state"
 } as const;
 
 export const ClientMessageTypes = {
@@ -165,6 +166,19 @@ export type MainSceneItemInboxEntry =
   | { kind: "taken"; data: MainSceneItemTaken }
   | { kind: "resync"; removedItemIds: string[] };
 
+/** Authoritative Monitor (AI flashlight) pose, broadcast at ~10 Hz. */
+export interface MonitorStateMessage {
+  x: number;
+  y: number;
+  aimAngle: number;
+  mode: "sweep" | "locked";
+  moving: boolean;
+  targetId: string | null;
+  lured: { x: number; y: number } | null;
+  /** Wall-clock timestamp from the server; clients can use it to drop stale frames. */
+  ts: number;
+}
+
 export interface MonitorVoiceMessage {
   /** Stable id (audio hash when TTS succeeded; sequence string otherwise). */
   id: string;
@@ -197,6 +211,7 @@ export type ServerEnvelope =
   | { type: typeof ServerEventTypes.MAIN_SCENE_ITEM_TAKEN; data: MainSceneItemTaken }
   | { type: typeof ServerEventTypes.MAIN_SCENE_ITEMS_RESYNC; data: { removedItemIds: string[] } }
   | { type: typeof ServerEventTypes.MONITOR_VOICE; data: MonitorVoiceMessage }
+  | { type: typeof ServerEventTypes.MONITOR_STATE; data: MonitorStateMessage }
   | { type: "error"; error: string; max?: number }
   | { type: string; data?: unknown };
 

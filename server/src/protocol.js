@@ -25,7 +25,9 @@ export const ServerEventTypes = /** @type {const} */ ({
    * Monitor PA broadcast. Carries audio URL (may be null when TTS is unavailable),
    * captions, priority, and a kind tag (used for client-side dedup).
    */
-  MONITOR_VOICE: "monitor_voice"
+  MONITOR_VOICE: "monitor_voice",
+  /** Server-authoritative Monitor (AI flashlight) position + lock target. */
+  MONITOR_STATE: "monitor_state"
 });
 
 export const ClientMessageTypes = /** @type {const} */ ({

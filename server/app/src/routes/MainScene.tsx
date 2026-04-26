@@ -4,7 +4,7 @@ import CameraFrameUploader from "../components/CameraFrameUploader";
 import EndGameOverlay from "../components/EndGameOverlay";
 import { getMainSceneFrameSrc } from "../constants";
 import { useMainSceneIframeBridge } from "../hooks/useMainSceneIframeBridge";
-import { postToMainSceneFrame, postItemInboxToFrame, postMainSceneNetToFrame } from "../mainSync/postToMainSceneFrame";
+import { postToMainSceneFrame, postItemInboxToFrame, postMainSceneNetToFrame, postMonitorStateToFrame } from "../mainSync/postToMainSceneFrame";
 import { usePartyStore } from "../party/store";
 
 /**
@@ -59,6 +59,7 @@ export default function MainScene() {
       const sid = s.snapshot?.players.find((p) => p.name === s.myName)?.id ?? "";
       const w = iframeRef.current?.contentWindow;
       postMainSceneNetToFrame(w, sid, s.mainScenePeers);
+      postMonitorStateToFrame(w, s.monitorState);
       const inbox = s.drainMainSceneItemInbox();
       postItemInboxToFrame(w, inbox);
     }, 100);

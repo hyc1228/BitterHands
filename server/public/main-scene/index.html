@@ -2881,7 +2881,49 @@
         return Math.abs(wrapAngle(Math.atan2(dy, dx) - aimAngle)) < 0.50;
       }
 
+      // When the server is broadcasting authoritative Monitor state via
+      // NZ_MONITOR_STATE, skip the local AI sim — every client must see the
+      // same flashlight / lock target. Local sim is preserved for solo /
+      // pre-network playtest (no server frame yet).
+      function applyServerMonitorState(p) {
+        if (!p || typeof p !== "object") return;
+        const m = state.monitor;
+        if (typeof p.x === "number") m.x = p.x;
+        if (typeof p.y === "number") m.y = p.y;
+        if (typeof p.aimAngle === "number") m.aimAngle = p.aimAngle;
+        if (p.mode === "sweep" || p.mode === "locked") m.mode = p.mode;
+        if (typeof p.moving === "boolean") m.moving = p.moving;
+        if (p.lured && typeof p.lured.x === "number") {
+          m.lured = { x: p.lured.x, y: p.lured.y };
+        } else if (p.lured === null) {
+          m.lured = null;
+        }
+        // Track lock-on-me edge so the local challenge bar fires exactly once
+        // per server lock event (server is the only place that decides who
+        // gets locked; the iframe just reacts).
+        const newTargetIsMe = p.targetId === state.netSelfId;
+        const wasTargetMe = m.targetId === "me";
+        m.targetId = newTargetIsMe ? "me" : (p.targetId || null);
+        state._serverMonitorAt = (typeof performance !== "undefined" ? performance.now() : Date.now());
+        if (m.mode === "locked" && newTargetIsMe && !wasTargetMe) {
+          // Server says we're now the lock target — start the local
+          // challenge bar so the action prompt shows up.
+          if (!challenge.active && !state.spectator && !state.me.dead) {
+            startChallenge();
+          }
+        }
+        if ((m.mode === "sweep" || !newTargetIsMe) && wasTargetMe && challenge.active) {
+          // Server released the lock on us — close out the challenge bar.
+          endChallenge(false);
+        }
+      }
+
       function updateMonitor(dt) {
+        // If the authoritative server frame arrived in the last second, defer
+        // entirely to it. Avoids two clients diverging on patrol RNG / sweep
+        // direction / who got picked from the cone.
+        const _nowMs = (typeof performance !== "undefined" ? performance.now() : Date.now());
+        if (state._serverMonitorAt && _nowMs - state._serverMonitorAt < 1500) return;
         const m = state.monitor;
 
         // --- Alarm lure: point toward lure position, then resume sweep ---
@@ -4265,6 +4307,8 @@
           if (d.payload && d.payload.events) applyItemInbox(d.payload.events);
         } else if (d.type === "NZ_OB_CAMERA") {
           applyObCamera(d.payload);
+        } else if (d.type === "NZ_MONITOR_STATE") {
+          applyServerMonitorState(d.payload);
         }
       });
     </script>
