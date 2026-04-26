@@ -96,9 +96,12 @@ export default function EndGameOverlay({ viewerRole = "player", homePath }: Prop
   };
   const handleSkip = () => setStage({ kind: "summary" });
 
+  const stageClass =
+    "endgame-stage" + (viewerRole === "ob" ? " endgame-stage--ob" : "");
+
   return (
     <div className="endgame-mask" role="dialog" aria-modal="true" aria-labelledby="endgameTitle">
-      <div className="endgame-stage" key={stageKey(stage)}>
+      <div className={stageClass} key={stageKey(stage)}>
         {stage.kind === "intro" ? (
           <IntroPanel
             t={t}
@@ -115,6 +118,7 @@ export default function EndGameOverlay({ viewerRole = "player", homePath }: Prop
             players={realPlayers}
             youName={myName}
             lang={lang}
+            viewerRole={viewerRole}
             onNext={advance}
           />
         ) : null}
@@ -200,6 +204,8 @@ const AWARD_META: Record<
   blink: { medal: "🥉", emoji: "👁️", titleKey: "awardBlinkTitle", subKey: "awardBlinkSub" }
 };
 
+type AwardPhase = "collage" | "countdown" | "reveal";
+
 function AwardPanel({
   t,
   kind,
@@ -207,6 +213,7 @@ function AwardPanel({
   players,
   youName,
   lang,
+  viewerRole,
   onNext
 }: {
   t: Dict;
@@ -215,6 +222,7 @@ function AwardPanel({
   players: RevealEntry[];
   youName: string;
   lang: Lang;
+  viewerRole: "player" | "ob";
   onNext: () => void;
 }) {
   const meta = AWARD_META[kind];
@@ -235,6 +243,32 @@ function AwardPanel({
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [savedHint, setSavedHint] = useState(false);
 
+  // Reveal cinematics: collage breathes for ~1s, then a 2.4s drumroll
+  // (3 → 2 → 1 → ✦) overlays it, then the winner block stamps in with
+  // a confetti burst. Resets each time `kind` changes (next award).
+  const [phase, setPhase] = useState<AwardPhase>("collage");
+  const [tick, setTick] = useState(3);
+  useEffect(() => {
+    setPhase("collage");
+    setTick(3);
+    const t1 = window.setTimeout(() => setPhase("countdown"), 1000);
+    const t2 = window.setTimeout(() => setTick(2), 1000 + 700);
+    const t3 = window.setTimeout(() => setTick(1), 1000 + 1400);
+    const t4 = window.setTimeout(() => setPhase("reveal"), 1000 + 2100);
+    return () => {
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+      window.clearTimeout(t3);
+      window.clearTimeout(t4);
+    };
+  }, [kind]);
+
+  // Allow tap-anywhere to skip ahead in the cinematic — useful for impatient
+  // players, while OB / spectators tend to let it play.
+  const skipToReveal = useCallback(() => {
+    if (phase !== "reveal") setPhase("reveal");
+  }, [phase]);
+
   const handleSave = useCallback(async () => {
     const blob = await composeAwardCardPng({
       medal: meta.medal,
@@ -246,22 +280,53 @@ function AwardPanel({
       winnerAnimal: winnerEntry ? winnerAnimal : null
     });
     if (!blob) return;
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `nocturne-zoo-${kind}-${Date.now()}.png`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    const safeWinner = (award?.name ?? "winner")
+      .replace(/[^a-zA-Z0-9_-]+/g, "_")
+      .slice(0, 24) || "winner";
+    const filename = `nocturne-zoo-${kind}-${safeWinner}-${formatDateSlug()}.png`;
+    // Web Share API first (mobile share sheet → save to camera roll, AirDrop,
+    // etc.); falls back to a regular blob download if unavailable or rejected.
+    const file = new File([blob], filename, { type: "image/png" });
+    let shared = false;
+    try {
+      const navAny = navigator as Navigator & {
+        canShare?: (data: { files?: File[] }) => boolean;
+        share?: (data: ShareData & { files?: File[] }) => Promise<void>;
+      };
+      if (navAny.share && navAny.canShare && navAny.canShare({ files: [file] })) {
+        await navAny.share({
+          title: titleStr,
+          text: award?.name ? `${meta.medal} ${award.name}` : titleStr,
+          files: [file]
+        });
+        shared = true;
+      }
+    } catch {
+      /* user cancelled or share failed — fall through to download */
+    }
+    if (!shared) {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
     setSavedHint(true);
     window.setTimeout(() => setSavedHint(false), 1600);
   }, [meta.medal, titleStr, subStr, tiles, award, winnerEntry, winnerAnimal, kind]);
 
   return (
-    <div ref={cardRef} className="endgame-card endgame-award-stage is-winner">
+    <div
+      ref={cardRef}
+      className={"endgame-card endgame-award-stage is-winner phase-" + phase}
+      onClick={skipToReveal}
+    >
       <div className="endgame-eyebrow">{t.endGameAwardsHead}</div>
       <div className="endgame-award-stage__title">
+        <span className="endgame-award-stage__spot" aria-hidden />
         <span className="endgame-award-stage__medal" aria-hidden>{meta.medal}</span>
         <div>
           <h2 className="endgame-award-stage__name">{titleStr}</h2>
@@ -269,31 +334,93 @@ function AwardPanel({
         </div>
       </div>
 
-      <Collage tiles={tiles} fallbackEmoji={meta.emoji} />
+      <div className="endgame-collage-wrap">
+        <Collage tiles={tiles} fallbackEmoji={meta.emoji} />
+        {phase === "countdown" ? (
+          <div className="endgame-drumroll" aria-hidden>
+            <span key={tick} className="endgame-drumroll__digit">{tick}</span>
+          </div>
+        ) : null}
+      </div>
 
-      {award ? (
-        <div className={"endgame-award-stage__winner" + (isYou ? " is-self" : "")}>
-          <div className="endgame-award-stage__winner-line">
-            <span className="endgame-award-stage__star" aria-hidden>★</span>
-            <span className="endgame-award-stage__wname">{award.name}</span>
-            {isYou ? <span className="endgame-award-stage__you" aria-hidden> · YOU</span> : null}
+      {phase === "reveal" ? (
+        award ? (
+          <div className={"endgame-award-stage__winner" + (isYou ? " is-self" : "")}>
+            <Confetti />
+            <div className="endgame-award-stage__winner-line">
+              <span className="endgame-award-stage__star" aria-hidden>★</span>
+              <span className="endgame-award-stage__wname">{award.name}</span>
+              {isYou ? <span className="endgame-award-stage__you" aria-hidden> · YOU</span> : null}
+            </div>
+            <div className="endgame-award-stage__wmeta">
+              {winnerAnimal} · ×{award.count}
+            </div>
           </div>
-          <div className="endgame-award-stage__wmeta">
-            {winnerAnimal} · ×{award.count}
-          </div>
-        </div>
+        ) : (
+          <div className="muted endgame-award-stage__none">{t.endGameAwardNone}</div>
+        )
       ) : (
-        <div className="muted endgame-award-stage__none">{t.endGameAwardNone}</div>
+        <div className="endgame-award-stage__placeholder" aria-hidden />
       )}
 
       <div className="endgame-actions">
-        <button className="ghost" onClick={handleSave}>
+        <button
+          type="button"
+          className="ghost"
+          onClick={(e) => { e.stopPropagation(); handleSave(); }}
+          disabled={phase !== "reveal"}
+        >
           {savedHint ? t.endGameSaved : t.endGameSave}
         </button>
-        <button className="primary" onClick={onNext}>
+        <button
+          type="button"
+          className="primary"
+          onClick={(e) => { e.stopPropagation(); onNext(); }}
+          disabled={phase !== "reveal"}
+        >
           {t.endGameNext}
         </button>
       </div>
+    </div>
+  );
+}
+
+function formatDateSlug(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
+
+/** Pure-CSS confetti: 14 absolutely-positioned shards animating outward. */
+function Confetti() {
+  const shards = useMemo(() => {
+    const out: Array<{ x: number; rot: number; delay: number; color: string; shape: string }> = [];
+    const palette = ["#ffdc5a", "#ff9a7a", "#d6402e", "#f2efe9", "#b9eab2", "#ffa8d8"];
+    for (let i = 0; i < 14; i++) {
+      out.push({
+        x: -120 + Math.random() * 240,
+        rot: Math.random() * 360,
+        delay: Math.random() * 120,
+        color: palette[i % palette.length] || "#f2efe9",
+        shape: i % 3 === 0 ? "circle" : "rect"
+      });
+    }
+    return out;
+  }, []);
+  return (
+    <div className="endgame-confetti" aria-hidden>
+      {shards.map((s, i) => (
+        <span
+          key={i}
+          className={"endgame-confetti__shard endgame-confetti__shard--" + s.shape}
+          style={{
+            ["--cx" as string]: `${s.x}px`,
+            ["--cr" as string]: `${s.rot}deg`,
+            ["--cd" as string]: `${s.delay}ms`,
+            background: s.color
+          }}
+        />
+      ))}
     </div>
   );
 }
