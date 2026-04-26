@@ -41,7 +41,7 @@ Take a photo with your camera, answer 3 eerie questions → get assigned one of 
 
 Players move their animal avatar around the map while the camera drives their character's eyes and mouth in real time.
 
-**Universal Rules** — one rule is broadcast at random every 15 seconds; all players must complete it within 8 seconds:
+**Universal Rules** — one rule is broadcast at random every 15 seconds; all players must complete it within 5 seconds:
 
 
 | Rule                      | Detection                                             |
@@ -81,7 +81,7 @@ Players move their animal avatar around the map while the camera drives their ch
 
 ### ⑥ Items
 
-The map always has  **hearts +  alarms** placed at fixed positions:
+The map always has **3 hearts + 3 alarms** placed at fixed positions:
 
 
 | Item     | Effect                                                 |
