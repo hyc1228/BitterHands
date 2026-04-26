@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no"
     />
-    <title>Nocturne Zoo · 主场景</title>
+    <title>Nocturne Zoo · Main Scene</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -1158,14 +1158,14 @@
         <div class="alert-overlay" id="alertOverlay" aria-hidden="true"></div>
 
         <!-- Language toggle — manual override for zh ↔ en. -->
-        <button class="lang-toggle" id="langToggle" type="button" aria-label="Language">EN</button>
+        <button class="lang-toggle" id="langToggle" type="button" aria-label="Language">中</button>
         <!-- Monitor challenge bar (top): when flashlight lands on you. -->
         <div id="challengeOverlay" class="action-bar action-bar-top">
           <div class="bar-fill" id="chal-bar-fill"></div>
           <div class="bar-content">
             <span class="bar-warn">⚠️</span>
-            <span class="bar-label" id="chal-label">守则提示</span>
-            <span class="bar-status" id="chal-status">监管者注视着你…</span>
+            <span class="bar-label" id="chal-label">Rule</span>
+            <span class="bar-status" id="chal-status">The Monitor is watching you…</span>
             <span class="bar-emoji" id="chal-icon">👁️</span>
           </div>
           <div class="bar-check">✅</div>
@@ -1175,8 +1175,8 @@
           <div class="bar-fill" id="uchal-bar-fill"></div>
           <div class="bar-content">
             <span class="bar-warn">⚠️</span>
-            <span class="bar-label" id="uchal-label">通用规则</span>
-            <span class="bar-status" id="uchal-status">请执行！</span>
+            <span class="bar-label" id="uchal-label">Universal</span>
+            <span class="bar-status" id="uchal-status">Do it!</span>
             <span class="bar-emoji" id="uchal-icon">👁️</span>
           </div>
           <div class="bar-check">✅</div>
@@ -1184,11 +1184,11 @@
         <!-- Death flash overlay (auto-dismisses) -->
         <div id="deathOverlay">
           <div class="death-icon">💀</div>
-          <div class="death-title">你已出局</div>
-          <div class="death-sub">观战模式</div>
+          <div class="death-title">You're out</div>
+          <div class="death-sub">Spectator mode</div>
         </div>
         <!-- Persistent spectator badge -->
-        <div id="spectatorBadge">💀 观战中</div>
+        <div id="spectatorBadge">💀 Spectating</div>
       </div>
     </div>
 
@@ -1221,6 +1221,13 @@
           universalHeadLabel:  "SHAKE OR NOD!",
           challengeRuleHeader: "Rule",
           challengeUniHeader:  "Universal",
+          chalStatusInitial:   "The Monitor is watching you…",
+          uchalStatusInitial:  "Do it!",
+          deathTitle:          "You're out",
+          deathSub:            "Spectator mode",
+          spectatorBadge:      "💀 Spectating",
+          camInitFailed:       "Camera init failed — detection unavailable.",
+          camDetectError:      (m) => `Detection init failed: ${m}`,
 
           // Bar status (small)
           statusGoNow:         "Go!",
@@ -1286,6 +1293,13 @@
           universalHeadLabel:  "摇头或点头！",
           challengeRuleHeader: "守则",
           challengeUniHeader:  "通用",
+          chalStatusInitial:   "监管者注视着你…",
+          uchalStatusInitial:  "请执行！",
+          deathTitle:          "你已出局",
+          deathSub:            "观战模式",
+          spectatorBadge:      "💀 观战中",
+          camInitFailed:       "摄像头启动失败，动作检测不可用。",
+          camDetectError:      (m) => `动作检测初始化失败：${m}`,
 
           statusGoNow:         "快做出动作！",
           statusKeepEyesOpenS: (s) => `保持睁眼 ${s}s…`,
@@ -1338,7 +1352,7 @@
         },
       };
 
-      let currentLang = "zh";
+      let currentLang = "en";
       const _urlLang = new URLSearchParams(location.search).get("lang");
       if (_urlLang === "en" || _urlLang === "zh") currentLang = _urlLang;
 
@@ -1366,6 +1380,20 @@
         // pick up the new lang on next event.
         const hintEl = document.querySelector(".hint");
         if (hintEl) hintEl.textContent = t("hint");
+        // Static HUD labels: chal/uchal idle text, death overlay, spectator badge.
+        const setText = (id, txt) => {
+          const el = document.getElementById(id);
+          if (el) el.textContent = txt;
+        };
+        setText("chal-label", t("challengeRuleHeader"));
+        setText("chal-status", t("chalStatusInitial"));
+        setText("uchal-label", t("challengeUniHeader"));
+        setText("uchal-status", t("uchalStatusInitial"));
+        const dt = document.querySelector("#deathOverlay .death-title");
+        if (dt) dt.textContent = t("deathTitle");
+        const ds = document.querySelector("#deathOverlay .death-sub");
+        if (ds) ds.textContent = t("deathSub");
+        setText("spectatorBadge", t("spectatorBadge"));
         // Toggle button shows the OTHER language as a hint of what
         // clicking it will do.
         const langBtn = document.getElementById("langToggle");
@@ -3605,10 +3633,10 @@
           height: 240,
         });
         camStream.start().catch(() => {
-          addLog("摄像头启动失败，动作检测不可用。");
+          addLog(t("camInitFailed"));
         });
       } catch (e) {
-        addLog("动作检测初始化失败：" + e.message);
+        addLog(t("camDetectError", e.message));
       }
 
       // =================================================================
@@ -3667,8 +3695,8 @@
         layers.me.appendChild(newMe);
         state.nodes.me = newMe;
         renderLives();
-        if (p.ruleText) addLog("「守则」" + String(p.ruleText), null, { rule: true });
-        if (p.winText) addLog("「胜利」" + String(p.winText), null, {});
+        if (p.ruleText) addLog(t("logRulePrefix") + String(p.ruleText), null, { rule: true });
+        if (p.winText) addLog(t("logWinPrefix") + String(p.winText), null, {});
       }
       function hash01(s) {
         var h = 0;
