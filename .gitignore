@@ -25,6 +25,14 @@ server/app/public/nz-scene.document
 # `server/public/main-scene/**` is tracked so PartyKit deploy includes the iframe (SPA fallback
 # was serving the React `index.html` for `/main-scene/*` when this folder was gitignored).
 
+# Pitch / marketing artifacts copied into the publicDir by sync-main-scene.mjs.
+# Source lives in `resource/` at the repo root; the synced copies are pure
+# build outputs and shouldn't pollute the working tree.
+server/app/public/resource/ScreenShot_*
+server/app/public/resource/face-detect.*
+server/public/resource/ScreenShot_*
+server/public/resource/face-detect.*
+
 # Optional local design notes (not part of the app build)
 design-system/
 
