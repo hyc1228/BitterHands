@@ -49,6 +49,14 @@ export const ClientMessageTypes = /** @type {const} */ ({
    * isn't already running, so this is a no-op once a real game is live.
    */
   TEST_FORCE_START: "test_force_start",
+  /**
+   * OB-only: spawn N synthetic "AI" players that wander the map. Avatars +
+   * camera tile use the in-iframe character SVGs. Used to make multiplayer
+   * testing visible without recruiting human players.
+   */
+  OB_SPAWN_AI: "ob_spawn_ai",
+  /** OB-only: remove all AI bots from the room. */
+  OB_DESPAWN_AI: "ob_despawn_ai",
   /** Authoritative playfield: position, anim id, optional FX; relayed to everyone including OB. */
   MAIN_SCENE_STATE: "main_scene_state",
   /** Request picking up a map item (id matches main-scene h1, a1, …). */

@@ -207,6 +207,14 @@ function ObInner() {
     send(ClientMessageTypes.START);
   }
 
+  function handleSpawnAi() {
+    send(ClientMessageTypes.OB_SPAWN_AI, { count: 4 });
+  }
+
+  function handleDespawnAi() {
+    send(ClientMessageTypes.OB_DESPAWN_AI);
+  }
+
   async function handleConnect() {
     setError(null);
     try {
@@ -236,6 +244,11 @@ function ObInner() {
   // the operator whether everyone is in.
   const canStart = conn === "open" && !gameLive;
   const allReady = totalPlayers > 0 && readyCount === totalPlayers;
+  const aiCount = useMemo(
+    () => realPlayers.filter((p) => p.id.startsWith("ai_")).length,
+    [realPlayers]
+  );
+  const canSpawnAi = conn === "open" && totalPlayers < 10;
   const facePlayers = useMemo(
     () => realPlayers.slice(0, OB_FACE_SLOTS),
     [realPlayers]
@@ -348,6 +361,26 @@ function ObInner() {
             </span>
           </div>
         ) : null}
+        <div className="ob-ai-row">
+          <button
+            type="button"
+            className="ob-ai-btn"
+            onClick={handleSpawnAi}
+            disabled={!canSpawnAi}
+            title="Add 4 synthetic players (lion / owl / giraffe SVG avatars) that wander the map. Useful to see the multiplayer view without recruiting humans."
+          >
+            + Spawn 4 AI
+          </button>
+          <button
+            type="button"
+            className="ob-ai-btn ob-ai-btn--ghost"
+            onClick={handleDespawnAi}
+            disabled={conn !== "open" || aiCount === 0}
+          >
+            Clear AI
+          </button>
+          <span className="muted ob-ai-meta">{aiCount} AI in room</span>
+        </div>
         <div>
           <div className="section-title">
             {t.players} <span className="muted">({players.length})</span>

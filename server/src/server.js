@@ -170,6 +170,16 @@ export default class Server {
     /** Monitor tick handle (setInterval). Started on game start, cleared on end. */
     this._monitorTick = null;
     this._monitorLastTickAt = 0;
+
+    /**
+     * Synthetic AI players spawned via OB_SPAWN_AI. Same shape as `_playerPositions`
+     * but kept separately so we can wander them on a server tick (the human players
+     * report their own positions). Each AI also has a corresponding entry in
+     * `this.players` so the iframe + OB camera grid render them like real peers.
+     * @type {Map<string, {x:number, y:number, vx:number, vy:number, dir:number}>}
+     */
+    this._aiBots = new Map();
+    this._aiTick = null;
   }
 
   _initialMonitorState() {
@@ -188,6 +198,139 @@ export default class Server {
       lured: null,
       retargetIn: 0
     };
+  }
+
+  // -------------------------------------------------------------
+  // AI bots — synthetic players for multiplayer testing.
+  // Each bot has a `Player` entry (so it appears everywhere a real player would:
+  // OB face wall, iframe avatar list, snapshot) plus a separate motion record in
+  // `_aiBots` driven by `_aiTick`.
+  // -------------------------------------------------------------
+  _aiCharacterPreset(slot) {
+    /** Animal cycle keeps the visible mix balanced (lion / owl / giraffe). */
+    const cycle = [
+      { animal: Animals.LION, name: "Lion", avatar: "/main-scene/lion.svg" },
+      { animal: Animals.OWL, name: "Owl", avatar: "/main-scene/Owl%20body.svg" },
+      { animal: Animals.GIRAFFE, name: "Giraffe", avatar: "/main-scene/giraffe.svg" }
+    ];
+    return cycle[slot % cycle.length];
+  }
+
+  _aiVerdictFor(animal) {
+    if (animal === Animals.LION) return "Probably a Lion. Calm under pressure.";
+    if (animal === Animals.OWL) return "An Owl. Reads the room before moving.";
+    if (animal === Animals.GIRAFFE) return "A Giraffe. Hyper-alert, slow to commit.";
+    return null;
+  }
+
+  _spawnAiBot() {
+    if (this.players.size >= MAX_ROOM_PLAYERS) return null;
+    const slot = this._aiBots.size;
+    const preset = this._aiCharacterPreset(slot);
+    const id = `ai_${slot + 1}_${Math.random().toString(36).slice(2, 6)}`;
+    const idx = this.players.size + 1;
+    /** @type {Player} */
+    const player = {
+      id,
+      name: `${preset.name}-${String(idx).padStart(2, "0")}`,
+      animal: preset.animal,
+      lives: 3,
+      verdict: this._aiVerdictFor(preset.animal),
+      impression: "(AI bot — wanders the map for testing.)",
+      answers: { qz_01: "A", qz_02: "B", qz_03: "C" },
+      violations: 0,
+      alive: true,
+      joinedAt: Date.now(),
+      lang: "en",
+      avatarUrl: preset.avatar,
+      photoSeed: undefined,
+      ready: true,
+      faceCounts: { mouthOpens: 0, headShakes: 0, blinks: 0 },
+      highlights: { mouth: [], shake: [], blink: [] }
+    };
+    this.players.set(id, player);
+    // Random spawn point inside the inner playfield, with a starting heading.
+    const x = MAP_BORDER + 40 + Math.random() * (MAP_W_MS - 2 * (MAP_BORDER + 40));
+    const y = MAP_BORDER + 40 + Math.random() * (MAP_H_MS - 2 * (MAP_BORDER + 40));
+    this._aiBots.set(id, { x, y, vx: 0, vy: 0, dir: Math.random() * Math.PI * 2 });
+    this._playerPositions.set(id, { x, y, ts: Date.now() });
+    this._broadcast(ServerEventTypes.PLAYER_JOINED, this._publicPlayer(player));
+    // Push a "camera frame" pointing to the character SVG so OB's face tile
+    // shows the in-game art instead of the initials fallback. We round-trip
+    // through `lastCameraFrameByPlayerId` so a fresh OB connection (onConnect
+    // replay) also sees it.
+    const camFrame = { dataUrl: preset.avatar, ts: Date.now() };
+    this.lastCameraFrameByPlayerId.set(id, camFrame);
+    this._broadcast(ServerEventTypes.CAMERA_FRAME, {
+      playerId: id,
+      playerName: player.name,
+      dataUrl: camFrame.dataUrl,
+      ts: camFrame.ts
+    });
+    return id;
+  }
+
+  _removeAiBot(id) {
+    if (!this._aiBots.has(id)) return;
+    this._aiBots.delete(id);
+    this.players.delete(id);
+    this._playerPositions.delete(id);
+    this.lastCameraFrameByPlayerId.delete(id);
+    this._broadcast(ServerEventTypes.SYSTEM, {
+      code: "PLAYER_LEFT",
+      params: { name: id }
+    });
+  }
+
+  _ensureAiTick() {
+    if (this._aiTick) return;
+    let last = Date.now();
+    this._aiTick = setInterval(() => {
+      const now = Date.now();
+      const dt = Math.min(0.5, (now - last) / 1000);
+      last = now;
+      if (this._aiBots.size === 0) {
+        clearInterval(this._aiTick);
+        this._aiTick = null;
+        return;
+      }
+      const speed = 95;
+      for (const [id, bot] of this._aiBots.entries()) {
+        const p = this.players.get(id);
+        if (!p) continue;
+        // Lazy random-walk: re-pick heading every ~1.5 s, plus a small jitter
+        // each tick. Keeps the bots feeling alive without being chaotic.
+        bot.dir += (Math.random() - 0.5) * 0.6 * dt;
+        if (Math.random() < dt / 1.5) bot.dir = Math.random() * Math.PI * 2;
+        const vx = Math.cos(bot.dir) * speed;
+        const vy = Math.sin(bot.dir) * speed;
+        let nx = bot.x + vx * dt;
+        let ny = bot.y + vy * dt;
+        if (nx < MAP_BORDER) { nx = MAP_BORDER; bot.dir = Math.PI - bot.dir; }
+        if (nx > MAP_W_MS - MAP_BORDER) { nx = MAP_W_MS - MAP_BORDER; bot.dir = Math.PI - bot.dir; }
+        if (ny < MAP_BORDER) { ny = MAP_BORDER; bot.dir = -bot.dir; }
+        if (ny > MAP_H_MS - MAP_BORDER) { ny = MAP_H_MS - MAP_BORDER; bot.dir = -bot.dir; }
+        bot.x = nx;
+        bot.y = ny;
+        bot.vx = vx;
+        bot.vy = vy;
+        this._playerPositions.set(id, { x: nx, y: ny, ts: now });
+        // Mirror what real players send via MAIN_SCENE_STATE so the iframe's
+        // `applyMainSceneNet` hook moves the bot's avatar smoothly.
+        this._broadcast(ServerEventTypes.MAIN_SCENE_BROADCAST, {
+          playerId: id,
+          x: nx,
+          y: ny,
+          vx,
+          vy,
+          moving: true,
+          animKey: "walk",
+          facing: vx >= 0 ? 1 : -1,
+          t: now,
+          fx: null
+        });
+      }
+    }, 200);
   }
 
   /**
@@ -571,6 +714,37 @@ export default class Server {
         return;
       }
 
+      case ClientMessageTypes.OB_SPAWN_AI: {
+        // OB-only: connections that joined as a player have an entry in `players`.
+        if (this.players.has(conn.id)) return;
+        const requested = Number(msg?.count);
+        const count = Number.isFinite(requested) && requested > 0
+          ? Math.min(MAX_ROOM_PLAYERS - this.players.size, Math.floor(requested))
+          : Math.min(MAX_ROOM_PLAYERS - this.players.size, 4);
+        if (count <= 0) return;
+        for (let i = 0; i < count; i++) {
+          this._spawnAiBot();
+        }
+        // Keep them wandering even outside an active round so the OB face wall
+        // looks alive while the operator gets ready to start.
+        this._ensureAiTick();
+        this._sendRoomSnapshot();
+        return;
+      }
+
+      case ClientMessageTypes.OB_DESPAWN_AI: {
+        if (this.players.has(conn.id)) return;
+        for (const id of Array.from(this._aiBots.keys())) {
+          this._removeAiBot(id);
+        }
+        if (this._aiBots.size === 0 && this._aiTick) {
+          clearInterval(this._aiTick);
+          this._aiTick = null;
+        }
+        this._sendRoomSnapshot();
+        return;
+      }
+
       case ClientMessageTypes.TEST_FORCE_START: {
         // Test-only: lets a /test tab (which IS a player) start the game itself.
         // Same body as the OB-driven START path, minus the "must not be a player" check.
@@ -799,6 +973,9 @@ export default class Server {
     let changed = false;
     for (const pid of Array.from(this.players.keys())) {
       if (live.has(pid)) continue;
+      // AI bots have synthetic ids and no WS connection; OB_DESPAWN_AI is the
+      // only way to remove them. Without this guard every JOIN would wipe them.
+      if (this._aiBots.has(pid)) continue;
       const p = this.players.get(pid);
       this.players.delete(pid);
       this.owlGuessesByPlayerId.delete(pid);

@@ -43,6 +43,10 @@ export const ClientMessageTypes = {
   END: "end",
   /** Test/dev: bypass OB-only START gate so a single tab can drive the game. */
   TEST_FORCE_START: "test_force_start",
+  /** OB-only: spawn synthetic AI players (camera tiles + map wander). */
+  OB_SPAWN_AI: "ob_spawn_ai",
+  /** OB-only: clear all AI players from the room. */
+  OB_DESPAWN_AI: "ob_despawn_ai",
   MAIN_SCENE_STATE: "main_scene_state",
   MAIN_SCENE_ITEM_PICKUP: "main_scene_item_pickup",
   /** Per-client cumulative face-action counters reported every few seconds. */

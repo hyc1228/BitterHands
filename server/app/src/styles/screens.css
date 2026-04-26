@@ -1197,6 +1197,14 @@
   object-fit: cover;
   display: block;
 }
+/* AI bots use the in-iframe SVG character art as their camera frame; let it
+   "letterbox" so the full body is visible instead of being cropped at the head. */
+.ob-cam-image[src$=".svg"],
+.ob-cam-image[src*="/main-scene/"] {
+  object-fit: contain;
+  background: rgba(20, 14, 4, 0.45);
+  padding: 4px;
+}
 
 .ob-spotlight-placeholder {
   width: 100%;
@@ -3135,6 +3143,45 @@
 .ob-start-meta {
   font-family: var(--nz-font-display);
   font-size: 12px;
+  letter-spacing: 0.18em;
+}
+
+/* OB — spawn AI bots row (lives below the Start row). */
+.ob-ai-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 8px 0;
+  border-top: 1px dashed rgba(255, 255, 255, 0.08);
+  border-bottom: 1px dashed rgba(255, 255, 255, 0.08);
+}
+.ob-ai-btn {
+  font-family: var(--nz-font-display);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  padding: 6px 12px;
+  border-radius: 6px;
+  border: 1px solid rgba(120, 200, 255, 0.45);
+  background: rgba(20, 60, 120, 0.35);
+  color: #b9dcff;
+  cursor: pointer;
+}
+.ob-ai-btn:hover:not(:disabled) {
+  background: rgba(40, 90, 160, 0.45);
+}
+.ob-ai-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.ob-ai-btn--ghost {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: transparent;
+  color: var(--nz-muted, #a8a8a8);
+}
+.ob-ai-meta {
+  font-family: var(--nz-font-display);
+  font-size: 11px;
   letter-spacing: 0.18em;
 }
 
