@@ -2,6 +2,10 @@ import type { Lang } from "./party/protocol";
 
 interface Dict {
   appTitle: string;
+  /** Landing page (splash visuals + Join form) at "/" */
+  splashTitle: string;
+  splashTagline: string;
+  splashStart: string;
   joinRoom: string;
   roomLabel: string;
   roomPlaceholder: string;
@@ -151,6 +155,9 @@ interface Dict {
 
 const en: Dict = {
   appTitle: "Nocturne Zoo",
+  splashTitle: "Nocturne Zoo",
+  splashTagline: "An AI-curated night shift. Your face is the controller.",
+  splashStart: "Start",
   joinRoom: "Join room",
   roomLabel: "Room",
   roomPlaceholder: "e.g. my-room",
@@ -279,6 +286,9 @@ const en: Dict = {
 
 const zh: Dict = {
   appTitle: "深夜动物园",
+  splashTitle: "深夜动物园",
+  splashTagline: "AI 编排的夜班，脸就是手柄。",
+  splashStart: "开始",
   joinRoom: "加入房间",
   roomLabel: "房间号",
   roomPlaceholder: "例如：my-room",

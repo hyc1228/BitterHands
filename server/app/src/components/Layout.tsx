@@ -7,12 +7,24 @@ export default function Layout({ children }: PropsWithChildren) {
   const loc = useLocation();
   const isOb = loc.pathname.startsWith("/ob");
   const isMainScene = loc.pathname.startsWith("/main-scene");
+  // The `/` page (Join + splash visuals merged) is full-bleed — same treatment as main-scene,
+  // so the grass tile + vignette can own the viewport without the app header / padding.
+  const isSplash = loc.pathname === "/" || loc.pathname === "";
   if (isMainScene) {
     // Keep LangDock floating over the iframe so players can switch language mid-game.
     // The dock writes to the store; MainScene.tsx's existing `pushToIframe` effect picks
     // up the new `lang` and forwards it via NZ_PLAYER_SYNC to the iframe's setLang().
     return (
       <div className="app-shell app-shell--main-scene">
+        {children}
+        <LangDock />
+      </div>
+    );
+  }
+  if (isSplash) {
+    // Splash is full-bleed (no header / no app-main padding) — let it own the viewport.
+    return (
+      <div className="app-shell app-shell--splash">
         {children}
         <LangDock />
       </div>

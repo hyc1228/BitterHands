@@ -1462,6 +1462,138 @@
   overflow: hidden;
 }
 
+/* ------------- Splash (start) screen ------------- */
+.app-shell--splash {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
+  min-height: 100dvh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.splash-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+  /* Allow scroll on short phones where title + form + button overflow viewport. */
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: max(env(safe-area-inset-top), 24px) 0 max(env(safe-area-inset-bottom), 24px);
+}
+
+/* Grass tile from main-scene assets — synced to /main-scene/ via predev script. */
+.splash-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background-color: #1a2a13;
+  background-image: url("/main-scene/backgroundTile.svg");
+  background-repeat: repeat;
+  background-size: 220px 220px;
+  filter: brightness(0.55) saturate(1.1);
+  animation: splash-drift 32s linear infinite;
+}
+
+/* Vignette + faint red haze — keeps the splash on-brand with the noir game. */
+.splash-vignette {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 45%, transparent 0%, rgba(0, 0, 0, 0.55) 70%, rgba(0, 0, 0, 0.85) 100%),
+    radial-gradient(ellipse 90% 60% at 50% 0%, var(--nz-red-dim), transparent 60%);
+}
+
+@keyframes splash-drift {
+  from { background-position: 0 0; }
+  to   { background-position: 220px 220px; }
+}
+
+.splash-stage {
+  position: relative;
+  width: min(560px, 100%);
+  padding: 0 var(--nz-pad-x);
+  display: grid;
+  gap: 18px;
+  text-align: center;
+  justify-items: center;
+}
+
+.splash-title {
+  font-family: var(--nz-font-display);
+  font-size: clamp(44px, 11vw, 84px);
+  letter-spacing: 0.04em;
+  line-height: 1.0;
+  margin: 0;
+  color: var(--nz-cream);
+  text-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.55),
+    0 8px 28px rgba(214, 64, 46, 0.35);
+  transform: rotate(-1.5deg);
+}
+
+.splash-tagline {
+  font-family: var(--nz-font-hand);
+  font-size: clamp(15px, 4vw, 19px);
+  color: var(--nz-cream);
+  margin: 0;
+  max-width: 30ch;
+  line-height: 1.35;
+}
+
+.splash-start {
+  margin-top: 4px;
+  min-width: 200px;
+  font-size: clamp(18px, 4.4vw, 22px);
+  letter-spacing: 0.16em;
+  padding: 0 28px;
+  height: 56px;
+  border-radius: var(--nz-radius-pill);
+}
+
+/* Combined splash + Join form */
+.splash-stage--form {
+  /* Tighter title size when paired with the form so everything fits on small phones. */
+  gap: 14px;
+  width: min(420px, 100%);
+}
+
+.splash-stage--form .splash-title {
+  font-size: clamp(40px, 9.6vw, 68px);
+}
+
+.splash-fields {
+  display: grid;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  margin-top: 6px;
+}
+
+.splash-fields .label {
+  /* Slight glow so the small caps label stays legible against grass + vignette. */
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+}
+
+.splash-fields input {
+  /* Solid dark fill so the input is readable on the lighter grass center of the vignette. */
+  background: rgba(10, 10, 10, 0.86);
+  backdrop-filter: blur(2px);
+}
+
+.splash-error {
+  color: #ff9a8a;
+  font-size: 14px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+}
+
 .main-scene-iframe {
   display: block;
   width: 100%;

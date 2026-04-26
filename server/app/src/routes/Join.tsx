@@ -61,11 +61,13 @@ export default function Join() {
   }
 
   return (
-    <div className="join-wrap">
-      <form className="card join-card" onSubmit={handleSubmit}>
-        <h1 className="heading">{t.joinRoom}</h1>
-        <div className="underline" aria-hidden />
-        <div className="stack" style={{ textAlign: "left" }}>
+    <div className="splash-wrap" role="region" aria-label={t.splashTitle}>
+      <div className="splash-bg" aria-hidden />
+      <div className="splash-vignette" aria-hidden />
+      <form className="splash-stage splash-stage--form" onSubmit={handleSubmit}>
+        <h1 className="splash-title">{t.splashTitle}</h1>
+        <p className="splash-tagline">{t.splashTagline}</p>
+        <div className="splash-fields">
           <div>
             <label className="label" htmlFor="roomId">
               {t.roomLabel}
@@ -93,9 +95,9 @@ export default function Join() {
             />
           </div>
         </div>
-        {error ? <div style={{ color: "#ff9a8a" }}>{error}</div> : null}
-        <button className="primary" disabled={submitDisabled} type="submit">
-          {busy ? t.joining : t.joinBtn}
+        {error ? <div className="splash-error">{error}</div> : null}
+        <button className="primary splash-start" disabled={submitDisabled} type="submit">
+          {busy ? t.joining : t.splashStart}
         </button>
         {/* OB link intentionally hidden — only the operator should reach `/ob`, and even
             then they need the key gate (see ObAuthGate in Ob.tsx). */}
