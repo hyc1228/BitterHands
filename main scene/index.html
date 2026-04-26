@@ -3829,11 +3829,27 @@
         if (typeof p.lives === "number") {
           state.me.lives = Math.max(0, Math.min(3, Math.floor(p.lives)));
         }
+        // Server-authoritative death: if the snapshot says we're out (lives 0
+        // or alive=false), enter spectator mode even if the local rule-fail
+        // path didn't fire (e.g. rejoin, snapshot-driven death, or any future
+        // server-side mechanism).
+        const serverDead =
+          (typeof p.alive === "boolean" && p.alive === false) ||
+          state.me.lives <= 0;
+        if (serverDead && !state.me.dead) {
+          handleDeath();
+          if (p.ruleText) addLog(t("logRulePrefix") + String(p.ruleText), null, { rule: true });
+          if (p.winText) addLog(t("logWinPrefix") + String(p.winText), null, {});
+          return;
+        }
         const nm = typeof p.playerName === "string" ? p.playerName : "";
         if (state.nodes.me && state.nodes.me.parentNode) {
           state.nodes.me.parentNode.removeChild(state.nodes.me);
         }
         const newMe = makeAnimalAvatar({ animal: a, isMe: true, name: nm });
+        // Already-dead players (e.g. snapshot fired handleDeath in a previous
+        // pass) must not have their avatar reappear when the snapshot churns.
+        if (state.me.dead) newMe.setAttribute("visibility", "hidden");
         layers.me.appendChild(newMe);
         state.nodes.me = newMe;
         renderLives();

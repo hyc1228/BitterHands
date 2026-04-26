@@ -39,6 +39,7 @@ export function postToMainSceneFrame(
     },
     "*"
   );
+  const matchedPlayer = args.snapshot?.players.find((p) => p.name === args.myName);
   w.postMessage(
     {
       type: NZ_MSG_TYPE_SYNC,
@@ -48,7 +49,8 @@ export function postToMainSceneFrame(
         myAnimal: args.myAnimal,
         rulesCard: args.rulesCard,
         lang: args.lang,
-        lives: args.snapshot?.players.find((p) => p.name === args.myName)?.lives
+        lives: matchedPlayer?.lives,
+        alive: matchedPlayer?.alive
       })
     },
     "*"

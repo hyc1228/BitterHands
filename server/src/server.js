@@ -445,6 +445,9 @@ export default class Server {
         if (!this.started) return;
         const player = this.players.get(conn.id);
         if (!player) return;
+        // Dead players are spectators; ignore further movement broadcasts so the
+        // shared playfield doesn't show their avatar drifting around.
+        if (!player.alive) return;
         // ~20 Hz cap per client
         const now = Date.now();
         const last = this._lastMainSceneAt.get(conn.id) ?? 0;
@@ -477,6 +480,8 @@ export default class Server {
         if (!this.started) return;
         const player = this.players.get(conn.id);
         if (!player) return;
+        // Dead players cannot pick up items.
+        if (!player.alive) return;
         const itemId = typeof msg?.itemId === "string" ? msg.itemId.slice(0, 32) : "";
         if (!itemId || !this._mainSceneItemRegistry.has(itemId)) {
           return;
