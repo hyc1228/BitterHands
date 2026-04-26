@@ -147,9 +147,6 @@ function ObInner() {
   const obCamRef = useRef(obCam);
   obCamRef.current = obCam;
   const mainSceneIframeRef = useRef<HTMLIFrameElement | null>(null);
-  // Spectate modal: clicking any face avatar opens a big-camera + stage view
-  // for that player. Works in any phase (onboarding / lobby / in-game).
-  const [spectateId, setSpectateId] = useState<string | null>(null);
 
   const mainSceneSrc = useMemo(() => getMainSceneFrameSrc(), []);
   const gameLive = Boolean(snapshot?.started);
@@ -319,18 +316,21 @@ function ObInner() {
   }, [cameraFrames, realPlayers.length]);
   // #endregion
 
+  /** Click on any face avatar / player row → enter "follow this player" mode.
+   *  In-game: iframe camera follows them (existing behavior). Pre-game: the
+   *  lobby center pane swaps from the generic Waiting card to a live spotlight
+   *  for the selected player so OB can drill into anyone at any phase. */
   const pickObFollow = useCallback((id: string) => {
     setObCam({ mode: "follow", followId: id });
   }, []);
-
-  /** Click on any player face → open the spectate modal so the operator can
-   *  see that player even when the iframe scene isn't relevant (onboarding /
-   *  lobby). The modal also lets them jump to "Follow in main scene" when the
-   *  game is live. */
-  const openSpectate = useCallback((id: string) => {
-    setSpectateId(id);
+  const clearObFollow = useCallback(() => {
+    setObCam({ mode: "centroid", followId: null });
   }, []);
-  const closeSpectate = useCallback(() => setSpectateId(null), []);
+  const followedPlayer = useMemo(
+    () => (obCam.followId ? realPlayers.find((p) => p.id === obCam.followId) ?? null : null),
+    [obCam.followId, realPlayers]
+  );
+  const followedFrame = obCam.followId ? cameraFrames.get(obCam.followId) ?? null : null;
 
   return (
     <>
@@ -402,7 +402,7 @@ function ObInner() {
                   key={p.id}
                   player={p}
                   lang={lang}
-                  onPickFollow={p.name.toLowerCase() !== "ob" ? () => openSpectate(p.id) : undefined}
+                  onPickFollow={p.name.toLowerCase() !== "ob" ? () => pickObFollow(p.id) : undefined}
                   followPicked={obCam.mode === "follow" && obCam.followId === p.id}
                 />
               ))
@@ -447,7 +447,7 @@ function ObInner() {
                     player={player}
                     frame={player ? cameraFrames.get(player.id) ?? null : null}
                     lang={lang}
-                    onPickPlayer={player ? () => openSpectate(player.id) : undefined}
+                    onPickPlayer={player ? () => pickObFollow(player.id) : undefined}
                     followSelected={Boolean(player) && obCam.mode === "follow" && obCam.followId === player?.id}
                     pickable={Boolean(player)}
                   />
@@ -456,22 +456,31 @@ function ObInner() {
             </div>
 
             <div className="ob-scene-center ob-lobby-center">
-              <div className={"ob-lobby-card" + (allReady ? " is-all-ready" : "")}>
-                <div className="ob-lobby-card__pulse" aria-hidden="true">
-                  <span /><span /><span />
+              {followedPlayer ? (
+                <ObLobbySpotlight
+                  player={followedPlayer}
+                  frame={followedFrame}
+                  lang={lang}
+                  onClose={clearObFollow}
+                />
+              ) : (
+                <div className={"ob-lobby-card" + (allReady ? " is-all-ready" : "")}>
+                  <div className="ob-lobby-card__pulse" aria-hidden="true">
+                    <span /><span /><span />
+                  </div>
+                  <div className="ob-lobby-card__title">{t.obLobbyWaitingTitle}</div>
+                  <div className="ob-lobby-card__count">
+                    <span className="ob-lobby-card__big">{readyCount}</span>
+                    <span className="ob-lobby-card__sep">/</span>
+                    <span className="ob-lobby-card__big">{totalPlayers}</span>
+                    <span className="ob-lobby-card__label">{t.lobbyReadyLabel}</span>
+                  </div>
+                  <p className="muted ob-lobby-card__hint">{t.obLobbyCenterHint}</p>
+                  {totalPlayers === 0 ? (
+                    <div className="ob-lobby-card__empty muted">{t.obLobbyEmpty}</div>
+                  ) : null}
                 </div>
-                <div className="ob-lobby-card__title">{t.obLobbyWaitingTitle}</div>
-                <div className="ob-lobby-card__count">
-                  <span className="ob-lobby-card__big">{readyCount}</span>
-                  <span className="ob-lobby-card__sep">/</span>
-                  <span className="ob-lobby-card__big">{totalPlayers}</span>
-                  <span className="ob-lobby-card__label">{t.lobbyReadyLabel}</span>
-                </div>
-                <p className="muted ob-lobby-card__hint">{t.obLobbyCenterHint}</p>
-                {totalPlayers === 0 ? (
-                  <div className="ob-lobby-card__empty muted">{t.obLobbyEmpty}</div>
-                ) : null}
-              </div>
+              )}
             </div>
 
             <div className="ob-face-column" aria-label="ob-faces-right">
@@ -485,7 +494,7 @@ function ObInner() {
                     player={player}
                     frame={player ? cameraFrames.get(player.id) ?? null : null}
                     lang={lang}
-                    onPickPlayer={player ? () => openSpectate(player.id) : undefined}
+                    onPickPlayer={player ? () => pickObFollow(player.id) : undefined}
                     followSelected={Boolean(player) && obCam.mode === "follow" && obCam.followId === player?.id}
                     pickable={Boolean(player)}
                   />
@@ -509,7 +518,7 @@ function ObInner() {
                     player={player}
                     frame={player ? cameraFrames.get(player.id) ?? null : null}
                     lang={lang}
-                    onPickPlayer={player ? () => openSpectate(player.id) : undefined}
+                    onPickPlayer={player ? () => pickObFollow(player.id) : undefined}
                     followSelected={Boolean(player) && obCam.mode === "follow" && obCam.followId === player?.id}
                     pickable={Boolean(player)}
                   />
@@ -610,7 +619,7 @@ function ObInner() {
                     player={player}
                     frame={player ? cameraFrames.get(player.id) ?? null : null}
                     lang={lang}
-                    onPickPlayer={player ? () => openSpectate(player.id) : undefined}
+                    onPickPlayer={player ? () => pickObFollow(player.id) : undefined}
                     followSelected={Boolean(player) && obCam.mode === "follow" && obCam.followId === player?.id}
                     pickable={Boolean(player)}
                   />
@@ -622,19 +631,6 @@ function ObInner() {
       </section>
     </div>
     <EndGameOverlay viewerRole="ob" homePath="/ob" />
-    {spectateId ? (
-      <ObSpectateModal
-        player={realPlayers.find((p) => p.id === spectateId) ?? null}
-        frame={cameraFrames.get(spectateId) ?? null}
-        lang={lang}
-        gameLive={gameLive}
-        onClose={closeSpectate}
-        onFollow={() => {
-          pickObFollow(spectateId);
-          closeSpectate();
-        }}
-      />
-    ) : null}
     </>
   );
 }
@@ -922,9 +918,10 @@ function ObFollowHud({
 }
 
 /**
- * Spectate modal: opens when OB clicks any player avatar / face slot. Big
- * camera feed + the player's current "stage" + their stats. Works in any
- * phase (onboarding / lobby / in-game / eliminated).
+ * Inline spotlight rendered in the OB lobby center pane when a face avatar
+ * has been clicked pre-game. No popup — the operator clicks once, and the
+ * Waiting card swaps for a big camera + that player's stage. "Back to lobby"
+ * exits follow mode.
  */
 function derivePlayerStage(p: PublicPlayer, gameLive: boolean): {
   key: "onboarding" | "quiz" | "reveal" | "lobby" | "ingame" | "eliminated";
@@ -941,86 +938,43 @@ function derivePlayerStage(p: PublicPlayer, gameLive: boolean): {
   return { key: "onboarding", zh: "入场中", en: "Onboarding" };
 }
 
-function ObSpectateModal({
+function ObLobbySpotlight({
   player,
   frame,
   lang,
-  gameLive,
-  onClose,
-  onFollow
+  onClose
 }: {
-  player: PublicPlayer | null;
+  player: PublicPlayer;
   frame: CameraFrame | null;
   lang: Lang;
-  gameLive: boolean;
   onClose: () => void;
-  onFollow: () => void;
 }) {
   const t = dict(lang);
-  useEffect(() => {
-    function onKey(e: KeyboardEvent) { if (e.key === "Escape") onClose(); }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-  if (!player) return null;
-  const stage = derivePlayerStage(player, gameLive);
+  const stage = derivePlayerStage(player, false);
   const stageLabel = lang === "zh" ? stage.zh : stage.en;
   const animal = obAnimalLabel(lang, player.animal, t.ownAnimalUnknown);
   const animalIcon = animalEmoji(player.animal);
-  const lives = Math.max(0, Math.min(3, player.lives ?? 0));
   return (
-    <div
-      className="ob-spectate-mask"
-      role="dialog"
-      aria-modal="true"
-      aria-label={player.name}
-      onClick={onClose}
-    >
-      <div className="ob-spectate-card" onClick={(e) => e.stopPropagation()}>
-        <button type="button" className="ob-spectate-close" onClick={onClose} aria-label="close">×</button>
-        <div className={"ob-spectate-feed" + (frame ? "" : " is-empty")}>
-          {frame ? (
-            <img src={frame.dataUrl} alt={`${player.name} live camera`} />
-          ) : (
-            <span className="ob-spectate-initial" aria-hidden>
-              {player.name.charAt(0).toUpperCase()}
-            </span>
-          )}
-          <span className={"ob-spectate-stage stage-" + stage.key}>{stageLabel}</span>
-        </div>
-        <div className="ob-spectate-meta">
-          <h3 className="ob-spectate-name" title={player.name}>{player.name}</h3>
-          <div className="ob-spectate-animal">
-            <span aria-hidden>{animalIcon}</span> {animal}
-          </div>
-          {gameLive ? (
-            <>
-              <div className="ob-spectate-hearts" aria-label={`${lives} lives`}>
-                {Array.from({ length: 3 }, (_, i) => (
-                  <span
-                    key={i}
-                    className={"ob-spectate-heart" + (i < lives ? "" : " is-off")}
-                    aria-hidden
-                  >
-                    {"\u2665\uFE0E"}
-                  </span>
-                ))}
-              </div>
-              <div className="ob-spectate-violations">⚠ {player.violations ?? 0}</div>
-            </>
-          ) : null}
-        </div>
-        <div className="ob-spectate-actions">
-          {gameLive ? (
-            <button type="button" className="primary" onClick={onFollow}>
-              {t.obCamFollow ?? "Follow in scene"}
-            </button>
-          ) : null}
-          <button type="button" className="ghost" onClick={onClose}>
-            {lang === "zh" ? "关闭" : "Close"}
-          </button>
+    <div className="ob-lobby-spotlight">
+      <div className={"ob-lobby-spotlight__feed" + (frame ? "" : " is-empty")}>
+        {frame ? (
+          <img src={frame.dataUrl} alt={`${player.name} live camera`} />
+        ) : (
+          <span className="ob-lobby-spotlight__initial" aria-hidden>
+            {player.name.charAt(0).toUpperCase()}
+          </span>
+        )}
+        <span className={"ob-lobby-spotlight__stage stage-" + stage.key}>{stageLabel}</span>
+      </div>
+      <div className="ob-lobby-spotlight__meta">
+        <h3 className="ob-lobby-spotlight__name" title={player.name}>{player.name}</h3>
+        <div className="ob-lobby-spotlight__animal">
+          <span aria-hidden>{animalIcon}</span> {animal}
         </div>
       </div>
+      <button type="button" className="ghost ob-lobby-spotlight__close" onClick={onClose}>
+        ← {lang === "zh" ? "返回大厅总览" : "Back to lobby"}
+      </button>
     </div>
   );
 }
