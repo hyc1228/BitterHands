@@ -2257,9 +2257,12 @@
           { id: "_local_p3", name: "ZOE", animal: "owl",     x: cx - 280, y: cy + 320, vx: 0, vy: 0, moving: false },
         ],
         monitor: {
-          x: cx + 130,
-          y: cy - 170,
-          aimAngle: Math.PI,
+          // Match the server's _initialMonitorState (CX_MS, CY_MS - 200,
+          // aimAngle 0) so the iframe doesn't render at a different spot
+          // for the ~100ms before the first MONITOR_STATE arrives.
+          x: cx,
+          y: cy - 200,
+          aimAngle: 0,
           mode: "sweep",    // 'sweep' | 'locked'
           sweepDir: 1,
           sweepTimer: 2,
@@ -3004,6 +3007,9 @@
         const wasTargetMe = m.targetId === "me";
         m.targetId = newTargetIsMe ? "me" : (p.targetId || null);
         state._serverMonitorAt = (typeof performance !== "undefined" ? performance.now() : Date.now());
+        // Reset the "fell back to local" warning so it can fire again on the
+        // next stutter rather than only the first time per session.
+        state._localMonitorWarned = false;
         if (m.mode === "locked" && newTargetIsMe && !wasTargetMe) {
           // Server says we're now the lock target — start the local
           // challenge bar so the action prompt shows up.
@@ -3018,11 +3024,24 @@
       }
 
       function updateMonitor(dt) {
-        // If the authoritative server frame arrived in the last second, defer
-        // entirely to it. Avoids two clients diverging on patrol RNG / sweep
-        // direction / who got picked from the cone.
+        // If the authoritative server frame arrived recently, defer entirely
+        // to it. Tightened to 600ms (server ticks every 100ms, so this gives
+        // a ~6-frame buffer) — was 1500ms which let local sim drift visibly
+        // when packets stuttered. Two clients running their own RNG diverge
+        // instantly, so we want the local fallback to almost never fire.
         const _nowMs = (typeof performance !== "undefined" ? performance.now() : Date.now());
-        if (state._serverMonitorAt && _nowMs - state._serverMonitorAt < 1500) return;
+        if (state._serverMonitorAt && _nowMs - state._serverMonitorAt < 600) return;
+        // Solo / pre-server playtest path. In a networked game the server
+        // tick should keep _serverMonitorAt warm; if we end up here during
+        // multiplayer it's a network stutter and the next server frame
+        // resyncs us. Log once so it shows up in DevTools when investigating.
+        if (state.roomStarted && !state._localMonitorWarned) {
+          state._localMonitorWarned = true;
+          if (typeof console !== "undefined") {
+            console.warn("[nz] Monitor: server frame stale; falling back to local sim",
+              { lastServerAt: state._serverMonitorAt, age: _nowMs - (state._serverMonitorAt || 0) });
+          }
+        }
         const m = state.monitor;
 
         // --- Alarm lure: point toward lure position, then resume sweep ---
