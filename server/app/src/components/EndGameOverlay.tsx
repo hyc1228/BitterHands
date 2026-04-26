@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { toBlob as htiToBlob } from "html-to-image";
 import GIF from "gif.js";
 import gifWorkerUrl from "gif.js/dist/gif.worker.js?url";
 import { animalLocalized, dict } from "../i18n";
@@ -272,11 +271,17 @@ function AwardPanel({
     if (phase !== "reveal") setPhase("reveal");
   }, [phase]);
 
-  // GIF capture works anywhere html-to-image + Web Workers do (i.e. any modern
-  // browser). The button only matters during the reveal phase where the card
-  // is fully laid out; the burst tiles cycle naturally so the GIF has motion
-  // even when there's no explicit "winner" assigned.
-  const canExportClip = typeof window !== "undefined" && typeof Worker !== "undefined";
+  // Winner's highlight burst (the JPEG dataURLs the iframe captured at the
+  // award-trigger moments). PNG export = first frame; GIF export = all frames.
+  // No burst → no winner content to save → buttons disabled.
+  const winnerBurst: HighlightBurst | null = useMemo(() => {
+    if (!award) return null;
+    const winner = players.find((p) => p.id === award.id);
+    const bursts = winner?.highlights?.[kind];
+    return bursts && bursts.length > 0 ? bursts[0] : null;
+  }, [players, award, kind]);
+  const hasWinnerImage = (winnerBurst?.length ?? 0) >= 1;
+  const hasWinnerGif = (winnerBurst?.length ?? 0) >= 2 && typeof Worker !== "undefined";
 
   const baseShareText = award?.name ? `${meta.medal} ${award.name}` : titleStr;
   const baseFileBase = useCallback(() => {
@@ -292,26 +297,33 @@ function AwardPanel({
   }, []);
 
   const handleSave = useCallback(async () => {
-    const node = cardRef.current;
-    if (!node) return;
-    // Snapshot whatever the user is actually looking at — collage, headline,
-    // winner block, drumroll, all of it. Was previously a hand-rolled
-    // canvas re-implementation that diverged from the on-screen card.
-    const blob = await captureNodeAsPng(node);
+    if (!winnerBurst || winnerBurst.length === 0) return;
+    // Save just the winner's portrait (first burst frame) — no card
+    // chrome, no other players' faces. Strip the data: prefix into a Blob
+    // so the browser treats it as a real file download.
+    const blob = await dataUrlToBlob(winnerBurst[0]);
     if (!blob) return;
-    await shareOrDownload(blob, `${baseFileBase()}.png`, "image/png", titleStr, baseShareText);
+    const ext = blob.type.includes("png") ? "png" : "jpg";
+    await shareOrDownload(
+      blob,
+      `${baseFileBase()}.${ext}`,
+      blob.type || "image/jpeg",
+      titleStr,
+      baseShareText
+    );
     flashSavedHint();
-  }, [baseFileBase, titleStr, baseShareText, flashSavedHint]);
+  }, [winnerBurst, baseFileBase, titleStr, baseShareText, flashSavedHint]);
 
   const handleSaveClip = useCallback(async () => {
-    const node = cardRef.current;
-    if (!node) return;
-    // Capture ~12 frames of the live card over ~1.8s, encode as a real GIF.
-    // Native gifs replay everywhere (including iOS Photos / WeChat) without
-    // depending on a video player, which is what the user asked for.
-    const blob = await captureNodeAsGif(node, {
-      frames: 12,
-      intervalMs: 150
+    if (!winnerBurst || winnerBurst.length < 2) {
+      // Fall through to the still-image path so the button still does
+      // *something* useful when the winner's burst is too short to animate.
+      await handleSave();
+      return;
+    }
+    const blob = await encodeBurstAsGif(winnerBurst, {
+      frameDelayMs: 110,
+      loops: 3
     });
     if (!blob) {
       await handleSave();
@@ -319,7 +331,7 @@ function AwardPanel({
     }
     await shareOrDownload(blob, `${baseFileBase()}.gif`, "image/gif", titleStr, baseShareText);
     flashSavedHint();
-  }, [baseFileBase, titleStr, baseShareText, flashSavedHint, handleSave]);
+  }, [winnerBurst, baseFileBase, titleStr, baseShareText, flashSavedHint, handleSave]);
 
   return (
     <div
@@ -371,11 +383,12 @@ function AwardPanel({
           type="button"
           className="ghost"
           onClick={(e) => { e.stopPropagation(); handleSave(); }}
-          disabled={phase !== "reveal"}
+          disabled={phase !== "reveal" || !hasWinnerImage}
+          title={!hasWinnerImage ? t.endGameAwardNone : undefined}
         >
           {savedHint ? t.endGameSaved : t.endGameSave}
         </button>
-        {canExportClip ? (
+        {hasWinnerGif ? (
           <button
             type="button"
             className="ghost"
@@ -431,90 +444,70 @@ async function shareOrDownload(
 }
 
 /**
- * Capture the actual on-screen card (any DOM node) as a PNG. We snapshot
- * what the user is looking at — no hand-rolled canvas mock.
+ * Convert a `data:image/...` URL into a Blob without going through fetch
+ * (some old WebKit builds still choke on `fetch(dataURL)` in workers).
+ * Returns null on parse error.
  */
-async function captureNodeAsPng(node: HTMLElement): Promise<Blob | null> {
+async function dataUrlToBlob(dataUrl: string): Promise<Blob | null> {
   try {
-    const blob = await htiToBlob(node, {
-      backgroundColor: "#0a0a0a",
-      cacheBust: true,
-      pixelRatio: Math.min(2, window.devicePixelRatio || 1),
-      // Some animated emoji fonts can stall toBlob; the tiles already use
-      // crossOrigin-friendly URLs (data: + same-origin /main-scene/), so
-      // skipFonts isn't strictly necessary, but it speeds up the snapshot.
-      skipFonts: false
-    });
-    return blob;
+    const m = /^data:([^;,]+)(;base64)?,(.*)$/.exec(dataUrl);
+    if (!m) return null;
+    const mime = m[1] || "image/jpeg";
+    const isBase64 = !!m[2];
+    const payload = m[3];
+    if (isBase64) {
+      const bin = atob(payload);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return new Blob([bytes], { type: mime });
+    }
+    return new Blob([decodeURIComponent(payload)], { type: mime });
   } catch (err) {
-    if (typeof console !== "undefined") console.warn("[endgame] PNG capture failed", err);
+    if (typeof console !== "undefined") console.warn("[endgame] dataURL → Blob failed", err);
     return null;
   }
 }
 
 /**
- * Capture the live card as an actual GIF. We sample the DOM N times spaced
- * `intervalMs` apart, stitching each PNG into a gif.js encoder. Tiles cycle
- * naturally between captures, so the resulting GIF has motion.
+ * Encode the winner's burst (array of JPEG dataURLs the iframe captured at
+ * action-edge moments) into an animated GIF using gif.js. Loops through the
+ * burst `loops` times so a 3-frame burst still feels dynamic in the saved file.
  *
  * Returns null on encoder/Worker failure.
  */
-async function captureNodeAsGif(
-  node: HTMLElement,
-  opts: { frames: number; intervalMs: number }
+async function encodeBurstAsGif(
+  frames: HighlightBurst,
+  opts: { frameDelayMs: number; loops: number }
 ): Promise<Blob | null> {
-  const frameBlobs: Blob[] = [];
-  for (let i = 0; i < opts.frames; i++) {
-    try {
-      const b = await htiToBlob(node, {
-        backgroundColor: "#0a0a0a",
-        cacheBust: i === 0,
-        // Slightly lower pixelRatio than PNG path — GIF is palette-limited,
-        // so the extra resolution mostly inflates file size with no benefit.
-        pixelRatio: 1,
-        skipFonts: false
-      });
-      if (b) frameBlobs.push(b);
-    } catch {
-      /* one bad frame is fine, the gif still has motion */
-    }
-    if (i < opts.frames - 1) {
-      await new Promise<void>((r) => window.setTimeout(r, opts.intervalMs));
-    }
-  }
-  if (frameBlobs.length < 2) return null;
-
+  if (!frames || frames.length < 2) return null;
   const imgs = await Promise.all(
-    frameBlobs.map(
-      (b) =>
+    frames.map(
+      (src) =>
         new Promise<HTMLImageElement | null>((resolve) => {
-          const url = URL.createObjectURL(b);
           const img = new Image();
-          img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
-          img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
-          img.src = url;
+          img.onload = () => resolve(img);
+          img.onerror = () => resolve(null);
+          img.src = src;
         })
     )
   );
   const valid = imgs.filter((x): x is HTMLImageElement => !!x);
   if (valid.length < 2) return null;
-
   const W = valid[0].naturalWidth;
   const H = valid[0].naturalHeight;
   return new Promise<Blob | null>((resolve) => {
     try {
       const gif = new GIF({
         workers: 2,
-        // 1–30; lower = better color but slower. 10 is a good middle.
         quality: 10,
         width: W,
         height: H,
-        // Bundled by Vite at build time — no runtime path resolution.
         workerScript: gifWorkerUrl
       });
-      const delay = opts.intervalMs;
-      for (const img of valid) {
-        gif.addFrame(img, { delay, copy: true });
+      for (let l = 0; l < opts.loops; l++) {
+        for (const img of valid) {
+          gif.addFrame(img, { delay: opts.frameDelayMs, copy: true });
+        }
       }
       gif.on("finished", (b: Blob) => resolve(b));
       gif.on("abort", () => resolve(null));
