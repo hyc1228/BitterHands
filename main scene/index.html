@@ -927,6 +927,21 @@
         transform: scaleX(-1); /* mirror like a real selfie cam */
       }
 
+      /* ---------- OB / spectator overrides ----------
+         When the parent React app sends `NZ_MS_VIEW.spectator = true` we toggle
+         `body.is-spectator` (see applyMSView). All UI elements that only make
+         sense for the actual player are hidden here from one place — easier than
+         touching each spot in JS. */
+      body.is-spectator .lives,
+      body.is-spectator .joystick,
+      body.is-spectator .cam-preview,
+      body.is-spectator #challengeOverlay,
+      body.is-spectator #universalOverlay,
+      body.is-spectator .hint,
+      body.is-spectator .alert-overlay {
+        display: none !important;
+      }
+
       /* ---------- Alert vignette (red glow when a rule is active) ----------
          Inner box-shadow creates a glow around the screen edges only —
          center stays fully transparent so the cam preview, joystick and
@@ -2679,7 +2694,8 @@
       // =================================================================
       function renderLives() {
         const root = document.getElementById("lives");
-        if (state.me.dead) { root.innerHTML = ""; return; }
+        // OB / spectator: the player has no character → no hearts. Same for dead players.
+        if (state.spectator || state.me.dead) { root.innerHTML = ""; return; }
         root.innerHTML = "";
         for (let i = 0; i < 3; i++) {
           const sp = document.createElement("span");
@@ -3060,6 +3076,8 @@
       }
 
       function startChallenge() {
+        // OB / pure spectator has no avatar — the challenge bar is meaningless and confusing.
+        if (state.spectator) return;
         if (challenge.cooldown > 0 || state.me.dead) return;
         challenge.active    = true;
         challenge.completed = false;
@@ -3452,6 +3470,7 @@
       };
 
       function startUniversalChallenge(rule) {
+        if (state.spectator) return;
         universalChallenge.active    = true;
         universalChallenge.completed = false;
         universalChallenge.action    = rule.id;
@@ -3665,11 +3684,28 @@
         } else if (state.nodes.me) {
           state.nodes.me.setAttribute("visibility", "visible");
         }
-        // Hide local-player UI for OB / spectator: bottom-right selfie preview is meaningless
-        // (OB has no camera) AND OB already shows every player's webcam in the surrounding
-        // 5-left + 5-right face columns of its own panel.
-        var camEl = document.getElementById("webcamVideo");
-        if (camEl) camEl.style.display = state.spectator ? "none" : "";
+        // One body class to drive ALL the OB-only / spectator-only CSS rules. Easier than
+        // chasing every UI element individually (hearts, joystick, cam preview, alert flash,
+        // challenge bars, hint…). Also clears any leftover challenge bar state that was
+        // active right before the role flipped.
+        if (typeof document !== "undefined" && document.body) {
+          document.body.classList.toggle("is-spectator", state.spectator);
+        }
+        if (state.spectator) {
+          challenge.active = false;
+          challenge.completed = false;
+          if (typeof chalOverlay !== "undefined" && chalOverlay) {
+            chalOverlay.className = "action-bar action-bar-top";
+          }
+          universalChallenge.active = false;
+          universalChallenge.completed = false;
+          if (typeof uChalOverlay !== "undefined" && uChalOverlay) {
+            uChalOverlay.className = "action-bar action-bar-bottom";
+          }
+          if (alertOverlay) alertOverlay.classList.remove("active");
+          // Hearts container should be empty for OB so it doesn't read as "OB has 3 lives".
+          renderLives();
+        }
       }
       function applyObCamera(p) {
         if (!p || typeof p !== "object" || !state.spectator) return;
