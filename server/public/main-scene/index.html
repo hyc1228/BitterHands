@@ -3002,10 +3002,14 @@
         // instantly, so we want the local fallback to almost never fire.
         const _nowMs = (typeof performance !== "undefined" ? performance.now() : Date.now());
         if (state._serverMonitorAt && _nowMs - state._serverMonitorAt < 600) return;
-        // Solo / pre-server playtest path. In a networked game the server
-        // tick should keep _serverMonitorAt warm; if we end up here during
-        // multiplayer it's a network stutter and the next server frame
-        // resyncs us. Log once so it shows up in DevTools when investigating.
+        // Multiplayer mode: the server is authoritative, full stop. Two tabs
+        // running their own RNG diverge instantly (this was the symptom of
+        // "OB and player see a different monitor"). Freeze the monitor at
+        // its last known pose until the next server frame resyncs us — a
+        // brief pause is far better than visibly desynced flashlights.
+        // The local sim below is only kept for standalone (no-server)
+        // playtest of `main scene/index.html` opened directly.
+        if (state.roomStarted) return;
         if (state.roomStarted && !state._localMonitorWarned) {
           state._localMonitorWarned = true;
           if (typeof console !== "undefined") {
