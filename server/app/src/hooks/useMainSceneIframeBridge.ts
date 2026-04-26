@@ -1,6 +1,12 @@
 import { useCallback, useEffect, useRef } from "react";
 import { ClientMessageTypes } from "../party/protocol";
-import { NZ_MSG_OUT, NZ_MSG_OUT_ITEM, NZ_MSG_OUT_VIOLATION, NZ_MSG_SOURCE } from "../mainSync/protocol";
+import {
+  NZ_MSG_OUT,
+  NZ_MSG_OUT_ITEM,
+  NZ_MSG_OUT_VIOLATION,
+  NZ_MSG_OUT_FACE_COUNTS,
+  NZ_MSG_SOURCE
+} from "../mainSync/protocol";
 import { usePartyStore } from "../party/store";
 
 const THROTTLE_MS = 70;
@@ -39,6 +45,18 @@ export function useMainSceneIframeBridge() {
     send(ClientMessageTypes.VIOLATION, {});
   }, [send, started]);
 
+  const onFaceCounts = useCallback(
+    (payload: { mouthOpens?: number; headShakes?: number; blinks?: number }) => {
+      if (!started) return;
+      send(ClientMessageTypes.FACE_COUNTS, {
+        mouthOpens: Math.max(0, Math.floor(Number(payload.mouthOpens) || 0)),
+        headShakes: Math.max(0, Math.floor(Number(payload.headShakes) || 0)),
+        blinks: Math.max(0, Math.floor(Number(payload.blinks) || 0))
+      });
+    },
+    [send, started]
+  );
+
   useEffect(() => {
     const onMessage = (ev: MessageEvent) => {
       const d = ev.data;
@@ -49,9 +67,11 @@ export function useMainSceneIframeBridge() {
         onItemOut(String((d.payload as { itemId: string }).itemId || ""));
       } else if (d.type === NZ_MSG_OUT_VIOLATION) {
         onViolation();
+      } else if (d.type === NZ_MSG_OUT_FACE_COUNTS) {
+        onFaceCounts(d.payload as Record<string, number>);
       }
     };
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
-  }, [onOut, onItemOut, onViolation]);
+  }, [onOut, onItemOut, onViolation, onFaceCounts]);
 }

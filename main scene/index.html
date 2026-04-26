@@ -839,7 +839,9 @@
         align-items: center;
         justify-content: center;
         gap: 14px;
-        pointer-events: none;
+        /* Was pointer-events:none for auto-dismiss; now waits for the user to
+           click "Enter spectator mode" so we need to capture clicks. */
+        pointer-events: auto;
         transition: opacity 0.6s ease;
       }
       #deathOverlay.active { display: flex; opacity: 1; }
@@ -857,6 +859,28 @@
         color: #888;
         font-family: "Patrick Hand", cursive;
         letter-spacing: 1px;
+        max-width: 220px;
+        text-align: center;
+        line-height: 1.45;
+      }
+      #deathOverlay .death-cta {
+        appearance: none;
+        margin-top: 8px;
+        padding: 10px 18px;
+        font-family: "Caveat", cursive;
+        font-size: 1.1rem;
+        letter-spacing: 0.06em;
+        background: #d6402e;
+        color: #f2efe9;
+        border: 1.5px solid rgba(255, 255, 255, 0.55);
+        border-radius: 12px;
+        box-shadow: 0 4px 0 rgba(0, 0, 0, 0.55), 0 8px 22px rgba(214, 64, 46, 0.28);
+        cursor: pointer;
+        transition: transform 120ms ease, box-shadow 220ms ease;
+      }
+      #deathOverlay .death-cta:active {
+        transform: translateY(1px);
+        box-shadow: 0 2px 0 rgba(0, 0, 0, 0.55), 0 4px 12px rgba(214, 64, 46, 0.28);
       }
       /* Small corner badge that persists after the overlay fades */
       #spectatorBadge {
@@ -1215,11 +1239,12 @@
           </div>
           <div class="bar-check">✅</div>
         </div>
-        <!-- Death flash overlay (auto-dismisses) -->
-        <div id="deathOverlay">
-          <div class="death-icon">💀</div>
-          <div class="death-title">You're out</div>
-          <div class="death-sub">Spectator mode</div>
+        <!-- Death panel: stays visible until the user confirms with the CTA. -->
+        <div id="deathOverlay" role="dialog" aria-modal="true" aria-labelledby="deathTitle">
+          <div class="death-icon" aria-hidden>💀</div>
+          <div id="deathTitle" class="death-title">You died</div>
+          <div class="death-sub">Enter observer mode to keep watching the round.</div>
+          <button id="deathCta" type="button" class="death-cta">Enter observer mode</button>
         </div>
         <!-- Persistent spectator badge -->
         <div id="spectatorBadge">💀 Spectating</div>
@@ -1288,10 +1313,13 @@
           logWinPrefix:   "「Win」 ",
           logRosterSync:  (n) => `Synced ${n} player${n === 1 ? "" : "s"} in room.`,
           logSpotLight:   (name) => `Flashlight on ${name}…`,
-          logDeath:       "💀 HP zero — entering spectator mode.",
+          logDeath:       "💀 HP zero — you can enter observer mode.",
           logMonitorAlert:"⚠ Monitor's watching you — perform the rule!",
           logUniBlinkAnnounce: "Universal rule: blink.",
           logUniMouthAnnounce: "Universal rule: open mouth.",
+          deathTitle:     "You died",
+          deathSub:       "Enter observer mode to keep watching the round.",
+          deathCta:       "Enter observer mode",
           logUniHeadAnnounce:  "Universal rule: shake or nod.",
 
           // Random flavor lines
@@ -1358,10 +1386,13 @@
           logWinPrefix:   "「胜利」",
           logRosterSync:  (n) => `已同步 ${n} 名同房间玩家`,
           logSpotLight:   (name) => `手电筒照到 ${name}…`,
-          logDeath:       "💀 生命值归零，进入观战模式。",
+          logDeath:       "💀 生命值归零，可进入观察模式。",
           logMonitorAlert:"⚠ 监管者注视你了——执行守则！",
           logUniBlinkAnnounce: "通用规则：请眨眼。",
           logUniMouthAnnounce: "通用规则：请张嘴。",
+          deathTitle:     "你已死亡",
+          deathSub:       "是否进入观察阶段，继续观看这一轮？",
+          deathCta:       "进入观察阶段",
           logUniHeadAnnounce:  "通用规则：摇头或点头。",
 
           flavor: [
@@ -2096,9 +2127,7 @@
         joyX: 0,    // virtual joystick analog input, -1..1
         joyY: 0,
         tap: null, // world coordinates
-        // Match server.js durationMs = 2 * 60 * 1000.
-        timer: 2 * 60,
-        gameDurationSec: 2 * 60,
+        timer: 2 * 60 + 43,
         cam: { x: 0, y: 0 },
         nodes: {
           me: null,
@@ -2887,11 +2916,9 @@
       function handleDeath() {
         if (state.me.dead) return;
         state.me.dead = true;
-        state.spectator = true;
-        // switch to free-pan camera starting at player's last position
-        state.obCamMode = "free";
-        state.obFreeTarget.x = state.me.x;
-        state.obFreeTarget.y = state.me.y;
+        // NB: state.spectator stays FALSE until the player confirms the death
+        // panel by pressing "Enter observer mode". They're dead (no avatar, no
+        // hearts, no challenges) but still see the world from where they fell.
         // Replace the animal avatar with a ghost. The ghost stays at the
         // death position (render() keeps writing translate(me.x, me.y)),
         // floats gently via CSS, and is invisible to the rule system —
@@ -2913,10 +2940,7 @@
           state.monitor.targetId = null;
           state.monitor.sweepTimer = 1;
         }
-        // Reuse the OB spectator CSS rules to clean up the HUD (hide
-        // hearts, joystick, cam preview, challenge bars, hint, alert).
-        // applyMSView only fires for the React-driven OB role, so we
-        // toggle this class manually for died regular players.
+        // Hide hearts / challenge bars / etc. (player has nothing to do anymore).
         if (typeof document !== "undefined" && document.body) {
           document.body.classList.add("is-spectator");
         }
@@ -2928,18 +2952,49 @@
         uChalOverlay.className = "action-bar action-bar-bottom";
         renderLives();
         addLog(t("logDeath"));
-        // Flash the full overlay for 2.5s, then fade out and show small badge
+        // Show the death dialog. It stays open until the user clicks the CTA;
+        // only then do we flip into spectator (free-pan) mode. Strings localized
+        // each time it opens so a mid-round language switch picks up new copy.
+        const overlay = document.getElementById("deathOverlay");
+        const titleEl = document.getElementById("deathTitle");
+        const subEl   = overlay ? overlay.querySelector(".death-sub") : null;
+        const ctaEl   = document.getElementById("deathCta");
+        if (titleEl) titleEl.textContent = t("deathTitle");
+        if (subEl)   subEl.textContent   = t("deathSub");
+        if (ctaEl)   ctaEl.textContent   = t("deathCta");
+        if (overlay) overlay.className = "active";
+      }
+
+      // Confirmed by the user clicking the deathOverlay CTA. Transitions from
+      // "you're dead, panel open" to "spectator with free-pan camera + corner badge".
+      function enterObserverMode() {
+        if (!state.me.dead) return;
+        if (state.spectator) return;
+        state.spectator = true;
+        state.obCamMode = "free";
+        state.obFreeTarget.x = state.me.x;
+        state.obFreeTarget.y = state.me.y;
         const overlay = document.getElementById("deathOverlay");
         const badge   = document.getElementById("spectatorBadge");
-        overlay.className = "active";
-        setTimeout(() => {
+        if (overlay) {
           overlay.classList.add("fading");
-          overlay.addEventListener("transitionend", () => {
-            overlay.className = "";
-            badge.className   = "active";
-          }, { once: true });
-        }, 2500);
+          overlay.addEventListener(
+            "transitionend",
+            () => {
+              overlay.className = "";
+              if (badge) badge.className = "active";
+            },
+            { once: true }
+          );
+        } else if (badge) {
+          badge.className = "active";
+        }
       }
+      // Wire the CTA once at module scope (the button is in static markup).
+      (function bindDeathCta() {
+        const btn = document.getElementById("deathCta");
+        if (btn) btn.addEventListener("click", enterObserverMode);
+      })();
 
       function renderTimer() {
         const m = Math.floor(state.timer / 60);
@@ -2955,7 +3010,7 @@
       const logList = document.getElementById("logList");
       const logBox = document.querySelector(".log");
       function fmtNow() {
-        const elapsed = state.gameDurationSec - state.timer;
+        const elapsed = 4 * 60 - state.timer;
         const m = Math.floor(Math.max(0, elapsed) / 60);
         const s = Math.max(0, elapsed) % 60;
         return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
@@ -3217,11 +3272,8 @@
         } catch (e) {}
       }
 
-      // Timer ticking — only counts down once the room has actually started,
-      // so the displayed time matches the server's authoritative duration
-      // instead of drifting through onboarding / lobby.
+      // Timer ticking
       setInterval(() => {
-        if (!state.roomStarted) return;
         if (state.timer > 0) {
           state.timer -= 1;
           renderTimer();
@@ -3597,9 +3649,86 @@
         const avgEar = (earVal(lm, L_EYE_IDX) + earVal(lm, R_EYE_IDX)) / 2;
         recordEar(avgEar);
 
+        // Tally face actions for the per-player end-of-game stats + Mario Party
+        // awards. Only counts during a live round; pauses while dead/spectating.
+        if (state.roomStarted && !state.me.dead && !state.spectator) {
+          tallyFaceActions(lm, now);
+        }
+
         driveLive2D(lm);
         if (challenge.active && !challenge.completed)                   processMonitorChallenge(lm, now);
         if (universalChallenge.active && !universalChallenge.completed) processUniversalChallenge(lm, now);
+      }
+
+      // ---- Face-action tally (mouth opens / head shakes / blinks) ----
+      // Edge-triggered counters on the raw FaceMesh stream so we don't double-count
+      // a single sustained action. Reported to the parent shell (and on through
+      // PartyKit) every FACE_COUNT_REPORT_MS so the server can rank players for
+      // the end-of-game awards.
+      const FACE_COUNT_REPORT_MS = 3000;
+      const FACE_MOUTH_OPEN_MAR = 0.45;       // hysteresis: open above this …
+      const FACE_MOUTH_CLOSE_MAR = 0.30;      // … close back below this
+      const FACE_SHAKE_NX_THRESH = 0.10;      // |nose_x - center| / face_w
+      state.faceTracker = {
+        mouthOpen: false,
+        nxDir: 0, // -1 left, 0 center, +1 right
+        eyeClosed: false,
+        lastReportAt: 0,
+      };
+      state.faceCounts = { mouthOpens: 0, headShakes: 0, blinks: 0 };
+
+      function tallyFaceActions(lm, now) {
+        const ft = state.faceTracker;
+        const fc = state.faceCounts;
+        // Mouth: hysteresis edge — count one per open-then-close cycle.
+        const mar = lmDist(lm[13], lm[14]) / (lmDist(lm[61], lm[291]) + 1e-6);
+        if (!ft.mouthOpen && mar > FACE_MOUTH_OPEN_MAR) {
+          ft.mouthOpen = true;
+          fc.mouthOpens += 1;
+        } else if (ft.mouthOpen && mar < FACE_MOUTH_CLOSE_MAR) {
+          ft.mouthOpen = false;
+        }
+        // Head shake: count direction flips of nose_x relative to face center.
+        const nose = lm[4], lb = lm[234], rb = lm[454];
+        if (nose && lb && rb) {
+          const cx = (lb.x + rb.x) / 2;
+          const fw = Math.abs(rb.x - lb.x) + 1e-6;
+          const nx = (nose.x - cx) / fw;
+          const dir = nx > FACE_SHAKE_NX_THRESH ? 1 : nx < -FACE_SHAKE_NX_THRESH ? -1 : 0;
+          if (dir !== 0 && dir !== ft.nxDir) {
+            if (ft.nxDir !== 0) fc.headShakes += 1; // count only true flips
+            ft.nxDir = dir;
+          } else if (dir === 0) {
+            // pass — keep last direction so consecutive same-side reads don't add
+          }
+        }
+        // Blink: count rising edge of eye-closure (open → closed).
+        const ear = smoothedEar(
+          (earVal(lm, L_EYE_IDX) + earVal(lm, R_EYE_IDX)) / 2
+        );
+        const closedNow = isEyeClosed(ear);
+        if (!ft.eyeClosed && closedNow) {
+          ft.eyeClosed = true;
+          fc.blinks += 1;
+        } else if (ft.eyeClosed && !closedNow) {
+          ft.eyeClosed = false;
+        }
+        // Periodic upstream report (cumulative totals — server takes max).
+        if (now - ft.lastReportAt >= FACE_COUNT_REPORT_MS) {
+          ft.lastReportAt = now;
+          if (window !== window.top) {
+            try {
+              window.parent.postMessage(
+                {
+                  type: "NZ_OUT_FACE_COUNTS",
+                  source: "nocturne-zoo",
+                  payload: { ...fc },
+                },
+                "*"
+              );
+            } catch (e) { /* ignore */ }
+          }
+        }
       }
 
       function processMonitorChallenge(lm, now) {
@@ -3989,17 +4118,6 @@
         state.netSelfId = selfId;
         var wasStarted = state.roomStarted;
         state.roomStarted = Boolean(raw.roomStarted);
-        // Reset the round timer to the authoritative game duration the moment
-        // the room flips to "started", so the HUD matches whatever the server
-        // tells us via NZ_ROOM_PLAYERS.gameDurationSec (falls back to the
-        // hard-coded default already in state.gameDurationSec).
-        if (state.roomStarted && !wasStarted) {
-          if (typeof raw.gameDurationSec === "number" && raw.gameDurationSec > 0) {
-            state.gameDurationSec = raw.gameDurationSec;
-          }
-          state.timer = state.gameDurationSec;
-          renderTimer();
-        }
         // BGM kicks in the moment the room flips to "started" (player has just entered the
         // live scene). Looping handled by the audio element; stops on timer-end below.
         if (state.roomStarted && !wasStarted) startBgm();

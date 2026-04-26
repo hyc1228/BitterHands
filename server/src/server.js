@@ -205,7 +205,10 @@ export default class Server {
             lang,
             avatarUrl: null,
             photoSeed: undefined,
-            ready: false
+            ready: false,
+            // Cumulative face-action counts (incremented client-side, reported via FACE_COUNTS).
+            // Used at GAME_ENDED for personal stats + Mario Party–style awards.
+            faceCounts: { mouthOpens: 0, headShakes: 0, blinks: 0 }
           };
           this.players.set(conn.id, player);
           this._broadcast(ServerEventTypes.PLAYER_JOINED, this._publicPlayer(player));
@@ -488,6 +491,27 @@ export default class Server {
         return;
       }
 
+      case ClientMessageTypes.FACE_COUNTS: {
+        const player = this.players.get(conn.id);
+        if (!player) return;
+        // Trust the highest value we've seen — clients send cumulative totals every few
+        // seconds, so the server treats their report as authoritative-but-monotonic.
+        const c = msg && typeof msg === "object" ? msg : {};
+        const m = Number(c.mouthOpens);
+        const s = Number(c.headShakes);
+        const b = Number(c.blinks);
+        if (Number.isFinite(m) && m >= 0) {
+          player.faceCounts.mouthOpens = Math.max(player.faceCounts.mouthOpens, Math.floor(m));
+        }
+        if (Number.isFinite(s) && s >= 0) {
+          player.faceCounts.headShakes = Math.max(player.faceCounts.headShakes, Math.floor(s));
+        }
+        if (Number.isFinite(b) && b >= 0) {
+          player.faceCounts.blinks = Math.max(player.faceCounts.blinks, Math.floor(b));
+        }
+        return;
+      }
+
       case ClientMessageTypes.MAIN_SCENE_ITEM_PICKUP: {
         if (!this.started) return;
         const player = this.players.get(conn.id);
@@ -684,16 +708,38 @@ export default class Server {
       this._endTimer = null;
     }
 
+    const revealList = Array.from(this.players.values()).map((p) => ({
+      id: p.id,
+      name: p.name,
+      animal: p.animal,
+      verdict: p.verdict,
+      alive: p.alive,
+      lives: p.lives,
+      violations: p.violations,
+      faceCounts: { ...p.faceCounts }
+    }));
+    // Mario Party–style awards: highest count per face-action (only among players who
+    // actually scored ≥1, ties broken by joined-order). OB renders a dedicated podium.
+    const realPlayers = revealList.filter((p) => p.name.toLowerCase() !== "ob");
+    const pickAward = (key) => {
+      let best = null;
+      for (const p of realPlayers) {
+        const v = (p.faceCounts && p.faceCounts[key]) || 0;
+        if (v <= 0) continue;
+        if (!best || v > best.count) best = { id: p.id, name: p.name, count: v };
+      }
+      return best;
+    };
+    const awards = {
+      mouthOpens: pickAward("mouthOpens"),
+      headShakes: pickAward("headShakes"),
+      blinks: pickAward("blinks")
+    };
+
     this._broadcast(ServerEventTypes.GAME_ENDED, {
       endedAt: Date.now(),
-      reveal: Array.from(this.players.values()).map((p) => ({
-        id: p.id,
-        name: p.name,
-        animal: p.animal,
-        verdict: p.verdict,
-        alive: p.alive,
-        lives: p.lives
-      })),
+      reveal: revealList,
+      awards,
       owlGuesses: Object.fromEntries(this.owlGuessesByPlayerId.entries())
     });
     // Push a fresh snapshot too so `started=false` propagates to clients that route on snapshot

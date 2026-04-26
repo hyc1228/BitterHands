@@ -44,6 +44,8 @@ export const ClientMessageTypes = /** @type {const} */ ({
   /** Authoritative playfield: position, anim id, optional FX; relayed to everyone including OB. */
   MAIN_SCENE_STATE: "main_scene_state",
   /** Request picking up a map item (id matches main-scene h1, a1, …). */
-  MAIN_SCENE_ITEM_PICKUP: "main_scene_item_pickup"
+  MAIN_SCENE_ITEM_PICKUP: "main_scene_item_pickup",
+  /** Per-client cumulative face-action counts (mouth opens / head shakes / blinks). */
+  FACE_COUNTS: "face_counts"
 });
 

@@ -41,7 +41,9 @@ export const ClientMessageTypes = {
   OWL_SUBMIT: "owl_submit",
   END: "end",
   MAIN_SCENE_STATE: "main_scene_state",
-  MAIN_SCENE_ITEM_PICKUP: "main_scene_item_pickup"
+  MAIN_SCENE_ITEM_PICKUP: "main_scene_item_pickup",
+  /** Per-client cumulative face-action counters reported every few seconds. */
+  FACE_COUNTS: "face_counts"
 } as const;
 
 export type Lang = "en" | "zh";
@@ -125,6 +127,18 @@ export interface GameStarted {
   durationMs: number;
 }
 
+export interface FaceCounts {
+  mouthOpens: number;
+  headShakes: number;
+  blinks: number;
+}
+
+export interface GameEndedAward {
+  id: string;
+  name: string;
+  count: number;
+}
+
 export interface GameEnded {
   endedAt: number;
   reveal: {
@@ -134,7 +148,15 @@ export interface GameEnded {
     verdict: string | null;
     alive?: boolean;
     lives?: number;
+    violations?: number;
+    faceCounts?: FaceCounts;
   }[];
+  /** Mario Party–style "best at" winners per face action, OB end screen. */
+  awards?: {
+    mouthOpens: GameEndedAward | null;
+    headShakes: GameEndedAward | null;
+    blinks: GameEndedAward | null;
+  };
   owlGuesses: Record<string, unknown>;
 }
 

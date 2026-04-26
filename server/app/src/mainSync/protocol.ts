@@ -10,6 +10,8 @@ export const NZ_MSG_TYPE_NET = "NZ_MAIN_SCENE_NET" as const;
 export const NZ_MSG_OUT = "NZ_OUT_MAIN_SCENE" as const;
 export const NZ_MSG_OUT_ITEM = "NZ_OUT_ITEM_PICKUP" as const;
 export const NZ_MSG_OUT_VIOLATION = "NZ_OUT_VIOLATION" as const;
+/** Out: cumulative face-action counts since game start (mouth opens / head shakes / blinks). */
+export const NZ_MSG_OUT_FACE_COUNTS = "NZ_OUT_FACE_COUNTS" as const;
 export const NZ_MSG_TYPE_ITEM = "NZ_MS_ITEM" as const;
 /** OB: main map camera — centroid, follow a player, or free pan. */
 export const NZ_MSG_TYPE_OB_CAM = "NZ_OB_CAMERA" as const;
@@ -79,11 +81,8 @@ export function buildRoomPlayersPayload(
   spectator: boolean;
   itemsRemoved: string[];
   players: NzRoomPlayerRow[];
-  /** Authoritative round length (seconds) from the server snapshot. */
-  gameDurationSec: number;
 } {
   const spectator = Boolean(opts?.spectator);
-  const gameDurationSec = Math.max(0, Math.round((snapshot?.durationMs ?? 0) / 1000));
   if (!snapshot?.players?.length) {
     return {
       selfId: "",
@@ -91,8 +90,7 @@ export function buildRoomPlayersPayload(
       roomStarted: Boolean(snapshot?.started),
       spectator,
       itemsRemoved: snapshot?.mainSceneItemsRemoved ?? [],
-      players: [],
-      gameDurationSec
+      players: []
     };
   }
   const roster = spectator
@@ -112,7 +110,6 @@ export function buildRoomPlayersPayload(
     roomStarted: Boolean(snapshot.started),
     spectator,
     itemsRemoved: snapshot.mainSceneItemsRemoved ?? [],
-    players,
-    gameDurationSec
+    players
   };
 }

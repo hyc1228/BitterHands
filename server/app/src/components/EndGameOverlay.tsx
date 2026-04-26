@@ -2,7 +2,109 @@ import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { animalLocalized, dict } from "../i18n";
 import { usePartyStore } from "../party/store";
-import type { GameEnded, AnimalCode } from "../party/protocol";
+import type { GameEnded, AnimalCode, FaceCounts, GameEndedAward } from "../party/protocol";
+import type { Lang } from "../party/protocol";
+import type { dict as dictFn } from "../i18n";
+
+type Dict = ReturnType<typeof dictFn>;
+
+function PlayerStats({ counts, t }: { counts: FaceCounts; t: Dict }) {
+  const items: Array<{ icon: string; label: string; value: number }> = [
+    { icon: "😮", label: t.endGameStatMouth, value: counts.mouthOpens || 0 },
+    { icon: "🌀", label: t.endGameStatShake, value: counts.headShakes || 0 },
+    { icon: "👁️", label: t.endGameStatBlink, value: counts.blinks || 0 }
+  ];
+  return (
+    <div className="endgame-stats" aria-label="Your stats this round">
+      <div className="endgame-section-label endgame-stats__head">{t.endGameStatsHead}</div>
+      <div className="endgame-stats__row">
+        {items.map((it) => (
+          <div key={it.label} className="endgame-stat">
+            <div className="endgame-stat__icon" aria-hidden>{it.icon}</div>
+            <div className="endgame-stat__value">{it.value}</div>
+            <div className="endgame-stat__label">{it.label}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function Awards({
+  awards,
+  youName,
+  lang,
+  t
+}: {
+  awards: NonNullable<GameEnded["awards"]>;
+  youName: string;
+  lang: Lang;
+  t: Dict;
+}) {
+  void lang;
+  const items: Array<{ key: string; medal: string; title: string; sub: string; winner: GameEndedAward | null }> = [
+    {
+      key: "mouth",
+      medal: "🥇",
+      title: t.awardMouthTitle,
+      sub: t.awardMouthSub,
+      winner: awards.mouthOpens
+    },
+    {
+      key: "shake",
+      medal: "🥈",
+      title: t.awardShakeTitle,
+      sub: t.awardShakeSub,
+      winner: awards.headShakes
+    },
+    {
+      key: "blink",
+      medal: "🥉",
+      title: t.awardBlinkTitle,
+      sub: t.awardBlinkSub,
+      winner: awards.blinks
+    }
+  ];
+  // Hide the awards block entirely if no one scored on any axis (rare but
+  // possible if everyone died very early and no FACE_COUNTS arrived).
+  if (items.every((i) => !i.winner)) return null;
+  return (
+    <div className="endgame-awards" aria-label="Awards">
+      <div className="endgame-section-label endgame-awards__head">{t.endGameAwardsHead}</div>
+      <ul className="endgame-awards__list">
+        {items.map((it) => {
+          const isYou = !!youName && it.winner?.name === youName;
+          return (
+            <li
+              key={it.key}
+              className={
+                "endgame-award" +
+                (it.winner ? " has-winner" : "") +
+                (isYou ? " is-self" : "")
+              }
+            >
+              <span className="endgame-award__medal" aria-hidden>{it.medal}</span>
+              <div className="endgame-award__col">
+                <div className="endgame-award__title">{it.title}</div>
+                <div className="endgame-award__sub">{it.sub}</div>
+              </div>
+              <div className="endgame-award__winner">
+                {it.winner ? (
+                  <>
+                    <span className="endgame-award__name">{it.winner.name}</span>
+                    <span className="endgame-award__count">×{it.winner.count}</span>
+                  </>
+                ) : (
+                  <span className="muted endgame-award__none">{t.endGameAwardNone}</span>
+                )}
+              </div>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
 
 interface Props {
   /** When omitted, treat as Player view (uses current `myName`). OB passes "ob". */
@@ -72,6 +174,17 @@ export default function EndGameOverlay({ viewerRole = "player", homePath }: Prop
             {t.endGameSurvivorCount(survivors.length, total)}
           </h1>
         )}
+
+        {/* Per-player face-action stats — only shown to player view (skipped for OB). */}
+        {isPlayer && viewerEntry?.faceCounts ? (
+          <PlayerStats counts={viewerEntry.faceCounts} t={t} />
+        ) : null}
+
+        {/* Mario Party–style awards — primarily an OB highlight, but also shown to
+            players because seeing "you won 'Loud Mouth Award'" is fun. */}
+        {gameEnded.awards ? (
+          <Awards awards={gameEnded.awards} youName={myName} lang={lang} t={t} />
+        ) : null}
 
         <div className="endgame-grid">
           <section>
