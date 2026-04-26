@@ -271,25 +271,41 @@ function AwardPanel({
     if (phase !== "reveal") setPhase("reveal");
   }, [phase]);
 
-  // Winner's highlight burst (the JPEG dataURLs the iframe captured at the
-  // award-trigger moments). PNG export = first frame; GIF export = all frames.
-  // No burst → no winner content to save → buttons disabled.
+  // Save = the VIEWER's own face for this award kind (their personal moment).
+  // - Player viewing their own ceremony → save their own burst, not the winner's
+  // - OB viewing someone else's ceremony → fall back to the winner's burst
+  //   since OB has no player record / no captured face of their own
+  // - If the viewer is also the award winner, both paths point to the same
+  //   burst, so behavior is unchanged for that case.
+  const meEntry = useMemo(
+    () => (viewerRole === "ob" || !youName ? null : players.find((p) => p.name === youName) ?? null),
+    [players, youName, viewerRole]
+  );
+  const meName = meEntry?.name ?? null;
+  const myBurst: HighlightBurst | null = useMemo(() => {
+    const bursts = meEntry?.highlights?.[kind];
+    return bursts && bursts.length > 0 ? bursts[0] : null;
+  }, [meEntry, kind]);
   const winnerBurst: HighlightBurst | null = useMemo(() => {
     if (!award) return null;
     const winner = players.find((p) => p.id === award.id);
     const bursts = winner?.highlights?.[kind];
     return bursts && bursts.length > 0 ? bursts[0] : null;
   }, [players, award, kind]);
-  const hasWinnerImage = (winnerBurst?.length ?? 0) >= 1;
-  const hasWinnerGif = (winnerBurst?.length ?? 0) >= 2 && typeof Worker !== "undefined";
+  // Pick "my" face when available; otherwise OB / a player who didn't trigger
+  // this kind still gets the awarded clip as a useful fallback.
+  const saveBurst = myBurst ?? winnerBurst;
+  const saveOwnerName = myBurst ? meName : (award?.name ?? null);
+  const hasSaveImage = (saveBurst?.length ?? 0) >= 1;
+  const hasSaveGif = (saveBurst?.length ?? 0) >= 2 && typeof Worker !== "undefined";
 
   const baseShareText = award?.name ? `${meta.medal} ${award.name}` : titleStr;
   const baseFileBase = useCallback(() => {
-    const safeWinner = (award?.name ?? "winner")
+    const safeOwner = (saveOwnerName ?? "winner")
       .replace(/[^a-zA-Z0-9_-]+/g, "_")
       .slice(0, 24) || "winner";
-    return `nocturne-zoo-${kind}-${safeWinner}-${formatDateSlug()}`;
-  }, [award, kind]);
+    return `nocturne-zoo-${kind}-${safeOwner}-${formatDateSlug()}`;
+  }, [saveOwnerName, kind]);
 
   const flashSavedHint = useCallback(() => {
     setSavedHint(true);
@@ -297,11 +313,10 @@ function AwardPanel({
   }, []);
 
   const handleSave = useCallback(async () => {
-    if (!winnerBurst || winnerBurst.length === 0) return;
-    // Save just the winner's portrait (first burst frame) — no card
-    // chrome, no other players' faces. Strip the data: prefix into a Blob
-    // so the browser treats it as a real file download.
-    const blob = await dataUrlToBlob(winnerBurst[0]);
+    if (!saveBurst || saveBurst.length === 0) return;
+    // Save just one face (the viewer's own action-edge still, or the
+    // winner's as a fallback). No collage, no card chrome.
+    const blob = await dataUrlToBlob(saveBurst[0]);
     if (!blob) return;
     const ext = blob.type.includes("png") ? "png" : "jpg";
     await shareOrDownload(
@@ -312,16 +327,16 @@ function AwardPanel({
       baseShareText
     );
     flashSavedHint();
-  }, [winnerBurst, baseFileBase, titleStr, baseShareText, flashSavedHint]);
+  }, [saveBurst, baseFileBase, titleStr, baseShareText, flashSavedHint]);
 
   const handleSaveClip = useCallback(async () => {
-    if (!winnerBurst || winnerBurst.length < 2) {
+    if (!saveBurst || saveBurst.length < 2) {
       // Fall through to the still-image path so the button still does
-      // *something* useful when the winner's burst is too short to animate.
+      // *something* useful when the burst is too short to animate.
       await handleSave();
       return;
     }
-    const blob = await encodeBurstAsGif(winnerBurst, {
+    const blob = await encodeBurstAsGif(saveBurst, {
       frameDelayMs: 110,
       loops: 3
     });
@@ -331,7 +346,7 @@ function AwardPanel({
     }
     await shareOrDownload(blob, `${baseFileBase()}.gif`, "image/gif", titleStr, baseShareText);
     flashSavedHint();
-  }, [winnerBurst, baseFileBase, titleStr, baseShareText, flashSavedHint, handleSave]);
+  }, [saveBurst, baseFileBase, titleStr, baseShareText, flashSavedHint, handleSave]);
 
   return (
     <div
@@ -383,12 +398,12 @@ function AwardPanel({
           type="button"
           className="ghost"
           onClick={(e) => { e.stopPropagation(); handleSave(); }}
-          disabled={phase !== "reveal" || !hasWinnerImage}
-          title={!hasWinnerImage ? t.endGameAwardNone : undefined}
+          disabled={phase !== "reveal" || !hasSaveImage}
+          title={!hasSaveImage ? t.endGameAwardNone : undefined}
         >
           {savedHint ? t.endGameSaved : t.endGameSave}
         </button>
-        {hasWinnerGif ? (
+        {hasSaveGif ? (
           <button
             type="button"
             className="ghost"
