@@ -15,7 +15,7 @@ export function QRSlide() {
 
       <div className="qr-stage">
         <h2 className="qr-headline pop-in pop-delay-1">
-          Your phone is the <em>controller</em>.
+          Scan the code <em>to join</em>
         </h2>
 
         <div className="qr-frame pop-in pop-delay-2" data-parallax="4">
@@ -30,8 +30,7 @@ export function QRSlide() {
         </div>
 
         <p className="qr-cta pop-in pop-delay-3">
-          Scan to join ·{' '}
-          <span className="qr-url">{JOIN_URL.replace(/^https?:\/\//, '')}</span>
+          <span className="qr-url">{JOIN_URL.replace(/^https?:\/\//, '').replace(/\/$/, '')}</span>
         </p>
 
         <div className="qr-extras pop-in pop-delay-4">
@@ -42,7 +41,7 @@ export function QRSlide() {
           <div className="qr-limit">
             <span className="qr-limit__icon" aria-hidden>👥</span>
             <span className="qr-limit__text">
-              First <strong>{MAX_PLAYERS}</strong> players only
+              First <strong>{MAX_PLAYERS}</strong> only
             </span>
           </div>
         </div>

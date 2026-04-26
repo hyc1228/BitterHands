@@ -5,7 +5,7 @@ import faceDetectMov from '../assets/face-detect.mov'
 export function LiveSlide() {
   return (
     <>
-      <h2 className="slide-title pop-in pop-delay-1">Live from <em>Zone 7</em></h2>
+      <h2 className="slide-title pop-in pop-delay-1">Live <em>demo</em></h2>
       <p className="slide-subtitle pop-in pop-delay-1">
         Three White Lions · 2 minutes · the Monitor never blinks
       </p>
