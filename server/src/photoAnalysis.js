@@ -15,32 +15,43 @@ export function fnv1a32(s) {
   return h >>> 0;
 }
 
+// Mock-clinical "booth notes" — the Monitor pretending to file an
+// aesthetic evaluation of your face. Bureaucratic, deadpan, vaguely
+// kind. Always references body parts / expressions / lighting so it
+// reads as commentary on your appearance, even though we don't run
+// real CV. Keep each line ≤ 18 words.
 const ROASTS_EN = [
-  "Museum lighting called — you're giving «main character but the script is still loading» energy.",
-  "The pixels held a focus group. Verdict: certified 3 a.m. face, but the vibes IPO anyway.",
-  "If your aura was a stock, it would be memed, volatile, and somehow still a buy rating.",
-  "Low-res myth, high-res commitment. The zoo's CV pipeline respects the contrast.",
-  "You look like the tutorial was skipped and you 100% cleared the boss by accident.",
-  "Face: buffering. Charisma: 4K stream. Shame: optional DLC, not installed.",
-  "The camera did math, gave up, and graded you on narrativity instead. A+ on plot holes.",
-  "Somewhere a JPEG ghost adopted you. It refuses to be compressed any further, respect.",
-  "Derm optional. Drip: still indexing. ETA: whenever the room stops roasting itself.",
-  "«Maintenance mode» if it were a look — and you still shipped hotfix Friday night."
+  "Lighting committee approves the soft fill. Just barely. Please don't make us regret it.",
+  "Symmetry: adequate. Confidence: on probation. Charm filed under «miscellaneous, see Tuesday».",
+  "Booth detects one face, one opinion, and one quiet suspicion of the camera.",
+  "Eyes report mild surveillance fatigue. Within normal range. Please continue breathing.",
+  "Posture above zoo average. Jaw within tolerance. Eyebrows have yet to file a statement.",
+  "Cheekbones cooperated. Hair did not. We are choosing to allow it.",
+  "Skin tone reads «slept once this week». The Monitor is, frankly, moved by the effort.",
+  "Mood scan: 30% defiance, 30% caffeine, 40% «who agreed to this». Logged.",
+  "Face holds shape under stress. Structural integrity rated above premium plush toy.",
+  "Subject smiles approximately 1.4 times above the admission threshold. Welcome.",
+  "Brow in active negotiation with mouth. Committee has adjourned for snacks.",
+  "You photograph like someone who has, on at least one occasion, out-argued a fridge.",
+  "Filed under «low maintenance, high theatre». No further notes required.",
+  "The webcam recommends slightly fewer existential thoughts before the shutter."
 ];
 
 const ROASTS_ZH = [
-  "相机会议结论：你散发着「主舞台打光找错人」的松弛与自信。",
-  "像素们加班算了三遍，只得出「深夜氛围感」这条 KPI，还超额完成。",
-  "如果气质能上市，你这支波动大但梗图多，机构评级：梗民自理。",
-  "长相像未保存文档 3:00 点提交，居然也按时过审，令人敬佩。",
-  "五官开会说：我们各自有想法，但团建还算成功，暂不调岗。",
-  "相机想给你磨皮，被你的叙事张力劝退，改发「生图直出，自带弹幕」。",
-  "有人说你像高糊壁纸成精：糊的是分辨率，不糊的是现场梗密度。",
-  "动物园审美服务器曾短暂 404，已切备用线路：土味与赛博冷笑话。",
-  "这张脸走「先道歉再自曝」的搞笑叙事流，本园技术验收：通过。",
-  "别问像不像样，问就是：评论区已自发产出表情包。",
-  "如果长相能众筹，你已经筹到一群路人自愿当自来水。",
-  "镜头语言翻译：不靠滤镜，靠把日常讲成 season finale。"
+  "灯光评议组：柔光给你刚刚够用，勉强通过。请别让我们后悔。",
+  "对称尚可，自信处于试用期，魅力暂归入「其他，详见周二」。",
+  "本展柜检测到一张脸、一种意见，以及对镜头的一份微妙怀疑。",
+  "眼神显示轻度监控疲劳，属正常范围，请继续呼吸。",
+  "姿态高于园区均值，下颌符合公差，眉毛暂未出具书面意见。",
+  "颧骨配合良好，发型未配合，本园决定姑且通过。",
+  "肤色读数：本周睡过一次。监管者对这份努力深感动容。",
+  "情绪扫描：30% 抗议、30% 咖啡因、40%「谁同意的」。已存档。",
+  "压力下脸型保持稳定，结构稳定性高于高级毛绒玩具级别。",
+  "微笑指数超过入园阈值约 1.4 倍。欢迎光临。",
+  "眉毛与嘴部仍在协商，评审会已暂停去吃点心。",
+  "你这张脸像那种至少有一次跟冰箱吵架占过上风的人。",
+  "归类为「低维护、高戏剧性」。其余无补充。",
+  "镜头建议拍照前少做一点存在主义思考，仅此而已。"
 ];
 
 /**
