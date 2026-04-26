@@ -41,6 +41,8 @@ export const ClientMessageTypes = {
   CAMERA_FRAME: "camera_frame",
   OWL_SUBMIT: "owl_submit",
   END: "end",
+  /** Test/dev: bypass OB-only START gate so a single tab can drive the game. */
+  TEST_FORCE_START: "test_force_start",
   MAIN_SCENE_STATE: "main_scene_state",
   MAIN_SCENE_ITEM_PICKUP: "main_scene_item_pickup",
   /** Per-client cumulative face-action counters reported every few seconds. */

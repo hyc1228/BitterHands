@@ -111,25 +111,36 @@ export default class Server {
     this._mainSceneItemRegistry = new Map(MAIN_SCENE_ITEM_DEFS.map((d) => [d.id, d]));
 
     // #region agent log
-    // Per-2s message counters for the multiplayer debug pass.
+    // Per-2s message counters for the multiplayer debug pass. Skip the
+    // `health` durable-object PartyKit instantiates for its own monitoring —
+    // it has no players and only spams empty pings.
+    const _roomId = (this.party && this.party.id) || "";
     this._dbg = {
+      enabled: _roomId !== "health",
       counts: { broadcast: 0, cameraFrame: 0, highlight: 0, highlightBytes: 0, mainSceneState: 0, monitorBroadcast: 0 },
       itemTaken: [],
       lastFlush: Date.now(),
     };
-    this._dbgInterval = setInterval(() => {
-      const c = this._dbg.counts;
-      const took = this._dbg.itemTaken.splice(0);
-      _dbgPost("server.js:per-sec", "broadcast counts (last ~2s)", {
-        hyp: "H2+H3+H6",
-        room: this.party && this.party.id,
-        players: this.players.size,
-        counts: c,
-        itemTaken: took
-      });
-      this._dbg.counts = { broadcast: 0, cameraFrame: 0, highlight: 0, highlightBytes: 0, mainSceneState: 0, monitorBroadcast: 0 };
-      this._dbg.lastFlush = Date.now();
-    }, 2000);
+    if (this._dbg.enabled) {
+      this._dbgInterval = setInterval(() => {
+        const c = this._dbg.counts;
+        const took = this._dbg.itemTaken.splice(0);
+        // Skip flushes that have nothing to report (idle room) so we don't
+        // drown actual gameplay signal in zeroes.
+        const isIdle = c.broadcast === 0 && c.cameraFrame === 0 && c.highlight === 0 && took.length === 0;
+        if (!isIdle) {
+          _dbgPost("server.js:per-sec", "broadcast counts (last ~2s)", {
+            hyp: "H2+H3+H6",
+            room: _roomId,
+            players: this.players.size,
+            counts: c,
+            itemTaken: took
+          });
+        }
+        this._dbg.counts = { broadcast: 0, cameraFrame: 0, highlight: 0, highlightBytes: 0, mainSceneState: 0, monitorBroadcast: 0 };
+        this._dbg.lastFlush = Date.now();
+      }, 2000);
+    }
     // #endregion
 
     /** Monotonic counter for monitor_voice ids when no audio hash is available. */
@@ -557,6 +568,44 @@ export default class Server {
 
       case ClientMessageTypes.END: {
         this._endGame();
+        return;
+      }
+
+      case ClientMessageTypes.TEST_FORCE_START: {
+        // Test-only: lets a /test tab (which IS a player) start the game itself.
+        // Same body as the OB-driven START path, minus the "must not be a player" check.
+        if (this.started) return;
+        // Round reset for back-to-back /test cycles: the previous round may have
+        // left players dead / with accumulated faceCounts / highlights, which the
+        // OB START path normally avoids by happening on a fresh room. Test mode
+        // is meant to be re-runnable, so wipe transient per-round state here.
+        for (const p of this.players.values()) {
+          p.lives = 3;
+          p.alive = true;
+          p.violations = 0;
+          p.faceCounts = { mouthOpens: 0, headShakes: 0, blinks: 0 };
+          p.highlights = { mouth: [], shake: [], blink: [] };
+          this._broadcast(ServerEventTypes.PLAYER_UPDATED, this._publicPlayer(p));
+        }
+        this.started = true;
+        this.startedAt = Date.now();
+        this.mainSceneItemsRemoved = new Set();
+        this.monitor = this._initialMonitorState();
+        this._playerPositions.clear();
+        this._startMonitorTick();
+
+        this._broadcast(ServerEventTypes.GAME_STARTED, {
+          startedAt: this.startedAt,
+          durationMs: this.durationMs
+        });
+        this._broadcast(ServerEventTypes.SYSTEM, { code: "GAME_STARTED" });
+        this._sendRoomSnapshot();
+
+        if (this._endTimer) clearTimeout(this._endTimer);
+        this._endTimer = setTimeout(() => {
+          this._endTimer = null;
+          if (this.started) this._endGame();
+        }, this.durationMs);
         return;
       }
 

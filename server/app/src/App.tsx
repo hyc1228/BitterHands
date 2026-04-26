@@ -5,6 +5,7 @@ import Onboard from "./routes/Onboard";
 import Lobby from "./routes/Lobby";
 import MainScene from "./routes/MainScene";
 import Ob from "./routes/Ob";
+import Test from "./routes/Test";
 
 export default function App() {
   return (
@@ -16,6 +17,7 @@ export default function App() {
           <Route path="/lobby" element={<Lobby />} />
           <Route path="/main-scene" element={<MainScene />} />
           <Route path="/ob" element={<Ob />} />
+          <Route path="/test" element={<Test />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Layout>

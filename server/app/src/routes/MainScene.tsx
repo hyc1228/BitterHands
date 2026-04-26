@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import CameraFrameUploader from "../components/CameraFrameUploader";
 import EndGameOverlay from "../components/EndGameOverlay";
 import { getMainSceneFrameSrc } from "../constants";
 import { useMainSceneIframeBridge } from "../hooks/useMainSceneIframeBridge";
 import { postToMainSceneFrame, postItemInboxToFrame, postMainSceneNetToFrame, postMonitorStateToFrame } from "../mainSync/postToMainSceneFrame";
+import { ClientMessageTypes } from "../party/protocol";
 import { usePartyStore } from "../party/store";
 
 /**
@@ -80,8 +81,39 @@ export default function MainScene() {
           Mounting here (not inside the iframe) sidesteps the iframe's permission
           quirks and reuses the React-side store/WS we already have open. */}
       <CameraFrameUploader />
+      {/* Test mode: floating "End now" so testers can see the award ceremony
+          without sitting through the full timer. Also rebounces "back home" to
+          /test so a single click loops a fresh round. */}
+      <TestModeFab />
       {/* Settlement overlay (escaped / lost). Renders only when GAME_ENDED arrived. */}
-      <EndGameOverlay viewerRole="player" homePath="/" />
+      <EndGameOverlay
+        viewerRole="player"
+        homePath={isTestMode() ? "/test" : "/"}
+      />
     </>
+  );
+}
+
+function isTestMode(): boolean {
+  try {
+    return sessionStorage.getItem("nz.testMode") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function TestModeFab() {
+  const [active] = useState(isTestMode);
+  const send = usePartyStore((s) => s.send);
+  const started = usePartyStore((s) => !!s.snapshot?.started);
+  if (!active || !started) return null;
+  return (
+    <button
+      className="test-fab"
+      onClick={() => send(ClientMessageTypes.END)}
+      title="Test only: end the round immediately and show the award ceremony"
+    >
+      End now
+    </button>
   );
 }

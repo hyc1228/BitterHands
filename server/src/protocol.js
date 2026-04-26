@@ -43,6 +43,12 @@ export const ClientMessageTypes = /** @type {const} */ ({
   CAMERA_FRAME: "camera_frame",
   OWL_SUBMIT: "owl_submit",
   END: "end",
+  /**
+   * Test/dev convenience: bypass the OB-only START gate so a single tab can both
+   * play AND drive the game (see /test route). Server still validates the room
+   * isn't already running, so this is a no-op once a real game is live.
+   */
+  TEST_FORCE_START: "test_force_start",
   /** Authoritative playfield: position, anim id, optional FX; relayed to everyone including OB. */
   MAIN_SCENE_STATE: "main_scene_state",
   /** Request picking up a map item (id matches main-scene h1, a1, …). */

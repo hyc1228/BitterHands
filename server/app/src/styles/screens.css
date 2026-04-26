@@ -2978,3 +2978,140 @@
   letter-spacing: 0.18em;
 }
 
+/* /test — onboarding-skip page used by testers. Visually distinct from the
+   real Join screen so it's obvious this is not a player flow. */
+.test-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: 24px 12px;
+}
+.test-card {
+  width: 100%;
+  max-width: 460px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  position: relative;
+}
+.test-tag {
+  align-self: flex-start;
+  font-family: var(--nz-font-display);
+  font-size: 11px;
+  letter-spacing: 0.32em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 196, 0, 0.18);
+  color: #ffd66a;
+  border: 1px solid rgba(255, 196, 0, 0.45);
+}
+.test-title {
+  margin: 0;
+  font-size: 18px;
+}
+.test-sub {
+  margin: 0;
+  font-size: 13px;
+}
+.test-sub code {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-family: var(--nz-font-display);
+  font-size: 12px;
+}
+.test-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-family: var(--nz-font-display);
+  font-size: 12px;
+  letter-spacing: 0.16em;
+}
+.test-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--nz-muted, #8a8a8a);
+}
+.test-steps li::before {
+  content: "○";
+  font-size: 14px;
+  opacity: 0.6;
+}
+.test-steps li.is-active {
+  background: rgba(255, 196, 0, 0.12);
+  color: #ffd66a;
+}
+.test-steps li.is-active::before {
+  content: "◐";
+  animation: nz-spin 0.9s linear infinite;
+}
+.test-steps li.is-done {
+  color: #6cf08c;
+}
+.test-steps li.is-done::before {
+  content: "✓";
+  opacity: 1;
+}
+.test-role {
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 13px;
+}
+.test-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.test-error {
+  background: rgba(255, 80, 80, 0.12);
+  color: #ffb1b1;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+}
+.test-tip {
+  font-size: 11px;
+  margin: 0;
+}
+.test-tip code {
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0 4px;
+  border-radius: 3px;
+}
+
+@keyframes nz-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Floating "End now" inside the live scene; only mounted when sessionStorage
+   `nz.testMode === "1"`. Bottom-right so it doesn't sit on top of the iframe HUD. */
+.test-fab {
+  position: fixed;
+  right: 12px;
+  bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  z-index: 60;
+  font-family: var(--nz-font-display);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 196, 0, 0.55);
+  background: rgba(20, 14, 4, 0.85);
+  color: #ffd66a;
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+.test-fab:hover {
+  background: rgba(40, 26, 6, 0.92);
+}
+
