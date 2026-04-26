@@ -241,8 +241,9 @@ function ObInner() {
     [realPlayers]
   );
 
-  const cams = useMemo(() => Array.from(cameraFrames.values()), [cameraFrames]);
-  const liveCount = cams.length;
+  // `liveCount` only needs the count, not the array — avoid allocating a new
+  // Array of N CameraFrame objects on every CAMERA_FRAME message (5 fps × N players).
+  const liveCount = cameraFrames.size;
 
   const pickObFollow = useCallback((id: string) => {
     setObCam({ mode: "follow", followId: id });

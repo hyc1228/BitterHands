@@ -127,6 +127,25 @@ interface Dict {
   endGameSurvivorCount: (n: number, total: number) => string;
   endGameClose: string;
   endGameBackHome: string;
+  /** Per-player face-action stats block on settlement. */
+  endGameStatsHead: string;
+  endGameStatMouth: string;
+  endGameStatShake: string;
+  endGameStatBlink: string;
+  /** Mario Party–style awards block. */
+  endGameAwardsHead: string;
+  endGameAwardNone: string;
+  awardMouthTitle: string;
+  awardMouthSub: string;
+  awardShakeTitle: string;
+  awardShakeSub: string;
+  awardBlinkTitle: string;
+  awardBlinkSub: string;
+  /** Multi-stage end-game ceremony copy. */
+  endGameCeremony: string;
+  endGameCeremonySub: (alive: number, total: number) => string;
+  endGameAwardCounting: string;
+  endGameSkip: string;
   /** Operator-only auth gate for `/ob` so casual visitors can't open OB */
   obAuthTitle: string;
   obAuthHint: string;
@@ -259,6 +278,23 @@ const en: Dict = {
   endGameSurvivorCount: (n, t) => `${n}/${t} escaped alive`,
   endGameClose: "Close",
   endGameBackHome: "Back to start",
+  endGameStatsHead: "Your night shift",
+  endGameStatMouth: "Mouth opens",
+  endGameStatShake: "Head shakes",
+  endGameStatBlink: "Blinks",
+  endGameAwardsHead: "Awards · Most of the night",
+  endGameAwardNone: "—",
+  awardMouthTitle: "Loud Mouth Award",
+  awardMouthSub: "Most mouth opens",
+  awardShakeTitle: "Headbanger",
+  awardShakeSub: "Most head shakes",
+  awardBlinkTitle: "Blink Master",
+  awardBlinkSub: "Most blinks",
+  endGameCeremony: "Awards Ceremony",
+  endGameCeremonySub: (alive, total) =>
+    `${alive} of ${total} survived. Now — tonight's standout performances.`,
+  endGameAwardCounting: "Tallying the moments…",
+  endGameSkip: "Skip to summary",
   obAuthTitle: "Operator only",
   obAuthHint: "OB is the operator console. Enter your operator key to continue. The key stays on this device.",
   obAuthKeyLabel: "Operator key",
@@ -389,6 +425,23 @@ const zh: Dict = {
   endGameSurvivorCount: (n, t) => `${n}/${t} 活着逃出`,
   endGameClose: "关闭",
   endGameBackHome: "返回首页",
+  endGameStatsHead: "今晚你的表现",
+  endGameStatMouth: "张嘴次数",
+  endGameStatShake: "甩头次数",
+  endGameStatBlink: "眨眼次数",
+  endGameAwardsHead: "颁奖 · 今晚之最",
+  endGameAwardNone: "—",
+  awardMouthTitle: "话痨之星",
+  awardMouthSub: "张嘴次数最多",
+  awardShakeTitle: "甩头之王",
+  awardShakeSub: "甩头次数最多",
+  awardBlinkTitle: "眨眼大师",
+  awardBlinkSub: "眨眼次数最多",
+  endGameCeremony: "颁奖典礼",
+  endGameCeremonySub: (alive, total) =>
+    `${alive} / ${total} 活着逃出 · 现在——今晚的高光时刻。`,
+  endGameAwardCounting: "统计中…",
+  endGameSkip: "跳过 · 直接看总结",
   obAuthTitle: "仅限操作员",
   obAuthHint: "OB 是操作员控制台。输入你的密钥继续，密钥仅保存在本设备。",
   obAuthKeyLabel: "操作员密钥",
