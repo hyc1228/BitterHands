@@ -785,7 +785,9 @@ function ObFollowHud({
               className={"ob-follow-hud__heart" + (i < lives ? "" : " is-off")}
               aria-hidden
             >
-              ♥
+              {/* U+FE0E forces text (mono) presentation — iOS Safari otherwise
+                  auto-renders ♥ as the color emoji, which ignores `color`. */}
+              {"\u2665\uFE0E"}
             </span>
           ))}
         </div>

@@ -138,7 +138,7 @@ function EndGameRow({
       <span className="endgame-row__animal">{animalLabel}</span>
       {typeof player.lives === "number" ? (
         <span className="endgame-row__lives" aria-label="lives">
-          {alive ? "♥".repeat(Math.max(0, player.lives)) : "0"}
+          {alive ? "\u2665\uFE0E".repeat(Math.max(0, player.lives)) : "0"}
         </span>
       ) : null}
     </li>

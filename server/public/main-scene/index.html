@@ -131,6 +131,19 @@
         line-height: 1;
         color: #ff5e5e;
         text-shadow: 0 0 6px rgba(255, 94, 94, 0.4);
+        /* Force monochrome text presentation for U+2665 ♥. iOS Safari and many
+           mobile browsers otherwise auto-substitute the color emoji (❤️) which
+           ignores `color` + has its own larger glyph metrics — looking jumbled
+           next to the rest of the HUD. The U+FE0E variation selector in
+           renderLives() is the primary fix; this is the CSS-side belt + braces. */
+        font-variant-emoji: text;
+        font-feature-settings: "tnum" 1;
+        font-family: ui-sans-serif, "Helvetica Neue", "Arial Unicode MS", sans-serif;
+      }
+      .lives span {
+        display: inline-block;
+        min-width: 18px;
+        text-align: center;
       }
       .lives .heart-off {
         color: rgba(255, 255, 255, 0.18);
@@ -1001,7 +1014,7 @@
             <span class="rec-text">REC</span>
           </div>
           <div class="lives" id="lives" aria-label="lives">
-            <span>♥</span><span>♥</span><span>♥</span>
+            <span>♥&#xFE0E;</span><span>♥&#xFE0E;</span><span>♥&#xFE0E;</span>
           </div>
           <div class="timer">
             <svg
@@ -2837,7 +2850,10 @@
         root.innerHTML = "";
         for (let i = 0; i < 3; i++) {
           const sp = document.createElement("span");
-          sp.textContent = "♥";
+          // U+FE0E forces text (monochrome) presentation on iOS / mobile browsers
+          // that would otherwise show the color heart emoji (❤️). The CSS color +
+          // glow then applies as expected.
+          sp.textContent = "\u2665\uFE0E";
           if (i >= state.me.lives) sp.className = "heart-off";
           root.appendChild(sp);
         }

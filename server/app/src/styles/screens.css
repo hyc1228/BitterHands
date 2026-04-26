@@ -1132,10 +1132,11 @@
   gap: 1px;
 }
 .ob-follow-hud__heart {
-  font-family: serif;
+  font-family: ui-sans-serif, "Helvetica Neue", "Arial Unicode MS", serif;
   font-size: 16px;
   color: rgba(214, 64, 46, 1);
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+  font-variant-emoji: text;
 }
 .ob-follow-hud__heart.is-off {
   color: rgba(242, 239, 233, 0.18);
@@ -2488,10 +2489,11 @@
   color: var(--nz-cream-dim);
 }
 .endgame-row__lives {
-  font-family: serif;
+  font-family: ui-sans-serif, "Helvetica Neue", "Arial Unicode MS", serif;
   font-size: 12px;
   color: rgba(214, 64, 46, 1);
   letter-spacing: 0.04em;
+  font-variant-emoji: text;
 }
 .endgame-row.is-dead .endgame-row__lives {
   color: var(--nz-cream-dim);
