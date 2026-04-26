@@ -2096,7 +2096,9 @@
         joyX: 0,    // virtual joystick analog input, -1..1
         joyY: 0,
         tap: null, // world coordinates
-        timer: 2 * 60 + 43,
+        // Match server.js durationMs = 2 * 60 * 1000.
+        timer: 2 * 60,
+        gameDurationSec: 2 * 60,
         cam: { x: 0, y: 0 },
         nodes: {
           me: null,
@@ -2953,7 +2955,7 @@
       const logList = document.getElementById("logList");
       const logBox = document.querySelector(".log");
       function fmtNow() {
-        const elapsed = 4 * 60 - state.timer;
+        const elapsed = state.gameDurationSec - state.timer;
         const m = Math.floor(Math.max(0, elapsed) / 60);
         const s = Math.max(0, elapsed) % 60;
         return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
@@ -3215,8 +3217,11 @@
         } catch (e) {}
       }
 
-      // Timer ticking
+      // Timer ticking — only counts down once the room has actually started,
+      // so the displayed time matches the server's authoritative duration
+      // instead of drifting through onboarding / lobby.
       setInterval(() => {
+        if (!state.roomStarted) return;
         if (state.timer > 0) {
           state.timer -= 1;
           renderTimer();
@@ -3984,6 +3989,17 @@
         state.netSelfId = selfId;
         var wasStarted = state.roomStarted;
         state.roomStarted = Boolean(raw.roomStarted);
+        // Reset the round timer to the authoritative game duration the moment
+        // the room flips to "started", so the HUD matches whatever the server
+        // tells us via NZ_ROOM_PLAYERS.gameDurationSec (falls back to the
+        // hard-coded default already in state.gameDurationSec).
+        if (state.roomStarted && !wasStarted) {
+          if (typeof raw.gameDurationSec === "number" && raw.gameDurationSec > 0) {
+            state.gameDurationSec = raw.gameDurationSec;
+          }
+          state.timer = state.gameDurationSec;
+          renderTimer();
+        }
         // BGM kicks in the moment the room flips to "started" (player has just entered the
         // live scene). Looping handled by the audio element; stops on timer-end below.
         if (state.roomStarted && !wasStarted) startBgm();

@@ -79,8 +79,11 @@ export function buildRoomPlayersPayload(
   spectator: boolean;
   itemsRemoved: string[];
   players: NzRoomPlayerRow[];
+  /** Authoritative round length (seconds) from the server snapshot. */
+  gameDurationSec: number;
 } {
   const spectator = Boolean(opts?.spectator);
+  const gameDurationSec = Math.max(0, Math.round((snapshot?.durationMs ?? 0) / 1000));
   if (!snapshot?.players?.length) {
     return {
       selfId: "",
@@ -88,7 +91,8 @@ export function buildRoomPlayersPayload(
       roomStarted: Boolean(snapshot?.started),
       spectator,
       itemsRemoved: snapshot?.mainSceneItemsRemoved ?? [],
-      players: []
+      players: [],
+      gameDurationSec
     };
   }
   const roster = spectator
@@ -108,6 +112,7 @@ export function buildRoomPlayersPayload(
     roomStarted: Boolean(snapshot.started),
     spectator,
     itemsRemoved: snapshot.mainSceneItemsRemoved ?? [],
-    players
+    players,
+    gameDurationSec
   };
 }
