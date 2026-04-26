@@ -938,6 +938,115 @@ function derivePlayerStage(p: PublicPlayer, gameLive: boolean): {
   return { key: "onboarding", zh: "入场中", en: "Onboarding" };
 }
 
+/**
+ * Renders a stage-aware preview of "what this player is currently doing".
+ * Builds an OB-side mock of the player's onboarding screen: which step icon
+ * they see, the prompt text, and any data we know about (their submitted
+ * profile photo, their assigned animal, etc.). For the live game stages we
+ * just defer to the in-scene HUD that's already on the right.
+ */
+function PlayerScreenMock({
+  player,
+  lang
+}: {
+  player: PublicPlayer;
+  lang: Lang;
+}) {
+  const stage = derivePlayerStage(player, false);
+  const animalIcon = animalEmoji(player.animal);
+  const animalSvg = mockAnimalSvg(player.animal);
+  // i18n inline — these strings only appear in the OB spotlight, so keeping
+  // them here avoids polluting the shared dict for what's effectively dev UX.
+  const TXT = {
+    permission: { zh: "正在请求摄像头权限…", en: "Granting camera permission…" },
+    photo: { zh: "正在拍照", en: "Taking profile photo" },
+    photoHint: { zh: "对着镜头微笑 📸", en: "Smile at the camera 📸" },
+    quiz: { zh: "正在答题（共 3 题）", en: "Answering quiz (3 questions)" },
+    quizHint: { zh: "选 A / B / C", en: "Picking A / B / C" },
+    analyzing: { zh: "AI 分析中…", en: "AI analyzing…" },
+    revealHead: { zh: "已分配身份 / 揭晓", en: "Role assigned · reveal" },
+    revealAnimal: { zh: "你的身份是", en: "You are" },
+    check: { zh: "Final Check：3 个表情任务", en: "Final Check · 3 expression tasks" },
+    checkTasks: {
+      zh: ["🙂 摇头", "😮 张嘴", "👀 2 秒别眨眼"],
+      en: ["🙂 Shake head", "😮 Open mouth", "👀 Don't blink 2s"]
+    },
+    lobby: { zh: "已就绪 · 等待 OB 开局", en: "Ready · waiting for OB to start" },
+    awaiting: { zh: "尚未提交照片", en: "Awaiting profile photo" }
+  };
+  const pick = <K extends keyof typeof TXT>(k: K) =>
+    (lang === "zh" ? TXT[k].zh : TXT[k].en) as string;
+
+  switch (stage.key) {
+    case "onboarding":
+      return (
+        <div className="ob-spot-mock ob-spot-mock--onboarding">
+          <div className="ob-spot-mock__icon">📸</div>
+          <div className="ob-spot-mock__title">{pick("permission")}</div>
+          <div className="ob-spot-mock__sub muted">{pick("awaiting")}</div>
+        </div>
+      );
+    case "quiz":
+      return (
+        <div className="ob-spot-mock ob-spot-mock--quiz">
+          {player.avatarUrl ? (
+            <img className="ob-spot-mock__photo" src={player.avatarUrl} alt="profile" />
+          ) : (
+            <div className="ob-spot-mock__icon">📝</div>
+          )}
+          <div className="ob-spot-mock__title">{pick("quiz")}</div>
+          <div className="ob-spot-mock__sub muted">{pick("quizHint")}</div>
+          <div className="ob-spot-mock__quiz">
+            <span>A</span><span>B</span><span>C</span>
+          </div>
+        </div>
+      );
+    case "reveal":
+      return (
+        <div className="ob-spot-mock ob-spot-mock--reveal">
+          {animalSvg ? (
+            <img className="ob-spot-mock__animal-svg" src={animalSvg} alt={player.animal ?? "animal"} />
+          ) : (
+            <div className="ob-spot-mock__icon">{animalIcon}</div>
+          )}
+          <div className="ob-spot-mock__title">{pick("revealAnimal")}</div>
+          <div className="ob-spot-mock__animal-name">
+            {animalIcon} {obAnimalLabel(lang, player.animal, "?")}
+          </div>
+          <div className="ob-spot-mock__sub muted">{pick("check")}</div>
+          <ul className="ob-spot-mock__tasks">
+            {(lang === "zh" ? TXT.checkTasks.zh : TXT.checkTasks.en).map((task, i) => (
+              <li key={i}>{task}</li>
+            ))}
+          </ul>
+        </div>
+      );
+    case "lobby":
+      return (
+        <div className="ob-spot-mock ob-spot-mock--lobby">
+          {animalSvg ? (
+            <img className="ob-spot-mock__animal-svg" src={animalSvg} alt={player.animal ?? "animal"} />
+          ) : (
+            <div className="ob-spot-mock__icon">✓</div>
+          )}
+          <div className="ob-spot-mock__title">{pick("lobby")}</div>
+          <div className="ob-spot-mock__animal-name">
+            {animalIcon} {obAnimalLabel(lang, player.animal, "?")}
+          </div>
+        </div>
+      );
+    default:
+      return null;
+  }
+}
+
+function mockAnimalSvg(animal: PublicPlayer["animal"]): string | null {
+  if (animal === "白狮子") return "/main-scene/lion.svg";
+  if (animal === "猫头鹰") return "/main-scene/Owl%20body.svg";
+  if (animal === "长颈鹿") return "/main-scene/giraffe.svg";
+  return null;
+}
+
 function ObLobbySpotlight({
   player,
   frame,
@@ -965,6 +1074,12 @@ function ObLobbySpotlight({
           </span>
         )}
         <span className={"ob-lobby-spotlight__stage stage-" + stage.key}>{stageLabel}</span>
+      </div>
+      <div className="ob-lobby-spotlight__screen">
+        <div className="ob-lobby-spotlight__screen-label">
+          {lang === "zh" ? "玩家正在看到的画面" : "What this player sees"}
+        </div>
+        <PlayerScreenMock player={player} lang={lang} />
       </div>
       <div className="ob-lobby-spotlight__meta">
         <h3 className="ob-lobby-spotlight__name" title={player.name}>{player.name}</h3>
