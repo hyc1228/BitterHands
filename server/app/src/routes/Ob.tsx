@@ -12,7 +12,7 @@ import {
   postToMainSceneFrame,
   type ObCameraPayload
 } from "../mainSync/postToMainSceneFrame";
-import { ClientMessageTypes, type CameraFrame, type Lang, type PublicPlayer } from "../party/protocol";
+import { ClientMessageTypes, animalEmoji, type CameraFrame, type Lang, type PublicPlayer } from "../party/protocol";
 import { usePartyStore, type LogEntry } from "../party/store";
 import PlayerRowFace from "../components/PlayerRowFace";
 
@@ -461,27 +461,36 @@ function ObInner() {
                   <span className="ob-cam-hint muted">{t.obCamTapFaceHint}</span>
                 )}
               </div>
-              <iframe
-                ref={mainSceneIframeRef}
-                className="ob-scene-iframe"
-                title="Main scene"
-                src={mainSceneSrc}
-                onLoad={() => {
-                  pushMainSceneIframe();
-                  const cam = obCamRef.current;
-                  if (cam.mode === "free") {
-                    postObCameraToFrame(mainSceneIframeRef.current?.contentWindow, {
-                      mode: "free",
-                      initFromCurrent: true
-                    });
-                  } else {
-                    postObCameraToFrame(
-                      mainSceneIframeRef.current?.contentWindow,
-                      obCameraPayloadFromState(cam)
-                    );
-                  }
-                }}
-              />
+              <div className="ob-scene-stage">
+                <iframe
+                  ref={mainSceneIframeRef}
+                  className="ob-scene-iframe"
+                  title="Main scene"
+                  src={mainSceneSrc}
+                  onLoad={() => {
+                    pushMainSceneIframe();
+                    const cam = obCamRef.current;
+                    if (cam.mode === "free") {
+                      postObCameraToFrame(mainSceneIframeRef.current?.contentWindow, {
+                        mode: "free",
+                        initFromCurrent: true
+                      });
+                    } else {
+                      postObCameraToFrame(
+                        mainSceneIframeRef.current?.contentWindow,
+                        obCameraPayloadFromState(cam)
+                      );
+                    }
+                  }}
+                />
+                {obCam.mode === "follow" && obCam.followId ? (
+                  <ObFollowHud
+                    player={realPlayers.find((p) => p.id === obCam.followId) ?? null}
+                    frame={cameraFrames.get(obCam.followId) ?? null}
+                    lang={lang}
+                  />
+                ) : null}
+              </div>
             </div>
 
             <div className="ob-face-column" aria-label="ob-faces-right">
@@ -727,3 +736,67 @@ function ObLogLine({ entry }: { entry: LogEntry }) {
     </div>
   );
 }
+
+/**
+ * Floating HUD overlay shown on top of the main-scene iframe when OB is following a
+ * specific player. Mirrors the player-side HUD bits (REC + hearts + animal + violation
+ * count) that the iframe hides for spectators — when OB is "in" a player's view, the
+ * operator wants to read those same stats. We render them in React (not inside the
+ * iframe) to keep the iframe cleanly in spectator mode for the world rendering.
+ */
+function ObFollowHud({
+  player,
+  frame,
+  lang
+}: {
+  player: PublicPlayer | null;
+  frame: CameraFrame | null;
+  lang: Lang;
+}) {
+  const t = dict(lang);
+  if (!player) return null;
+  const animalLabel = obAnimalLabel(lang, player.animal, t.ownAnimalUnknown);
+  const animalIcon = animalEmoji(player.animal);
+  const lives = Math.max(0, Math.min(3, player.lives ?? 0));
+  return (
+    <div className="ob-follow-hud" role="region" aria-label="followed player hud">
+      <div className="ob-follow-hud__face">
+        {frame ? (
+          <img src={frame.dataUrl} alt={`${player.name} face`} className="ob-follow-hud__img" />
+        ) : (
+          <span className="ob-follow-hud__initial" aria-hidden>
+            {player.name.charAt(0).toUpperCase()}
+          </span>
+        )}
+      </div>
+      <div className="ob-follow-hud__meta">
+        <div className="ob-follow-hud__name" title={player.name}>
+          {player.name}
+        </div>
+        <div className="ob-follow-hud__animal">
+          <span aria-hidden>{animalIcon}</span> {animalLabel}
+        </div>
+      </div>
+      <div className="ob-follow-hud__stats">
+        <div className="ob-follow-hud__hearts" aria-label={`${lives} lives`}>
+          {Array.from({ length: 3 }, (_, i) => (
+            <span
+              key={i}
+              className={"ob-follow-hud__heart" + (i < lives ? "" : " is-off")}
+              aria-hidden
+            >
+              ♥
+            </span>
+          ))}
+        </div>
+        <div className="ob-follow-hud__violations" aria-label="violations">
+          ⚠ {player.violations ?? 0}
+        </div>
+        {player.alive === false ? (
+          <div className="ob-follow-hud__dead" aria-label="eliminated">💀</div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+

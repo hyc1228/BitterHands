@@ -1040,6 +1040,120 @@
   background: #000;
 }
 
+/* Stage = iframe + absolutely-positioned overlays (currently only the follow HUD). */
+.ob-scene-stage {
+  position: relative;
+  flex: 1;
+  display: flex;
+  min-height: 280px;
+}
+.ob-scene-stage > .ob-scene-iframe { width: 100%; height: 100%; }
+
+/* Floating HUD shown when OB follows a specific player. Mirrors the hidden in-iframe
+   player UI (avatar / name / animal / hearts / violations / dead) so the operator
+   "sees what that player sees" while the iframe stays clean for spectators. */
+.ob-follow-hud {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  display: grid;
+  grid-template-columns: 36px 1fr auto;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: var(--nz-radius-pill);
+  background: rgba(0, 0, 0, 0.72);
+  border: 1.5px solid var(--nz-red);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: var(--nz-cream);
+  pointer-events: none;
+  max-width: calc(100% - 24px);
+  animation: nz-follow-hud-in 320ms cubic-bezier(0.2, 1.4, 0.3, 1) both;
+}
+@keyframes nz-follow-hud-in {
+  0% { opacity: 0; transform: translate(-50%, -8px); }
+  100% { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.ob-follow-hud__face {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--nz-black);
+  border: 1.5px solid var(--nz-cream-line);
+  display: grid;
+  place-items: center;
+}
+.ob-follow-hud__img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transform: scaleX(-1);
+}
+.ob-follow-hud__initial {
+  font-family: var(--nz-font-display);
+  font-size: 14px;
+  letter-spacing: 0.06em;
+}
+
+.ob-follow-hud__meta {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.ob-follow-hud__name {
+  font-family: var(--nz-font-display);
+  font-size: 13px;
+  letter-spacing: 0.12em;
+  color: var(--nz-cream);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 16ch;
+}
+.ob-follow-hud__animal {
+  font-family: var(--nz-font-hand);
+  font-size: 11px;
+  color: var(--nz-cream-dim);
+  white-space: nowrap;
+}
+
+.ob-follow-hud__stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ob-follow-hud__hearts {
+  display: inline-flex;
+  gap: 1px;
+}
+.ob-follow-hud__heart {
+  font-family: serif;
+  font-size: 16px;
+  color: rgba(214, 64, 46, 1);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+}
+.ob-follow-hud__heart.is-off {
+  color: rgba(242, 239, 233, 0.18);
+}
+.ob-follow-hud__violations {
+  font-family: var(--nz-font-mono);
+  font-size: 12px;
+  color: var(--nz-cream);
+  letter-spacing: 0.04em;
+  padding: 2px 6px;
+  border: 1px solid var(--nz-cream-line);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+}
+.ob-follow-hud__dead {
+  font-size: 16px;
+}
+
 
 /* OB: lobby (before start) — spotlight strip + rest row, no main-scene iframe */
 .ob-lobby {
