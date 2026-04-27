@@ -323,50 +323,93 @@ button.danger {
 
 /* ----------------------------------------------------------------
    CJK / Chinese typography polish.
-   These rules trigger only when `<html lang="zh-Hans">` (set by
-   Layout.tsx when the language toggle flips to 中文).  They fix the
-   three things that made Chinese look "ugly" before:
+   Triggers when `<html lang="zh-Hans">` (set by Layout.tsx).
 
-   (a) Wide letter-spacing.  We sprinkle `letter-spacing: 0.04em` →
-       `0.22em` across labels / buttons / headings to give the Latin
-       display fonts breathing room.  CJK is already mono-width — that
-       same spacing opens visible gaps between every glyph.
-   (b) Slanted Smiley Sans on every heading.  The previous default
-       included `font-style: oblique`; we set headings back to
-       `font-style: normal` for Chinese so they stand upright.
-   (c) Half-width punctuation.  `font-feature-settings: "palt"` packs
-       full-width Chinese commas / periods / brackets into a more
-       proportional rhythm so e.g. "你好，世界" doesn't look spaced-out.
-   ---------------------------------------------------------------- */
+   The previous version still looked off because the Latin display
+   fonts (Permanent Marker / Patrick Hand) were *first* in every font
+   stack.  In mixed strings like "ROOM 房间号" the browser would render
+   Latin glyphs in Permanent Marker (a tall handwriting marker) and
+   the CJK glyphs in Noto Sans SC — those two faces have very
+   different x-heights, stroke contrast, and baselines, so the line
+   looked wobbly even though each glyph individually was fine.
+
+   And anyone in mainland China hit a worse failure mode: Google
+   Fonts is blocked / extremely slow there, so Noto Sans SC may
+   never load at all and the page falls back to whatever generic
+   sans-serif the browser picks (often the dreaded SimSun on older
+   Windows).
+
+   Fix: when the page is Chinese, override the four font CSS
+   variables so that *both* Latin and CJK glyphs are rendered by
+   the same Chinese-capable family.  We prefer the OS-native
+   premium face first (PingFang SC on Apple, Microsoft YaHei UI on
+   Windows, Noto Sans CJK on Linux) so users see beautiful type
+   *immediately* without any web-font swap, and Noto Sans SC is
+   kept as the universal cross-platform fallback. */
 :lang(zh) {
+  /* Latin in Chinese strings (e.g. "保存 GIF", "ROOM 房间号") now
+     renders in the same family as the CJK characters.  These OS
+     fonts all ship with high-quality Latin glyphs whose metrics
+     match their CJK side, so the line reads as one piece. */
+  --nz-font-display: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI",
+    "Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC", system-ui, sans-serif;
+  --nz-font-body: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI",
+    "Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC",
+    -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --nz-font-hand: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI",
+    "Microsoft YaHei", "Noto Sans SC", "Source Han Sans SC", system-ui, sans-serif;
+  --nz-font-serif: "Songti SC", "STSong", "Noto Serif SC",
+    "Source Han Serif SC", Palatino, Georgia, ui-serif, serif;
+
   font-feature-settings: "palt" 1;
   letter-spacing: 0;
   font-style: normal;
+  /* `optimizeLegibility` enables kerning + ligatures, which on CJK
+     stacks gives noticeably crisper edges on small body text. */
+  text-rendering: optimizeLegibility;
 }
 
 /* Aggressive global tracking + slant reset for Chinese.  The codebase
    has ~50 places that set `letter-spacing` between 0.04em and 0.24em
-   (mostly for "EYEBROW LABEL"-style uppercase Latin headings).  Listing
-   every class by hand is fragile — a single new `text-transform:
-   uppercase` rule re-introduces the gap.  Using `!important` once,
-   scoped to `:lang(zh)`, keeps the rest of the codebase free of CJK
-   awareness while guaranteeing tight Chinese.  Latin fragments mixed
-   into Chinese strings (e.g. "保存 GIF") look fine without tracking
-   too — the surrounding CJK gives the line enough rhythm. */
+   (mostly for "EYEBROW LABEL"-style uppercase Latin headings).
+   Listing every class by hand is fragile — a single new
+   `text-transform: uppercase` rule re-introduces the gap.  Using
+   `!important` once, scoped to `:lang(zh)`, keeps the rest of the
+   codebase free of CJK awareness while guaranteeing tight Chinese. */
 :lang(zh) * {
   letter-spacing: 0 !important;
   font-style: normal !important;
 }
 
-/* Display headings in Chinese benefit from a heavier weight (Noto Sans
-   SC ships up to 900) — without this they fall back to 400 from the
-   Latin Permanent Marker, which looks anaemic next to the bold UI. */
+/* `text-transform: uppercase` is harmless for CJK glyphs (no case)
+   but a few classes pair it with widened tracking specifically for
+   Latin labels.  When the label translates to Chinese, the tracking
+   already got reset above; killing the transform too removes any
+   subtle font-weight changes some renderers apply to "uppercased"
+   text and keeps the look consistent. */
+:lang(zh) .label,
+:lang(zh) .eyebrow,
+:lang(zh) .nz-eyebrow {
+  text-transform: none !important;
+}
+
+/* Display headings in Chinese benefit from a heavier weight — without
+   this many surfaces fall back to 400 (since the Latin display family
+   has only a single weight).  We pick 700 rather than 900 because
+   PingFang SC's 900 is *very* heavy and looks blocky at 16–24 px;
+   the truly large display headlines opt back into 900 explicitly. */
 :lang(zh) h1,
 :lang(zh) h2,
 :lang(zh) h3,
+:lang(zh) button {
+  font-weight: 700;
+  font-style: normal;
+}
 :lang(zh) .endgame-headline,
 :lang(zh) .splash-title,
-:lang(zh) .nz-display {
+:lang(zh) .nz-display,
+:lang(zh) .nz-hero,
+:lang(zh) .endgame-card__title {
   font-weight: 900;
   font-style: normal;
 }
