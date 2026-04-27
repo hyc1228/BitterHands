@@ -3563,6 +3563,222 @@
   font-size: 12px;
 }
 
+/* =============================================================
+   Awards 2.0 — podium card row (replaces the cramped 3-row list).
+   3 cards side by side on desktop, single column on narrow.
+   ============================================================= */
+.endgame-awards__cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 4px;
+}
+@media (max-width: 540px) {
+  .endgame-awards__cards { grid-template-columns: 1fr; }
+}
+.endgame-award-card {
+  display: grid;
+  grid-template-rows: auto auto auto auto auto;
+  justify-items: center;
+  gap: 4px;
+  padding: 14px 10px 12px;
+  border-radius: var(--nz-radius);
+  border: 1px dashed var(--nz-cream-line);
+  background: rgba(0, 0, 0, 0.34);
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+}
+.endgame-award-card.has-winner {
+  border-style: solid;
+  border-color: rgba(214, 64, 46, 0.55);
+  background: linear-gradient(180deg, rgba(214, 64, 46, 0.18), rgba(0, 0, 0, 0.34) 70%);
+  animation: nz-award-pop 520ms cubic-bezier(0.2, 1.4, 0.3, 1) both;
+}
+.endgame-award-card.is-self {
+  border-color: rgba(255, 220, 90, 0.85);
+  background: linear-gradient(180deg, rgba(255, 220, 90, 0.20), rgba(0, 0, 0, 0.34) 70%);
+  box-shadow: 0 0 0 1px rgba(255, 220, 90, 0.35), 0 6px 18px rgba(255, 220, 90, 0.18);
+}
+.endgame-award-card__medal {
+  font-size: 38px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.55));
+}
+.endgame-award-card__portrait {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--nz-black);
+  border: 2px solid rgba(242, 239, 233, 0.5);
+  display: grid;
+  place-items: center;
+}
+.endgame-award-card.is-self .endgame-award-card__portrait {
+  border-color: rgba(255, 220, 90, 0.95);
+}
+.endgame-award-card__portrait img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.endgame-award-card__initial {
+  font-family: var(--nz-font-display);
+  font-size: 38px;
+  color: var(--nz-cream-dim);
+}
+.endgame-award-card__title {
+  font-family: var(--nz-font-display);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--nz-cream);
+}
+.endgame-award-card__sub {
+  font-size: 11px;
+  color: var(--nz-cream-dim);
+}
+.endgame-award-card__winner {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 4px;
+}
+.endgame-award-card__name {
+  font-family: var(--nz-font-display);
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  color: var(--nz-cream);
+  max-width: 12ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.endgame-award-card__count {
+  font-family: var(--nz-font-mono);
+  font-size: 13px;
+  color: #ffd66a;
+}
+.endgame-award-card__none { font-size: 12px; }
+
+/* =============================================================
+   Group photo (class photo) — 5-col grid of every player tile.
+   Cells cycle their burst frames so the whole roster has motion.
+   ============================================================= */
+.endgame-group {
+  display: grid;
+  gap: 8px;
+}
+.endgame-group__head {
+  text-align: center;
+}
+.endgame-group__count { letter-spacing: 0.18em; }
+.endgame-group__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(86px, 1fr));
+  gap: 8px;
+  padding: 8px;
+  border-radius: var(--nz-radius);
+  border: 1px dashed var(--nz-cream-line);
+  background: rgba(0, 0, 0, 0.32);
+}
+@media (min-width: 720px) {
+  .endgame-group__grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+}
+.endgame-group__cell {
+  position: relative;
+  display: grid;
+  gap: 2px;
+  text-align: center;
+}
+.endgame-group__cell img,
+.endgame-group__cell .endgame-group__initial {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: var(--nz-radius-sm);
+  border: 1.5px solid rgba(242, 239, 233, 0.4);
+  background: var(--nz-black);
+  object-fit: cover;
+  display: block;
+  transition: border-color 200ms ease, box-shadow 200ms ease, transform 200ms ease;
+}
+.endgame-group__cell .endgame-group__initial {
+  display: grid;
+  place-items: center;
+  font-family: var(--nz-font-display);
+  font-size: 28px;
+  color: var(--nz-cream-dim);
+}
+.endgame-group__cell.is-you img,
+.endgame-group__cell.is-you .endgame-group__initial {
+  border-color: rgba(255, 220, 90, 0.95);
+  box-shadow: 0 0 0 2px rgba(255, 220, 90, 0.35);
+}
+.endgame-group__cell.is-dead img {
+  filter: grayscale(0.85) brightness(0.7);
+  border-color: rgba(214, 64, 46, 0.55);
+}
+.endgame-group__name {
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--nz-cream-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@media (hover: hover) {
+  .endgame-group__cell:hover img,
+  .endgame-group__cell:hover .endgame-group__initial {
+    transform: scale(1.04);
+    border-color: var(--nz-red);
+  }
+}
+
+/* =============================================================
+   Single-list roster — replaces the cramped survivors / eliminated
+   2-column split. Sorted alive first, viewer's row highlighted.
+   ============================================================= */
+.endgame-roster {
+  display: grid;
+  gap: 8px;
+}
+.endgame-roster__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.endgame-roster__counts {
+  font-family: var(--nz-font-display);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+}
+.endgame-roster__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 38vh;
+  overflow-y: auto;
+}
+@media (min-width: 720px) {
+  .endgame-roster__list {
+    grid-template-columns: 1fr 1fr;
+    gap: 6px 10px;
+    max-height: none;
+  }
+}
+
+.endgame-actions--summary {
+  flex-wrap: wrap;
+}
+.endgame-actions--summary > button { flex: 1 1 140px; min-height: 44px; }
+
 /* OB lobby start row — compact (the camera wall is the focus, this row is
    just a quick action that should sit out of the way). */
 .ob-start-row {

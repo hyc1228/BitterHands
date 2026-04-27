@@ -243,7 +243,6 @@ function AwardPanel({
 
   const isYou = !!youName && award && award.name === youName;
   const cardRef = useRef<HTMLDivElement | null>(null);
-  const [savedHint, setSavedHint] = useState(false);
 
   // Reveal cinematics: collage breathes for ~1s, then a 2.4s drumroll
   // (3 → 2 → 1 → ✦) overlays it, then the winner block stamps in with
@@ -270,97 +269,6 @@ function AwardPanel({
   const skipToReveal = useCallback(() => {
     if (phase !== "reveal") setPhase("reveal");
   }, [phase]);
-
-  // Save = the VIEWER's own face for this award kind (their personal moment).
-  // - Player viewing their own ceremony → save their own burst, not the winner's
-  // - OB viewing someone else's ceremony → fall back to the winner's burst
-  //   since OB has no player record / no captured face of their own
-  // - If the viewer is also the award winner, both paths point to the same
-  //   burst, so behavior is unchanged for that case.
-  const meEntry = useMemo(
-    () => (viewerRole === "ob" || !youName ? null : players.find((p) => p.name === youName) ?? null),
-    [players, youName, viewerRole]
-  );
-  const meName = meEntry?.name ?? null;
-  const myBurst: HighlightBurst | null = useMemo(() => {
-    const bursts = meEntry?.highlights?.[kind];
-    return bursts && bursts.length > 0 ? bursts[0] : null;
-  }, [meEntry, kind]);
-  const winnerBurst: HighlightBurst | null = useMemo(() => {
-    if (!award) return null;
-    const winner = players.find((p) => p.id === award.id);
-    const bursts = winner?.highlights?.[kind];
-    return bursts && bursts.length > 0 ? bursts[0] : null;
-  }, [players, award, kind]);
-  // Pick "my" face when available; otherwise OB / a player who didn't trigger
-  // this kind still gets the awarded clip as a useful fallback.
-  const saveBurst = myBurst ?? winnerBurst;
-  const saveOwnerName = myBurst ? meName : (award?.name ?? null);
-  const hasSaveImage = (saveBurst?.length ?? 0) >= 1;
-  const hasSaveGif = (saveBurst?.length ?? 0) >= 2 && typeof Worker !== "undefined";
-
-  const baseShareText = award?.name ? `${meta.medal} ${award.name}` : titleStr;
-  const baseFileBase = useCallback(() => {
-    const safeOwner = (saveOwnerName ?? "winner")
-      .replace(/[^a-zA-Z0-9_-]+/g, "_")
-      .slice(0, 24) || "winner";
-    return `nocturne-zoo-${kind}-${safeOwner}-${formatDateSlug()}`;
-  }, [saveOwnerName, kind]);
-
-  const flashSavedHint = useCallback(() => {
-    setSavedHint(true);
-    window.setTimeout(() => setSavedHint(false), 1600);
-  }, []);
-
-  // `is-busy` shimmer states for the save buttons while their async work
-  // (canvas → PNG, gif.js encode) runs. Without this the button would
-  // appear to do nothing for 1–2 s on slower phones.
-  const [savingImg, setSavingImg] = useState(false);
-  const [savingGif, setSavingGif] = useState(false);
-
-  const handleSave = useCallback(async () => {
-    if (!saveBurst || saveBurst.length === 0) return;
-    if (savingImg) return;
-    setSavingImg(true);
-    try {
-      const blob = await dataUrlToBlob(saveBurst[0]);
-      if (!blob) return;
-      const ext = blob.type.includes("png") ? "png" : "jpg";
-      await shareOrDownload(
-        blob,
-        `${baseFileBase()}.${ext}`,
-        blob.type || "image/jpeg",
-        titleStr,
-        baseShareText
-      );
-      flashSavedHint();
-    } finally {
-      setSavingImg(false);
-    }
-  }, [saveBurst, savingImg, baseFileBase, titleStr, baseShareText, flashSavedHint]);
-
-  const handleSaveClip = useCallback(async () => {
-    if (savingGif) return;
-    if (!saveBurst || saveBurst.length < 2) {
-      await handleSave();
-      return;
-    }
-    setSavingGif(true);
-    try {
-      const blob = await encodeBurstAsGif(saveBurst, {
-        frameDelayMs: 110,
-        loops: 3
-      });
-      if (!blob) {
-        await handleSave();
-        return;
-      }
-      await shareOrDownload(blob, `${baseFileBase()}.gif`, "image/gif", titleStr, baseShareText);
-      flashSavedHint();
-    } finally {
-      setSavingGif(false);
-    }
-  }, [saveBurst, savingGif, baseFileBase, titleStr, baseShareText, flashSavedHint, handleSave]);
 
   return (
     <div
@@ -408,26 +316,9 @@ function AwardPanel({
       )}
 
       <div className="endgame-actions">
-        <button
-          type="button"
-          className={"ghost" + (savingImg ? " is-busy" : "")}
-          onClick={(e) => { e.stopPropagation(); handleSave(); }}
-          disabled={phase !== "reveal" || !hasSaveImage || savingImg}
-          title={!hasSaveImage ? t.endGameAwardNone : undefined}
-        >
-          {savedHint ? t.endGameSaved : t.endGameSave}
-        </button>
-        {hasSaveGif ? (
-          <button
-            type="button"
-            className={"ghost" + (savingGif ? " is-busy" : "")}
-            onClick={(e) => { e.stopPropagation(); handleSaveClip(); }}
-            disabled={phase !== "reveal" || savingGif}
-            title={t.endGameSaveClipHint}
-          >
-            {t.endGameSaveClip}
-          </button>
-        ) : null}
+        {/* Per-award save buttons removed — saves now live on the final
+            SummaryPanel ("Save my GIF" + "Save group GIF") so we don't
+            spam buttons on every podium step. */}
         <button
           type="button"
           className="primary"
@@ -552,6 +443,131 @@ function formatDateSlug(): string {
   const d = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
+}
+
+/**
+ * Class-photo GIF: render every player as a tile in a grid, with each tile
+ * cycling that player's burst frames so the whole roster has motion. Falls
+ * back to lastFrame / avatarUrl / initial-letter for players with no burst.
+ *
+ * Returns null when none of the players have any usable image source.
+ */
+async function encodeGroupPhotoAsGif(
+  players: RevealEntry[]
+): Promise<Blob | null> {
+  if (players.length === 0) return null;
+
+  type Cell = { name: string; imgs: HTMLImageElement[] };
+  const rawCells = await Promise.all(
+    players.map(async (p): Promise<Cell> => {
+      const h = p.highlights;
+      const burst = h?.mouth?.[0] ?? h?.blink?.[0] ?? h?.shake?.[0] ?? null;
+      const sources: string[] = burst && burst.length > 0
+        ? burst
+        : p.lastFrame
+          ? [p.lastFrame]
+          : p.avatarUrl
+            ? [p.avatarUrl]
+            : [];
+      const imgs = await Promise.all(
+        sources.map(
+          (src) =>
+            new Promise<HTMLImageElement | null>((resolve) => {
+              const img = new Image();
+              img.crossOrigin = "anonymous";
+              img.onload = () => resolve(img);
+              img.onerror = () => resolve(null);
+              img.src = src;
+            })
+        )
+      );
+      return { name: p.name, imgs: imgs.filter((x): x is HTMLImageElement => !!x) };
+    })
+  );
+  if (rawCells.every((c) => c.imgs.length === 0)) return null;
+
+  // 5-column grid is the same shape as the live GroupPhoto component, so the
+  // saved file looks like a screenshot of what's on screen.
+  const COLS = 5;
+  const ROWS = Math.max(1, Math.ceil(rawCells.length / COLS));
+  const TILE = 144;        // matches HIGHLIGHT_SIZE — burst pixels render 1:1
+  const LABEL_H = 22;
+  const ROW_H = TILE + LABEL_H;
+  const W = COLS * TILE;
+  const H = ROWS * ROW_H;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d", { alpha: false });
+  if (!ctx) return null;
+
+  // Frame budget — show every burst's longest cycle at least twice.
+  const maxBurst = Math.max(1, ...rawCells.map((c) => c.imgs.length));
+  const FRAME_COUNT = Math.max(maxBurst * 2, 3);
+
+  return new Promise<Blob | null>((resolve) => {
+    try {
+      const gif = new GIF({
+        workers: 2,
+        quality: 12,
+        width: W,
+        height: H,
+        workerScript: gifWorkerUrl
+      });
+      for (let f = 0; f < FRAME_COUNT; f++) {
+        ctx.fillStyle = "#0a0a0a";
+        ctx.fillRect(0, 0, W, H);
+        rawCells.forEach((c, idx) => {
+          const col = idx % COLS;
+          const row = Math.floor(idx / COLS);
+          const x = col * TILE;
+          const y = row * ROW_H;
+          if (c.imgs.length > 0) {
+            const img = c.imgs[f % c.imgs.length];
+            // Cover-fit so portrait + landscape JPEGs both look correct.
+            const ar = img.naturalWidth / Math.max(1, img.naturalHeight);
+            let dw = TILE, dh = TILE, dx = x, dy = y;
+            if (ar > 1) { dw = TILE * ar; dx = x - (dw - TILE) / 2; }
+            else { dh = TILE / ar; dy = y - (dh - TILE) / 2; }
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(x, y, TILE, TILE);
+            ctx.clip();
+            ctx.drawImage(img, dx, dy, dw, dh);
+            ctx.restore();
+          } else {
+            // Letter fallback so missing-burst players still show.
+            ctx.fillStyle = "#1d1010";
+            ctx.fillRect(x, y, TILE, TILE);
+            ctx.fillStyle = "#f2efe9";
+            ctx.font = "600 56px Helvetica, Arial, sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(c.name.charAt(0).toUpperCase(), x + TILE / 2, y + TILE / 2);
+          }
+          // Border + name strip
+          ctx.strokeStyle = "rgba(242, 239, 233, 0.32)";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1);
+          ctx.fillStyle = "rgba(0, 0, 0, 0.55)";
+          ctx.fillRect(x, y + TILE, TILE, LABEL_H);
+          ctx.fillStyle = "#f2efe9";
+          ctx.font = "11px Helvetica, Arial, sans-serif";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(c.name.slice(0, 18), x + TILE / 2, y + TILE + LABEL_H / 2);
+        });
+        gif.addFrame(ctx, { delay: 220, copy: true });
+      }
+      gif.on("finished", (b: Blob) => resolve(b));
+      gif.on("abort", () => resolve(null));
+      gif.render();
+    } catch (err) {
+      if (typeof console !== "undefined") console.warn("[endgame] group GIF encode failed", err);
+      resolve(null);
+    }
+  });
 }
 
 /** Pure-CSS confetti: 14 absolutely-positioned shards animating outward. */
@@ -741,58 +757,125 @@ function SummaryPanel({
   onClose: () => void;
 }) {
   const total = survivors.length + eliminated.length;
+  const allPlayers = useMemo(() => [...survivors, ...eliminated], [survivors, eliminated]);
+
+  // Pick the viewer's "best" burst across all award kinds — order picks
+  // mouth → blink → shake (matching Awards prominence). For OB the
+  // viewerEntry is null → button stays disabled.
+  const myBurst = useMemo<HighlightBurst | null>(() => {
+    const h = viewerEntry?.highlights;
+    return h?.mouth?.[0] ?? h?.blink?.[0] ?? h?.shake?.[0] ?? null;
+  }, [viewerEntry]);
+
+  const [savingMine, setSavingMine] = useState(false);
+  const [savingGroup, setSavingGroup] = useState(false);
+  const [savedKind, setSavedKind] = useState<null | "mine" | "group">(null);
+  const flashSaved = useCallback((kind: "mine" | "group") => {
+    setSavedKind(kind);
+    window.setTimeout(() => setSavedKind(null), 1600);
+  }, []);
+
+  const fileBase = useCallback(() => {
+    const safe = (youName || "guest").replace(/[^a-zA-Z0-9_-]+/g, "_").slice(0, 24) || "guest";
+    return `nocturne-zoo-${safe}-${formatDateSlug()}`;
+  }, [youName]);
+
+  const handleSaveMine = useCallback(async () => {
+    if (!myBurst || myBurst.length < 1 || savingMine) return;
+    setSavingMine(true);
+    try {
+      const blob = myBurst.length >= 2 && typeof Worker !== "undefined"
+        ? await encodeBurstAsGif(myBurst, { frameDelayMs: 110, loops: 3 })
+        : await dataUrlToBlob(myBurst[0]);
+      if (!blob) return;
+      const ext = blob.type.includes("gif") ? "gif" : (blob.type.includes("png") ? "png" : "jpg");
+      const text = lang === "zh" ? "我的瞬间" : "My moment";
+      await shareOrDownload(blob, `${fileBase()}-mine.${ext}`, blob.type, text, text);
+      flashSaved("mine");
+    } finally {
+      setSavingMine(false);
+    }
+  }, [myBurst, savingMine, fileBase, lang, flashSaved]);
+
+  const handleSaveGroup = useCallback(async () => {
+    if (savingGroup) return;
+    setSavingGroup(true);
+    try {
+      const blob = await encodeGroupPhotoAsGif(allPlayers);
+      if (!blob) return;
+      const text = lang === "zh" ? "全员合影" : "Class photo";
+      await shareOrDownload(blob, `${fileBase()}-group.gif`, "image/gif", text, text);
+      flashSaved("group");
+    } finally {
+      setSavingGroup(false);
+    }
+  }, [allPlayers, savingGroup, fileBase, lang, flashSaved]);
+
   return (
-    <div className={"endgame-card" + (youLived ? " endgame-card--alive" : "")}>
+    <div className={"endgame-card endgame-card--summary" + (youLived ? " endgame-card--alive" : "")}>
       <div className="endgame-eyebrow">{t.endGameTitle}</div>
       {isPlayer && viewerEntry ? (
-        <>
-          <h1 id="endgameTitle" className="endgame-headline">
-            {youLived ? t.endGameAlive : t.endGameDead}
-          </h1>
-          <p className="endgame-sub muted">
-            {youLived ? t.endGameAliveSub : t.endGameDeadSub}
-          </p>
-        </>
+        <h1 id="endgameTitle" className="endgame-headline">
+          {youLived ? t.endGameAlive : t.endGameDead}
+        </h1>
       ) : (
         <h1 id="endgameTitle" className="endgame-headline">
           {t.endGameSurvivorCount(survivors.length, total)}
         </h1>
       )}
+      <p className="endgame-sub muted">
+        {isPlayer && viewerEntry
+          ? (youLived ? t.endGameAliveSub : t.endGameDeadSub)
+          : ""}
+      </p>
+
+      {/* Group photo — class-photo collage of every player's face. With 20
+          slots this becomes the visual anchor of the summary screen. */}
+      <GroupPhoto players={allPlayers} youName={youName} lang={lang} />
+
+      {gameEnded.awards ? (
+        <Awards awards={gameEnded.awards} players={allPlayers} youName={youName} t={t} />
+      ) : null}
 
       {isPlayer && viewerEntry?.faceCounts ? (
         <PlayerStats counts={viewerEntry.faceCounts} t={t} />
       ) : null}
 
-      {gameEnded.awards ? (
-        <Awards awards={gameEnded.awards} youName={youName} t={t} />
-      ) : null}
+      {/* Compact roster — single readable list with status pill, animal,
+          and hearts. Replaces the old two-column survivors / eliminated
+          split which was unreadable at 20 players. */}
+      <ClassRoster
+        players={allPlayers}
+        youName={youName}
+        lang={lang}
+        t={t}
+      />
 
-      <div className="endgame-grid">
-        <section>
-          <div className="endgame-section-label">{t.endGameSurvivorsHead}</div>
-          {survivors.length === 0 ? (
-            <div className="muted endgame-empty">—</div>
-          ) : (
-            <ul className="endgame-list">
-              {survivors.map((p) => (
-                <EndGameRow key={p.id} player={p} youName={youName} lang={lang} alive />
-              ))}
-            </ul>
-          )}
-        </section>
-        {eliminated.length > 0 ? (
-          <section>
-            <div className="endgame-section-label">{t.endGameDeadHead}</div>
-            <ul className="endgame-list">
-              {eliminated.map((p) => (
-                <EndGameRow key={p.id} player={p} youName={youName} lang={lang} alive={false} />
-              ))}
-            </ul>
-          </section>
-        ) : null}
-      </div>
-
-      <div className="endgame-actions">
+      <div className="endgame-actions endgame-actions--summary">
+        <button
+          type="button"
+          className={"ghost" + (savingMine ? " is-busy" : "")}
+          onClick={handleSaveMine}
+          disabled={!myBurst || savingMine}
+          title={myBurst
+            ? (lang === "zh" ? "导出我自己的瞬间 GIF" : "Save my moment as a GIF")
+            : (lang === "zh" ? "本局没记录到你的高亮瞬间" : "No highlight burst captured for you this round")}
+        >
+          {savedKind === "mine"
+            ? (lang === "zh" ? "已保存 ✓" : "Saved ✓")
+            : (lang === "zh" ? "保存我的 GIF" : "Save my GIF")}
+        </button>
+        <button
+          type="button"
+          className={"ghost" + (savingGroup ? " is-busy" : "")}
+          onClick={handleSaveGroup}
+          disabled={savingGroup || allPlayers.length === 0}
+          title={lang === "zh" ? "导出全员合影 GIF" : "Save the group photo as a GIF"}
+        >
+          {savedKind === "group"
+            ? (lang === "zh" ? "已保存 ✓" : "Saved ✓")
+            : (lang === "zh" ? "保存合影 GIF" : "Save group GIF")}
+        </button>
         <button className="primary" onClick={onHome}>
           {t.endGameBackHome}
         </button>
@@ -800,6 +883,143 @@ function SummaryPanel({
           {t.endGameClose}
         </button>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Group photo collage — every player rendered in a compact 5-column grid
+ * with cycling burst frames so the whole roster feels alive. Falls back to
+ * the player's last live camera frame, then their static avatar, then a
+ * letter tile when nothing is available.
+ */
+function GroupPhoto({
+  players,
+  youName,
+  lang
+}: {
+  players: RevealEntry[];
+  youName: string;
+  lang: "en" | "zh";
+}) {
+  const [frameIdx, setFrameIdx] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setFrameIdx((i) => (i + 1) % 600), 220);
+    return () => window.clearInterval(id);
+  }, []);
+  const cells = useMemo(
+    () =>
+      players.map((p) => {
+        const h = p.highlights;
+        const burst = h?.mouth?.[0] ?? h?.blink?.[0] ?? h?.shake?.[0] ?? null;
+        const frames =
+          burst && burst.length > 0
+            ? burst
+            : p.lastFrame
+              ? [p.lastFrame]
+              : p.avatarUrl
+                ? [p.avatarUrl]
+                : [];
+        return {
+          id: p.id,
+          name: p.name,
+          frames,
+          isYou: !!youName && p.name === youName,
+          alive: p.alive !== false
+        };
+      }),
+    [players, youName]
+  );
+  if (cells.length === 0) return null;
+  return (
+    <div className="endgame-group" aria-label="Class photo">
+      <div className="endgame-section-label endgame-group__head">
+        {lang === "zh" ? "全员合影" : "Class photo"}
+        <span className="muted endgame-group__count"> · {cells.length}</span>
+      </div>
+      <div className="endgame-group__grid">
+        {cells.map((c) => (
+          <div
+            key={c.id}
+            className={
+              "endgame-group__cell" +
+              (c.isYou ? " is-you" : "") +
+              (c.alive ? "" : " is-dead")
+            }
+            title={c.name}
+          >
+            {c.frames.length > 0 ? (
+              <img
+                src={c.frames[frameIdx % c.frames.length] ?? c.frames[0]}
+                alt={c.name}
+                loading="lazy"
+                decoding="async"
+              />
+            ) : (
+              <span className="endgame-group__initial" aria-hidden>
+                {c.name.charAt(0).toUpperCase()}
+              </span>
+            )}
+            <span className="endgame-group__name" title={c.name}>{c.name}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Single-list roster. Replaces the survivors-vs-eliminated 2-column grid
+ * that overflowed at 20 players. Sorted: alive first, then by name; the
+ * viewer's row is highlighted so they can find themselves at a glance.
+ */
+function ClassRoster({
+  players,
+  youName,
+  lang,
+  t
+}: {
+  players: RevealEntry[];
+  youName: string;
+  lang: "en" | "zh";
+  t: Dict;
+}) {
+  const sorted = useMemo(
+    () =>
+      [...players].sort((a, b) => {
+        const aAlive = a.alive !== false ? 1 : 0;
+        const bAlive = b.alive !== false ? 1 : 0;
+        if (aAlive !== bAlive) return bAlive - aAlive;
+        return a.name.localeCompare(b.name);
+      }),
+    [players]
+  );
+  const aliveCount = sorted.filter((p) => p.alive !== false).length;
+  const deadCount = sorted.length - aliveCount;
+  return (
+    <div className="endgame-roster" aria-label="Roster">
+      <div className="endgame-roster__head">
+        <span className="endgame-section-label">
+          {lang === "zh" ? "全员排行榜" : "Class roster"}
+        </span>
+        <span className="muted endgame-roster__counts">
+          ✓ {aliveCount} · ✕ {deadCount}
+        </span>
+      </div>
+      <ul className="endgame-roster__list">
+        {sorted.map((p) => (
+          <EndGameRow
+            key={p.id}
+            player={p}
+            youName={youName}
+            lang={lang}
+            alive={p.alive !== false}
+          />
+        ))}
+      </ul>
+      {/* `t` is referenced here only via the labels above; keep the prop
+          so future per-row strings can use it without re-threading. */}
+      <span hidden>{t.endGameTitle}</span>
     </div>
   );
 }
@@ -828,71 +1048,75 @@ function PlayerStats({ counts, t }: { counts: FaceCounts; t: Dict }) {
 
 function Awards({
   awards,
+  players,
   youName,
   t
 }: {
   awards: NonNullable<GameEnded["awards"]>;
+  players: RevealEntry[];
   youName: string;
   t: Dict;
 }) {
-  const items: Array<{ key: string; medal: string; title: string; sub: string; winner: GameEndedAward | null }> = [
-    {
-      key: "mouth",
-      medal: "🥇",
-      title: t.awardMouthTitle,
-      sub: t.awardMouthSub,
-      winner: awards.mouthOpens
-    },
-    {
-      key: "shake",
-      medal: "🥈",
-      title: t.awardShakeTitle,
-      sub: t.awardShakeSub,
-      winner: awards.headShakes
-    },
-    {
-      key: "blink",
-      medal: "🥉",
-      title: t.awardBlinkTitle,
-      sub: t.awardBlinkSub,
-      winner: awards.blinks
-    }
+  type AwardKindKey = "mouth" | "shake" | "blink";
+  const items: Array<{
+    key: AwardKindKey;
+    medal: string;
+    title: string;
+    sub: string;
+    winner: GameEndedAward | null;
+  }> = [
+    { key: "mouth", medal: "🥇", title: t.awardMouthTitle, sub: t.awardMouthSub, winner: awards.mouthOpens },
+    { key: "shake", medal: "🥈", title: t.awardShakeTitle, sub: t.awardShakeSub, winner: awards.headShakes },
+    { key: "blink", medal: "🥉", title: t.awardBlinkTitle, sub: t.awardBlinkSub, winner: awards.blinks }
   ];
   if (items.every((i) => !i.winner)) return null;
   return (
     <div className="endgame-awards" aria-label="Awards">
       <div className="endgame-section-label endgame-awards__head">{t.endGameAwardsHead}</div>
-      <ul className="endgame-awards__list">
+      <div className="endgame-awards__cards">
         {items.map((it) => {
           const isYou = !!youName && it.winner?.name === youName;
+          const winner = it.winner ? players.find((p) => p.id === it.winner!.id) : null;
+          const burst = winner?.highlights?.[it.key]?.[0] ?? null;
+          const portrait =
+            burst && burst.length > 0
+              ? burst[0]
+              : winner?.lastFrame ?? winner?.avatarUrl ?? null;
           return (
-            <li
+            <div
               key={it.key}
               className={
-                "endgame-award" +
+                "endgame-award-card" +
                 (it.winner ? " has-winner" : "") +
                 (isYou ? " is-self" : "")
               }
             >
-              <span className="endgame-award__medal" aria-hidden>{it.medal}</span>
-              <div className="endgame-award__col">
-                <div className="endgame-award__title">{it.title}</div>
-                <div className="endgame-award__sub">{it.sub}</div>
-              </div>
-              <div className="endgame-award__winner">
-                {it.winner ? (
-                  <>
-                    <span className="endgame-award__name">{it.winner.name}</span>
-                    <span className="endgame-award__count">×{it.winner.count}</span>
-                  </>
+              <div className="endgame-award-card__medal" aria-hidden>{it.medal}</div>
+              <div className="endgame-award-card__portrait">
+                {portrait ? (
+                  <img src={portrait} alt={it.winner?.name ?? ""} loading="lazy" />
                 ) : (
-                  <span className="muted endgame-award__none">{t.endGameAwardNone}</span>
+                  <span className="endgame-award-card__initial" aria-hidden>
+                    {it.winner?.name?.charAt(0).toUpperCase() ?? "—"}
+                  </span>
                 )}
               </div>
-            </li>
+              <div className="endgame-award-card__title">{it.title}</div>
+              <div className="endgame-award-card__sub">{it.sub}</div>
+              <div className="endgame-award-card__winner">
+                {it.winner ? (
+                  <>
+                    <span className="endgame-award-card__name">{it.winner.name}</span>
+                    <span className="endgame-award-card__count">×{it.winner.count}</span>
+                  </>
+                ) : (
+                  <span className="muted endgame-award-card__none">{t.endGameAwardNone}</span>
+                )}
+              </div>
+            </div>
           );
         })}
-      </ul>
+      </div>
     </div>
   );
 }
