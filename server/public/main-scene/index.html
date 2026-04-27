@@ -991,6 +991,47 @@
         display: none !important;
       }
 
+      /* OB-only size tweaks — the operator cares mainly about the world
+         playfield, so the REC bar + zoo-keeper log are scaled down to
+         give the iframe more room for the actual scene. (Kept full-size
+         for real players who rely on those for in-game info.) */
+      body.is-spectator .hud-top {
+        padding: 6px 14px 4px;
+      }
+      body.is-spectator .rec-text {
+        font-size: 14px;
+        letter-spacing: 2px;
+      }
+      body.is-spectator .rec-dot {
+        width: 8px;
+        height: 8px;
+      }
+      body.is-spectator .timer {
+        font-size: 18px;
+      }
+      body.is-spectator .clock-icon svg {
+        width: 18px;
+        height: 18px;
+      }
+      body.is-spectator .log {
+        height: 70px;
+        margin: 4px 14px 8px;
+        padding: 6px 12px 8px;
+        border-radius: 14px;
+        border-width: 2px;
+        box-shadow: 2px 2px 0 #000;
+      }
+      body.is-spectator .log h2 {
+        font-size: 13px;
+        letter-spacing: 1px;
+        margin: 0 0 2px;
+        padding-bottom: 0;
+      }
+      body.is-spectator .log ul {
+        font-size: 11px;
+        line-height: 14px;
+      }
+
       /* ---------- Alert vignette (red glow when a rule is active) ----------
          Inner box-shadow creates a glow around the screen edges only —
          center stays fully transparent so the cam preview, joystick and
