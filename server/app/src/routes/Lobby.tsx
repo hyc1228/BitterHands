@@ -5,7 +5,6 @@ import PlayerRowFace from "../components/PlayerRowFace";
 import Toast from "../components/Toast";
 import { readStoredRoomId } from "../constants";
 import { animalLocalized, dict } from "../i18n";
-import { expectedObKey, writeStoredObKey } from "../lib/obAuth";
 import { ClientMessageTypes, type PublicPlayer } from "../party/protocol";
 import { usePartyStore } from "../party/store";
 
@@ -137,14 +136,10 @@ export default function Lobby() {
   }, [draftName, myName, setMyName, send, lang, nav]);
 
   const handleSpectate = useCallback(() => {
-    // Anyone already in the room is allowed to spectate — stash the
-    // expected key so the OB auth gate passes silently, and set a one-shot
-    // sessionStorage flag so the OB route auto-connects to this same room
-    // without making the user click Connect again.
-    try {
-      writeStoredObKey(expectedObKey());
-      sessionStorage.setItem("nz.ob.autoConnect", roomId);
-    } catch { /* ignore */ }
+    // OB no longer has a key gate — anyone with the room code can spectate.
+    // We still set the auto-connect hint so /ob picks the room up without
+    // making the user retype it.
+    try { sessionStorage.setItem("nz.ob.autoConnect", roomId); } catch { /* ignore */ }
     nav("/ob");
   }, [nav, roomId]);
 
