@@ -135,6 +135,7 @@ function ObInner() {
     (s) => s.snapshot?.players.find((p) => p.name === s.myName)?.id ?? ""
   );
   useMainSceneIframeBridge();
+  const obNav = useNavigate();
 
   const [room, setRoom] = useState(() => {
     const params = new URLSearchParams(location.hash.split("?")[1] || "");
@@ -355,11 +356,27 @@ function ObInner() {
   );
   const followedFrame = obCam.followId ? cameraFrames.get(obCam.followId) ?? null : null;
 
+  function handleBackToLobby() {
+    // Switch the WS back to player mode so the user appears in the lobby
+    // roster again (otherwise they'd stay as an invisible OB conn). The
+    // lobby's mount effect then re-runs JOIN with their stored name.
+    try { disconnect(); } catch { /* ignore */ }
+    obNav("/lobby");
+  }
+
   return (
     <>
     <div className="ob-grid">
       <section className="card stack" aria-label="ob-left">
         <div className="ob-room-row">
+          <button
+            type="button"
+            className="ghost ob-back-btn"
+            onClick={handleBackToLobby}
+            title={lang === "zh" ? "返回大厅创建角色" : "Back to lobby"}
+          >
+            ← {lang === "zh" ? "返回大厅" : "Back to lobby"}
+          </button>
           <input
             className="ob-room-input"
             value={room}

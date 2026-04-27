@@ -785,6 +785,22 @@
   gap: 10px;
 }
 
+/* Compact "← Back to lobby" link in the OB header — tucked next to the
+   room input. Lets a spectator return to the lobby and run the
+   character-creation flow without manually retyping the room code. */
+.ob-back-btn {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  border: 1px solid rgba(242, 239, 233, 0.32);
+  background: rgba(0, 0, 0, 0.32);
+}
+.ob-back-btn:hover:not(:disabled) {
+  border-color: rgba(214, 64, 46, 0.55);
+  color: var(--nz-cream);
+}
+
 .ob-room-input {
   width: 10rem;
   max-width: min(10rem, 100%);
@@ -3822,6 +3838,43 @@ button.is-busy::before {
   flex-wrap: wrap;
 }
 .lobby-self-card__btns > button { flex: 1 1 140px; }
+
+/* Lurker primary CTA — the big "Create profile" button. */
+.lobby-self-card__cta {
+  width: 100%;
+  min-height: 52px;
+  font-size: 15px;
+  letter-spacing: 0.16em;
+}
+
+/* Demoted "Spectate" link — small, off to the side, looks like a text link
+   so it clearly reads as the secondary action. */
+.lobby-self-card__spectate-link {
+  align-self: flex-end;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  min-height: 0;
+  padding: 4px 6px;
+  font-family: var(--nz-font-display);
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  color: var(--nz-cream-dim);
+  text-decoration: underline;
+  text-decoration-color: rgba(242, 239, 233, 0.32);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.lobby-self-card__spectate-link:hover:not(:disabled) {
+  color: var(--nz-cream);
+  text-decoration-color: var(--nz-red);
+  background: transparent;
+  border: none;
+}
+.lobby-self-card__spectate-link:active:not(:disabled) {
+  transform: none;
+  box-shadow: none;
+}
 .lobby-self-card--ready {
   text-align: center;
 }

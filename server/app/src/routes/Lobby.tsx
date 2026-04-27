@@ -64,10 +64,16 @@ export default function Lobby() {
   // current draftName so the lurker is visible to others right away. JOIN is
   // re-sent as part of `connect`, and re-running connect later (e.g. after a
   // close) just renames the same WS slot.
+  //
+  // Also: if the user arrived here from /ob (they were spectating and clicked
+  // "Back to lobby"), the existing socket is still in OB mode. Detect that
+  // and force a fresh player-mode connection so they show up in the roster.
   useEffect(() => {
+    const prevMode = usePartyStore.getState().mode;
     setMode("player");
-    if (conn === "open" || conn === "connecting") return;
     if (!roomId) return;
+    const playerAlready = prevMode === "player" && (conn === "open" || conn === "connecting");
+    if (playerAlready) return;
     setMyName(draftName);
     connect({ roomId, name: draftName, lang, mode: "player" }).catch(() => {
       /* surfaced via connectError in store; we render it below */
@@ -188,6 +194,7 @@ export default function Lobby() {
             onDraftName={setDraftName}
             onSetup={handleSetupCharacter}
             onSpectate={handleSpectate}
+            lang={lang}
             t={t}
           />
         ) : myStage === "in-setup" ? (
@@ -284,14 +291,18 @@ function LurkerActions({
   onDraftName,
   onSetup,
   onSpectate,
+  lang,
   t
 }: {
   draftName: string;
   onDraftName: (s: string) => void;
   onSetup: () => void;
   onSpectate: () => void;
+  lang: "en" | "zh";
   t: ReturnType<typeof dict>;
 }) {
+  // Primary CTA is the character-creation step. Spectating is the secondary
+  // option, demoted to a small text-link so it doesn't compete visually.
   return (
     <div className="lobby-self-card lobby-self-card--lurker">
       <label className="label" htmlFor="lobbyName">
@@ -304,19 +315,22 @@ function LurkerActions({
         onChange={(e) => onDraftName(e.target.value)}
         placeholder={t.namePlaceholder}
       />
-      <div className="lobby-self-card__btns">
-        <button
-          type="button"
-          className="primary"
-          disabled={!draftName.trim()}
-          onClick={onSetup}
-        >
-          {t.splashStart}
-        </button>
-        <button type="button" className="ghost" onClick={onSpectate}>
-          {t.obTitle ?? "Spectate"}
-        </button>
-      </div>
+      <button
+        type="button"
+        className="primary lobby-self-card__cta"
+        disabled={!draftName.trim()}
+        onClick={onSetup}
+      >
+        {lang === "zh" ? "创建角色" : "Create profile"}
+      </button>
+      <button
+        type="button"
+        className="lobby-self-card__spectate-link"
+        onClick={onSpectate}
+        title={lang === "zh" ? "不参与游戏，进入观战视角" : "Skip the game and just spectate"}
+      >
+        {lang === "zh" ? "观战" : "Spectate"}
+      </button>
     </div>
   );
 }
