@@ -979,6 +979,19 @@
 }
 .ob-topbar__timer-digits {
   font-variant-numeric: tabular-nums;
+  /* Brief scale-in on each second tick.  React remounts the span via
+     `key={formattedTimer}` (see Ob.tsx) so this animation re-fires
+     once per second.  Kept short and tiny so it feels like a pulse,
+     not a jolt. */
+  animation: ob-topbar-timer-tick 220ms cubic-bezier(0.2, 1.2, 0.4, 1);
+  display: inline-block;
+}
+@keyframes ob-topbar-timer-tick {
+  0%   { transform: scale(0.94); opacity: 0.75; }
+  100% { transform: scale(1);    opacity: 1;    }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob-topbar__timer-digits { animation: none; }
 }
 .ob-topbar__timer-dot {
   width: 8px;
@@ -2666,6 +2679,15 @@
   background: var(--nz-black);
   border: 1px solid var(--nz-cream-line);
   overflow: hidden;
+  transition: border-color 240ms ease, box-shadow 240ms ease;
+}
+/* Once the video starts streaming, give the stage a subtle live border so
+   the user can tell the camera is actually capturing them.  Triggered via
+   the `aria-hidden="false"` state on the inner <video> (set when the gate
+   `enabled`s). */
+.gate-stage:has(.gate-video[aria-hidden="false"]) {
+  border-color: rgba(214, 64, 46, 0.45);
+  box-shadow: 0 0 0 1px rgba(214, 64, 46, 0.2), 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 .gate-video {
   width: 100%;
@@ -2674,6 +2696,15 @@
   background: var(--nz-black);
   /* Selfie-mirror so directions match the user's perception. */
   transform: scaleX(-1);
+  /* Soft fade-in once the video element starts producing real frames so
+     the user doesn't see a hard pop from black.  The video stays
+     `aria-hidden=true` until the gate auto-starts, so we key the fade off
+     that attribute. */
+  opacity: 1;
+  transition: opacity 320ms ease;
+}
+.gate-video[aria-hidden="true"] {
+  opacity: 0;
 }
 .gate-overlay {
   position: absolute;
@@ -2686,6 +2717,17 @@
   font-size: 13px;
   letter-spacing: 0.14em;
   z-index: 1;
+  /* Breathing pulse so the user can tell something is happening while the
+     browser asks for camera permission / the stream warms up.  Easy to
+     read but not anxiety-inducing. */
+  animation: gate-overlay-breathe 1.6s ease-in-out infinite;
+}
+@keyframes gate-overlay-breathe {
+  0%, 100% { opacity: 0.92; }
+  50%      { opacity: 0.65; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gate-overlay { animation: none; }
 }
 .gate-overlay--err {
   color: #ff9a8a;
@@ -2747,13 +2789,43 @@
   height: 32px;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.4);
-  transition: background 240ms ease, color 240ms ease;
+  transition: background 240ms ease, color 240ms ease, transform 220ms ease;
+  position: relative;
+}
+/* Active task (registering progress but not yet done): give the icon a
+   gentle wiggle so the user can spot which check is currently being
+   measured at a glance.  Different rhythm than the done-pop so the eye
+   tracks the right state. */
+.gate-task.is-active .gate-task__icon {
+  animation: gate-icon-wiggle 1.4s ease-in-out infinite;
+}
+.gate-task.is-active .gate-task__icon::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: inherit;
+  border: 1.5px solid rgba(214, 64, 46, 0.55);
+  animation: gate-icon-halo 1.4s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes gate-icon-wiggle {
+  0%, 100% { transform: scale(1) rotate(0deg); }
+  20%      { transform: scale(1.06) rotate(-4deg); }
+  60%      { transform: scale(1.06) rotate(4deg); }
+}
+@keyframes gate-icon-halo {
+  0%   { transform: scale(1);    opacity: 0.7; }
+  100% { transform: scale(1.45); opacity: 0;   }
 }
 .gate-task.is-done .gate-task__icon {
   background: rgba(120, 200, 140, 0.25);
   color: rgba(190, 240, 200, 1);
   font-family: var(--nz-font-display);
   font-size: 18px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .gate-task.is-active .gate-task__icon { animation: none; }
+  .gate-task.is-active .gate-task__icon::after { animation: none; opacity: 0; }
 }
 
 .gate-task__col {
@@ -2770,7 +2842,7 @@
 }
 .gate-task__bar {
   position: relative;
-  height: 4px;
+  height: 5px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
@@ -2779,10 +2851,33 @@
   position: absolute;
   inset: 0 auto 0 0;
   background: linear-gradient(90deg, rgba(214, 64, 46, 0.85), rgba(214, 64, 46, 1));
-  transition: width 180ms ease;
+  transition: width 280ms cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+/* Subtle moving sheen across active progress bars — works at any width
+   (the sheen is sized in % of the fill, so a 5%-fill bar still shows it
+   correctly).  Kept dim and slow so it reads as "live" not "loud". */
+.gate-task.is-active .gate-task__fill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.35) 50%,
+    transparent 100%
+  );
+  transform: translateX(-100%);
+  animation: gate-bar-sheen 1.4s linear infinite;
+}
+@keyframes gate-bar-sheen {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
 }
 .gate-task.is-done .gate-task__fill {
   background: linear-gradient(90deg, rgba(120, 200, 140, 0.85), rgba(160, 220, 170, 1));
+}
+@media (prefers-reduced-motion: reduce) {
+  .gate-task.is-active .gate-task__fill::after { animation: none; opacity: 0; }
 }
 .gate-task__status {
   font-family: var(--nz-font-hand);
@@ -3609,9 +3704,44 @@
   padding: 14px 14px;
   border: 2px solid rgba(255, 220, 90, 0.65);
   background: linear-gradient(135deg, rgba(255, 220, 90, 0.16), rgba(0, 0, 0, 0.4));
+  position: relative;
+  overflow: hidden;
+}
+/* One-shot sheen that sweeps across the gold row right after stamp-in
+   lands.  Total cycle = 2.6 s (1 s sit + 1.6 s sweep) so the audience
+   gets a clear "ta-da" beat without a perpetual disco vibe.  Pointer
+   events disabled so the gleam never blocks self-highlight click. */
+.endgame-award-stage__podium-row--gold::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    rgba(255, 240, 170, 0.45) 50%,
+    transparent 70%
+  );
+  transform: translateX(-110%);
+  animation: nz-gold-sweep 2.6s cubic-bezier(0.22, 0.61, 0.36, 1) 800ms 1 both;
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
+@keyframes nz-gold-sweep {
+  0%   { transform: translateX(-110%); }
+  60%  { transform: translateX(-110%); }
+  100% { transform: translateX(110%);  }
 }
 .endgame-award-stage__podium-row--gold .endgame-award-stage__podium-medal {
   font-size: 30px;
+  /* Gentle bobble on the gold medal — tells the eye "this is THE winner"
+     without competing with the sweep. */
+  animation: nz-gold-bobble 2.4s ease-in-out 1200ms infinite;
+  transform-origin: 50% 80%;
+}
+@keyframes nz-gold-bobble {
+  0%, 100% { transform: rotate(0deg) translateY(0); }
+  35%      { transform: rotate(-6deg) translateY(-2px); }
+  65%      { transform: rotate(6deg)  translateY(-2px); }
 }
 .endgame-award-stage__podium-row--gold .endgame-award-stage__podium-line {
   font-size: clamp(20px, 4.6vw, 28px);
@@ -3623,6 +3753,24 @@
 .endgame-award-stage__podium-row--gold.is-self {
   border-color: rgba(255, 220, 90, 1);
   box-shadow: 0 0 0 2px rgba(255, 220, 90, 0.6), 0 0 24px rgba(255, 220, 90, 0.45);
+  animation: nz-stamp-in 600ms cubic-bezier(0.2, 1.4, 0.3, 1) both,
+             nz-self-heartbeat 1.8s ease-in-out 1200ms infinite;
+  animation-delay: var(--podium-delay, 0ms), 1200ms;
+}
+/* Heartbeat scales the row's box-shadow rather than the whole row — keeps
+   layout perfectly stable while still adding a "you won!" beacon. */
+@keyframes nz-self-heartbeat {
+  0%, 100% {
+    box-shadow: 0 0 0 2px rgba(255, 220, 90, 0.6), 0 0 24px rgba(255, 220, 90, 0.45);
+  }
+  50% {
+    box-shadow: 0 0 0 3px rgba(255, 220, 90, 0.85), 0 0 36px rgba(255, 220, 90, 0.65);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .endgame-award-stage__podium-row--gold::after { animation: none; opacity: 0; }
+  .endgame-award-stage__podium-row--gold .endgame-award-stage__podium-medal { animation: none; }
+  .endgame-award-stage__podium-row--gold.is-self { animation: nz-stamp-in 600ms cubic-bezier(0.2, 1.4, 0.3, 1) both; }
 }
 .endgame-award-stage__podium-row--silver {
   border-color: rgba(220, 224, 232, 0.5);

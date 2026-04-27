@@ -346,7 +346,11 @@ function ObInner() {
           aria-live="off"
         >
           <span className="ob-topbar__timer-dot" aria-hidden />
-          <span className="ob-topbar__timer-digits">{formattedTimer}</span>
+          {/* Key the digits span on the formatted text so React remounts it
+              every second tick — that re-fires the CSS pulse animation,
+              giving the operator a subtle "still ticking" beat without us
+              having to drive a separate animation timer. */}
+          <span key={formattedTimer} className="ob-topbar__timer-digits">{formattedTimer}</span>
         </span>
       ) : null}
       <input
