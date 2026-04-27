@@ -14,7 +14,7 @@ import {
   type ObCameraPayload
 } from "../mainSync/postToMainSceneFrame";
 import { ClientMessageTypes, animalEmoji, type CameraFrame, type Lang, type PublicPlayer } from "../party/protocol";
-import { usePartyStore, type LogEntry } from "../party/store";
+import { usePartyStore } from "../party/store";
 import PlayerRowFace from "../components/PlayerRowFace";
 
 function obAnimalLabel(lang: Lang, animal: PublicPlayer["animal"], unknown: string): string {
@@ -128,8 +128,6 @@ function ObInner() {
   const disconnect = usePartyStore((s) => s.disconnect);
   const send = usePartyStore((s) => s.send);
   const snapshot = usePartyStore((s) => s.snapshot);
-  const log = usePartyStore((s) => s.log);
-  const obLogLines = useMemo(() => log.slice(0, 5), [log]);
   const cameraFrames = usePartyStore((s) => s.cameraFrames);
   const selfPlayerId = usePartyStore(
     (s) => s.snapshot?.players.find((p) => p.name === s.myName)?.id ?? ""
@@ -458,16 +456,6 @@ function ObInner() {
                   followPicked={obCam.mode === "follow" && obCam.followId === p.id}
                 />
               ))
-            )}
-          </div>
-        </div>
-        <div>
-          <div className="section-title">{t.events}</div>
-          <div className="log ob-log-clip" aria-label="ob-log-recent">
-            {obLogLines.length === 0 ? (
-              <div className="muted">—</div>
-            ) : (
-              obLogLines.map((entry, i) => <ObLogLine key={`${entry.ts}-${i}`} entry={entry} />)
             )}
           </div>
         </div>
@@ -896,15 +884,6 @@ function ObPlayer({
       <span className="badge">
         {`♥ ${player.lives} · V ${player.violations}`}
       </span>
-    </div>
-  );
-}
-
-function ObLogLine({ entry }: { entry: LogEntry }) {
-  const ts = new Date(entry.ts).toLocaleTimeString();
-  return (
-    <div className={`log-line kind-${entry.kind}`}>
-      <span className="muted">[{ts}]</span> {entry.text}
     </div>
   );
 }

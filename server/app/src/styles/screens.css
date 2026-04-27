@@ -820,13 +820,34 @@
   display: grid;
   grid-template-columns: 1fr;
   gap: var(--nz-gap);
-  flex: 1;
+  /* No flex: 1 / min-height: 0 here on purpose — that combo locks the
+     grid to the parent's available height and clips overflow when the
+     left column has more content than fits. We let the page scroll
+     naturally instead so the operator can reach every control. */
+}
+.ob-shell {
+  /* Override .app-shell's `min-height: 100vh` constraint so vertical
+     content (room row + start row + AI row + roster + iframe) can grow
+     past the viewport and the browser handles scrolling. */
   min-height: 0;
 }
 
+/* Right side (camera wall + iframe) is the operator's actual focus.
+   Bump its share of the grid and shrink the left to match. */
 @media (min-width: 960px) {
   .ob-grid {
-    grid-template-columns: minmax(360px, 1fr) 1.4fr;
+    grid-template-columns: minmax(280px, 0.7fr) minmax(0, 2fr);
+    align-items: start;
+  }
+  /* Make the controls panel "follow" the user as they scroll the right
+     side — keeps Start / kick / AI buttons reachable while they're
+     watching faces below the fold. */
+  .ob-grid > section[aria-label="ob-left"] {
+    position: sticky;
+    top: 16px;
+    align-self: start;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
   }
 }
 
@@ -3416,13 +3437,14 @@
   font-size: 12px;
 }
 
-/* OB lobby start row */
+/* OB lobby start row — compact (the camera wall is the focus, this row is
+   just a quick action that should sit out of the way). */
 .ob-start-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px;
-  border-radius: var(--nz-radius);
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--nz-radius-sm);
   border: 1px dashed var(--nz-cream-line);
   background: rgba(0, 0, 0, 0.28);
 }
@@ -3432,10 +3454,11 @@
   background: rgba(60, 130, 90, 0.14);
 }
 .ob-start-btn {
-  min-height: 42px;
-  padding: 0 18px;
-  font-size: 14px;
-  letter-spacing: 0.18em;
+  min-height: 32px;
+  padding: 0 12px;
+  font-size: 12px;
+  letter-spacing: 0.14em;
+  flex: 0 0 auto;
 }
 .ob-start-row.is-all-ready .ob-start-btn {
   animation: nz-enter-unlock 700ms cubic-bezier(0.2, 1.4, 0.3, 1) 1;
