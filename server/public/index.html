@@ -13,27 +13,20 @@
     <title>Nocturne Zoo</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <!--
-      Latin display + body (Permanent Marker + Patrick Hand) come from Google
-      Fonts; CJK display (得意黑 / Smiley Sans) is loaded from jsDelivr (the
-      atelier-anchor official release), CJK body (思源宋体 / Noto Serif SC)
-      from Google. Browsers fall through the family stack per-glyph, so
-      latin chars hit the marker fonts and Chinese chars hit Smiley Sans /
-      Noto Serif SC automatically — no JS needed.
+      Latin display + body come from Google Fonts (Permanent Marker for
+      headings, Patrick Hand for casual labels). CJK is now driven entirely
+      by OS-native fonts (PingFang SC / Microsoft YaHei) with Noto Sans SC
+      as a Google Fonts fallback (loaded from globals.css via @import).
+      The previous Smiley Sans preload (jsDelivr) is gone — Smiley Sans
+      was only available as oblique, which made every Chinese heading
+      look italicised, and jsDelivr is slow / blocked in mainland China.
     -->
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Patrick+Hand&family=Noto+Serif+SC:wght@400;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Patrick+Hand&display=swap"
     />
-    <link
-      rel="preload"
-      as="font"
-      type="font/woff2"
-      href="https://cdn.jsdelivr.net/gh/atelier-anchor/smiley-sans@main/dist/SmileySans-Oblique.woff2"
-      crossorigin
-    />
-    <script type="module" crossorigin src="./assets/index-BJR1WaoA.js"></script>
+    <script type="module" crossorigin src="./assets/index-CZot0yxE.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index--1FX26qb.css">
   </head>
   <body>

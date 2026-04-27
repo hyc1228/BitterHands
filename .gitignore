@@ -40,3 +40,9 @@ design-system/
 server/public/avatars/**
 !server/public/avatars/.gitkeep
 
+# itch.io HTML5 build output (see server/scripts/build-itch.mjs).
+# Both the staged tree and the final zip are pure build artifacts; the
+# zip is what you upload to itch.io's project page.
+server/itch-build/
+nocturne-zoo-itch.zip
+
