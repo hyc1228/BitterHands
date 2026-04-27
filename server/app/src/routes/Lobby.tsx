@@ -204,6 +204,10 @@ export default function Lobby() {
 
   return (
     <div className="lobby-wrap lobby-wrap--hub">
+      {/* Same scrolling grass + vignette as the splash screen — visually
+          ties the lobby into the world the player is about to enter. */}
+      <div className="nz-grass-bg" aria-hidden />
+      <div className="nz-grass-vignette" aria-hidden />
       <Toast />
       {/* Camera upload covers the lurker phase too — the player's camera (if
           permission was granted earlier in this browser) feeds the OB face

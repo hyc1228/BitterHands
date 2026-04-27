@@ -1888,6 +1888,32 @@
   to   { background-position: 220px 220px; }
 }
 
+/* Same scrolling grass + vignette but viewport-pinned via position: fixed,
+   so the screens that scroll (lobby + OB) keep the background in place
+   while the foreground content scrolls past it. Use as bare divs sitting
+   directly inside the route's outermost wrapper. */
+.nz-grass-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  background-color: #1a2a13;
+  background-image: url("/main-scene/backgroundTile.svg");
+  background-repeat: repeat;
+  background-size: 220px 220px;
+  filter: brightness(0.45) saturate(1.05);
+  animation: splash-drift 32s linear infinite;
+}
+.nz-grass-vignette {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 40%, transparent 0%, rgba(0, 0, 0, 0.6) 70%, rgba(0, 0, 0, 0.92) 100%),
+    radial-gradient(ellipse 90% 60% at 50% 0%, var(--nz-red-dim), transparent 60%);
+}
+
 .splash-stage {
   position: relative;
   width: min(560px, 100%);

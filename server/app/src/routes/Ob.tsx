@@ -318,6 +318,10 @@ function ObInner() {
 
   return (
     <>
+    {/* Same scrolling grass + vignette as the splash + lobby. Pinned to the
+        viewport so OB pages with long scroll keep the background in place. */}
+    <div className="nz-grass-bg" aria-hidden />
+    <div className="nz-grass-vignette" aria-hidden />
     <Toast />
     {/* Top control bar — back, room input, connect, Start, AI, ready/AI counts.
         Replaces the entire former left column so the camera wall + iframe can
