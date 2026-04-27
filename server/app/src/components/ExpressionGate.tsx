@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { dict } from "../i18n";
+import { haptic } from "../lib/haptic";
+import { ClientMessageTypes } from "../party/protocol";
 import { usePartyStore } from "../party/store";
 import { useCameraFrameUpload } from "../hooks/useCameraFrameUpload";
 import { useCameraStream } from "../hooks/useCameraStream";
@@ -81,6 +83,7 @@ export default function ExpressionGate({ onPassed }: Props) {
   // Same video element drives the OB face wall during Final Check so OB sees
   // the player while they're being graded on the 3 tasks.
   const conn = usePartyStore((s) => s.conn);
+  const send = usePartyStore((s) => s.send);
   useCameraFrameUpload({
     enabled: conn === "open" && enabled && !!stream && !!videoEl,
     videoEl
@@ -89,11 +92,78 @@ export default function ExpressionGate({ onPassed }: Props) {
   const allDone =
     shakeRef.current.done && mouthRef.current.done && noBlinkRef.current.done;
 
+  // Stream live gate progress to OB (server validates + relays as
+  // GATE_PROGRESS). Sent at ~5 Hz; cheap (<150 B / msg) so we don't bother
+  // diff-suppressing per-field. Stops once the gate is passed.
+  useEffect(() => {
+    if (conn !== "open") return;
+    if (!enabled) return;
+    if (allDone) return;
+    const id = window.setInterval(() => {
+      const now = performance.now();
+      const sh = shakeRef.current;
+      const mo = mouthRef.current;
+      const ey = noBlinkRef.current;
+      const shakeProgress = sh.done
+        ? 1
+        : Math.min(1, sh.changes / DETECTION_DEFAULTS.shakeChangesNeeded);
+      const mouthProgress = mo.done
+        ? 1
+        : Math.min(1, mo.openFrames / DETECTION_DEFAULTS.mouthOpenFrames);
+      const eyeProgress = noBlinkProgress(ey, now, DETECTION_DEFAULTS.gateNoBlinkHoldMs);
+      const eyeHoldMs = ey.since == null ? 0 : Math.max(0, Math.floor(now - ey.since));
+      send(ClientMessageTypes.GATE_PROGRESS, {
+        active: true,
+        shake: {
+          done: sh.done,
+          count: shakeShakesCount(sh),
+          progress: shakeProgress
+        },
+        mouth: {
+          done: mo.done,
+          openFrames: mo.openFrames | 0,
+          progress: mouthProgress
+        },
+        eyes: {
+          done: ey.done,
+          holdMs: eyeHoldMs,
+          progress: eyeProgress
+        }
+      });
+    }, 220);
+    return () => window.clearInterval(id);
+  }, [conn, enabled, allDone, send]);
+
+  // Final "passed" beacon — once `allDone` flips true, push one last update
+  // so OB sees all three bars filled before the entry is GC'd by the snapshot
+  // diff (when the server marks the player ready).
+  useEffect(() => {
+    if (!allDone) return;
+    if (conn !== "open") return;
+    send(ClientMessageTypes.GATE_PROGRESS, {
+      active: false,
+      shake: {
+        done: true,
+        count: shakeShakesCount(shakeRef.current),
+        progress: 1
+      },
+      mouth: {
+        done: true,
+        openFrames: mouthRef.current.openFrames | 0,
+        progress: 1
+      },
+      eyes: { done: true, holdMs: DETECTION_DEFAULTS.gateNoBlinkHoldMs, progress: 1 }
+    });
+  }, [allDone, conn, send]);
+
   // Notify parent whenever pass-state flips.
   const lastPass = useRef(false);
   useEffect(() => {
     if (allDone === lastPass.current) return;
     lastPass.current = allDone;
+    // Buzz on the false→true transition only — passing the gate is the
+    // terminal moment of onboarding and deserves haptic acknowledgement.
+    if (allDone) haptic("success");
     onPassed(allDone);
   }, [allDone, onPassed]);
 
@@ -140,6 +210,14 @@ export default function ExpressionGate({ onPassed }: Props) {
   const shakeDone = shakeRef.current.done;
   const mouthDone = mouthRef.current.done;
   const noBlinkDone = noBlinkRef.current.done;
+  // Per-task done-edge haptic (light tap each time a task flips to done).
+  // Using prevDoneRef instead of useEffect/state — refs are mutated in
+  // onLandmarks, and a state-based pipeline would flicker between renders.
+  const prevDoneRef = useRef({ shake: false, mouth: false, eyes: false });
+  if (shakeDone && !prevDoneRef.current.shake) haptic("tap");
+  if (mouthDone && !prevDoneRef.current.mouth) haptic("tap");
+  if (noBlinkDone && !prevDoneRef.current.eyes) haptic("tap");
+  prevDoneRef.current = { shake: shakeDone, mouth: mouthDone, eyes: noBlinkDone };
   const tasks = {
     shake: {
       key: "shake" as TaskKey,

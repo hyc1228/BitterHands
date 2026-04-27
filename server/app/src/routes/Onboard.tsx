@@ -5,6 +5,7 @@ import ExpressionGate from "../components/ExpressionGate";
 import PermissionGate from "../components/PermissionGate";
 import { readStoredRoomId } from "../constants";
 import { getRandomQuestions } from "../data/quizLibrary";
+import { haptic } from "../lib/haptic";
 import { dict, animalLocalized } from "../i18n";
 import { ClientMessageTypes, type Lang } from "../party/protocol";
 import { usePartyStore } from "../party/store";
@@ -65,6 +66,10 @@ export default function Onboard() {
   useEffect(() => {
     if (step === "analyzing" && rulesCard) {
       setAnalyzingSlow(false);
+      // Personality reveal is the emotional peak of onboarding — buzz a
+      // success pattern so players feel the result land instead of just
+      // seeing the screen swap. No-op on desktop / reduced-motion users.
+      haptic("success");
       setStep("reveal");
     }
   }, [rulesCard, step]);
@@ -125,9 +130,11 @@ export default function Onboard() {
   function handleSnap() {
     const url = camRef.current?.snapshot(0.85) ?? null;
     if (!url) {
+      haptic("error");
       setError("snapshot failed");
       return;
     }
+    haptic("tap");
     setShotDataUrl(url);
   }
 
@@ -210,6 +217,7 @@ export default function Onboard() {
 
   function handleAnswer(letter: "A" | "B" | "C") {
     if (!currentQuestion) return;
+    haptic("select");
     const next = { ...answers, [currentQuestion.id]: letter };
     setAnswers(next);
     if (qIdx + 1 >= questions.length) {

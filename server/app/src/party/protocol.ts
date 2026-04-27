@@ -26,7 +26,9 @@ export const ServerEventTypes = {
   MAIN_SCENE_ITEM_RESPAWN: "main_scene_item_respawn",
   MAIN_SCENE_ITEMS_RESYNC: "main_scene_items_resync",
   MONITOR_VOICE: "monitor_voice",
-  MONITOR_STATE: "monitor_state"
+  MONITOR_STATE: "monitor_state",
+  /** Live Final Check gate progress relayed to OB. */
+  GATE_PROGRESS: "gate_progress"
 } as const;
 
 export const ClientMessageTypes = {
@@ -55,7 +57,9 @@ export const ClientMessageTypes = {
   /** Per-client cumulative face-action counters reported every few seconds. */
   FACE_COUNTS: "face_counts",
   /** Webcam still at action-edge time, used to build the end-game ceremony collage. */
-  HIGHLIGHT: "highlight"
+  HIGHLIGHT: "highlight",
+  /** Live Final Check gate progress (head-shake / mouth / no-blink) — OB only consumer. */
+  GATE_PROGRESS: "gate_progress"
 } as const;
 
 export type Lang = "en" | "zh";
@@ -240,6 +244,24 @@ export interface MonitorStateMessage {
   ts: number;
 }
 
+/**
+ * Snapshot of one player's onboarding "Final Check" gate. Sent from the
+ * player ~4 Hz while the gate is active; the server validates + relays as a
+ * `gate_progress` server event. OB consumes this to render a live action
+ * feed (counters + bar fills) for the spotlighted player.
+ */
+export interface GateProgress {
+  playerId: string;
+  /** Wall-clock at the moment the player's tab sampled the detectors. */
+  ts: number;
+  /** True only while the gate UI is mounted + camera is on; flips false on pass. */
+  active: boolean;
+  shake: { done: boolean; count: number; progress: number };
+  mouth: { done: boolean; openFrames: number; progress: number };
+  /** `holdMs` is the no-blink streak length; `progress` is normalized 0..1. */
+  eyes: { done: boolean; holdMs: number; progress: number };
+}
+
 export interface MonitorVoiceMessage {
   /** Stable id (audio hash when TTS succeeded; sequence string otherwise). */
   id: string;
@@ -274,6 +296,7 @@ export type ServerEnvelope =
   | { type: typeof ServerEventTypes.MAIN_SCENE_ITEMS_RESYNC; data: { removedItemIds: string[] } }
   | { type: typeof ServerEventTypes.MONITOR_VOICE; data: MonitorVoiceMessage }
   | { type: typeof ServerEventTypes.MONITOR_STATE; data: MonitorStateMessage }
+  | { type: typeof ServerEventTypes.GATE_PROGRESS; data: GateProgress }
   | { type: "error"; error: string; max?: number }
   | { type: string; data?: unknown };
 

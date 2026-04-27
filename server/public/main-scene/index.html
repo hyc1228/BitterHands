@@ -1197,12 +1197,67 @@
         100% { opacity: 0; }
       }
 
+      /* Rule complete: short green wash. Quieter than hpFlash so success
+         feels good without overwhelming the player's view. */
+      .success-flash {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 70;
+        opacity: 0;
+        background: radial-gradient(circle at 50% 50%,
+          rgba(120, 255, 160, 0.0) 30%,
+          rgba(70, 220, 140, 0.55) 100%);
+      }
+      .success-flash.active { animation: successFlash 0.42s ease-out forwards; }
+      @keyframes successFlash {
+        0%   { opacity: 0; }
+        18%  { opacity: 1; }
+        100% { opacity: 0; }
+      }
+
+      /* Last-15s urgency: subtle pulsing red vignette so the player feels
+         the round closing without losing readability. Mounted as its own
+         element under the HUD (z-index keeps text on top). */
+      .low-time-vignette {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        z-index: 69;
+        opacity: 0;
+        background: radial-gradient(circle at 50% 50%,
+          rgba(255, 60, 60, 0) 50%,
+          rgba(220, 30, 30, 0.36) 100%);
+      }
+      .low-time-vignette.active {
+        animation: lowTimePulse 1.0s ease-in-out infinite;
+      }
+      @keyframes lowTimePulse {
+        0%, 100% { opacity: 0.35; }
+        50%      { opacity: 0.9; }
+      }
+
+      /* Timer text becomes red + pulses in the last 15 seconds to mirror
+         the vignette urgency. Reuses the existing .timer container. */
+      .timer.low-time {
+        color: #ff5b5b !important;
+        text-shadow: 0 0 12px rgba(255, 80, 80, 0.6);
+        animation: timerLowTime 1.0s ease-in-out infinite;
+      }
+      @keyframes timerLowTime {
+        0%, 100% { transform: scale(1); }
+        50%      { transform: scale(1.08); }
+      }
+
       /* Respect reduced-motion preferences for all of the above. */
       @media (prefers-reduced-motion: reduce) {
         .hp-flash.active,
         .start-flash.active,
         .death-flash.active,
+        .success-flash.active,
         .lock-warn-ring.active,
+        .low-time-vignette.active,
+        .timer.low-time,
         .lives.hp-shake,
         .lives.hp-bump,
         .phone-frame.impact-shake,
@@ -1401,7 +1456,9 @@
         <div class="hp-flash" id="hpFlash" aria-hidden="true"></div>
         <div class="start-flash" id="startFlash" aria-hidden="true"></div>
         <div class="death-flash" id="deathFlash" aria-hidden="true"></div>
+        <div class="success-flash" id="successFlash" aria-hidden="true"></div>
         <div class="lock-warn-ring" id="lockWarnRing" aria-hidden="true"></div>
+        <div class="low-time-vignette" id="lowTimeVignette" aria-hidden="true"></div>
 
         <!-- Monitor challenge bar (top): when flashlight lands on you. -->
         <div id="challengeOverlay" class="action-bar action-bar-top">
@@ -2593,7 +2650,14 @@
         monitorLock: [40, 80, 40],
         eliminated:  [60, 80, 80, 80, 200],
         gameStart:   [30],
-        gameEnd:     [40, 60, 40]
+        gameEnd:     [40, 60, 40],
+        // Short up-tick on rule completion. Light enough that a player
+        // who clears 3-4 challenges in a row doesn't feel buzz-spammed,
+        // strong enough to register a win.
+        ruleSuccess: [12, 22, 18],
+        // Single short tick fired once when the round drops below 15s
+        // (one-shot warning, NOT looping — see lowTimeWarned guard).
+        lowTime:     [18, 40, 18]
       };
       function nzHaptic(name) {
         if (REDUCED_MOTION) return;
@@ -3396,6 +3460,25 @@
         const s = state.timer % 60;
         document.getElementById("timer").textContent =
           String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+
+        // --- Last-15s urgency cue (vignette + timer pulse + 1-shot haptic).
+        // Gated on `state.roomStarted` so the pre-game lobby timer (still 02:00)
+        // doesn't pulse red. Spectators (state.spectator/.dead) skip the haptic
+        // since they're not playing — but the visual warning still runs so they
+        // can sync with the action they're watching.
+        const timerEl = document.querySelector(".timer");
+        const vignetteEl = document.getElementById("lowTimeVignette");
+        const isLow = !!state.roomStarted && state.timer <= 15 && state.timer > 0;
+        if (timerEl) timerEl.classList.toggle("low-time", isLow);
+        if (vignetteEl) vignetteEl.classList.toggle("active", isLow);
+        if (isLow && !state._lowTimeWarned && !state.spectator && !state.me.dead) {
+          state._lowTimeWarned = true;
+          nzHaptic("lowTime");
+        }
+        if (!isLow && state.timer > 15) {
+          // Reset so a new round (or a server-side timer reset) re-arms the cue.
+          state._lowTimeWarned = false;
+        }
       }
 
       // =================================================================
@@ -3796,6 +3879,8 @@
           chalStatus.textContent = t("statusSuccess");
           chalBarFill.style.width = "100%"; // green snaps full
           chalOverlay.className  = "action-bar action-bar-top active success";
+          flashOverlay("successFlash", 420);
+          nzHaptic("ruleSuccess");
           addLog(t("logRuleDone"));
         } else {
           chalStatus.textContent = t("statusFail");
@@ -3853,10 +3938,16 @@
       //      (rolling 80th percentile).
       //   4. Eye is "closed" when smoothed EAR < baseline × closedRatio.
       const BLINK_TUNING = {
-        // --- Smoothing -----------------------------------------------
-        // Bigger = less jitter but more lag. 2 = one extra frame of lag,
-        // basically imperceptible. Try 3 if blinks still flicker on/off.
-        smoothWindow: 2,
+        // --- Closed-eye decision window -------------------------------
+        // We check the MINIMUM EAR over the last `decisionWindow` frames
+        // (NOT the average). Why: on mobile a real blink may only register
+        // for a single MediaPipe frame at the rising/falling edge with EAR
+        // ~0.10. Averaging dilutes that dip back above the closed-eye
+        // threshold ("ghost-blink" → "don't blink for 2s" passes even
+        // though the user blinked). Using the min preserves single-frame
+        // dips while still ignoring upward jitter (face turning, etc.).
+        // 2 frames @ 15 fps mobile ≈ 130 ms — covers any real blink edge.
+        decisionWindow: 2,
 
         // --- Baseline ("what does this user's open eye look like") ---
         // Rolling buffer of recent EAR samples used to learn the user's
@@ -3912,17 +4003,19 @@
       };
 
       // ---------- Implementation ----------
-      // 1) Smoothing (kills MediaPipe ±0.03 frame jitter)
-      const earSmoothBuf = [];
-      function smoothedEar(rawEar) {
+      // 1) Min-over-window (preserves single-frame blink dips while
+      //    rejecting one-frame upward jitter). Replaces the previous
+      //    moving-average smoother which would mask brief partial blinks.
+      const earDecisionBuf = [];
+      function decisionEar(rawEar) {
         if (!Number.isFinite(rawEar)) return rawEar;
-        earSmoothBuf.push(rawEar);
-        if (earSmoothBuf.length > BLINK_TUNING.smoothWindow) {
-          earSmoothBuf.shift();
+        earDecisionBuf.push(rawEar);
+        if (earDecisionBuf.length > BLINK_TUNING.decisionWindow) {
+          earDecisionBuf.shift();
         }
-        let sum = 0;
-        for (const v of earSmoothBuf) sum += v;
-        return sum / earSmoothBuf.length;
+        let m = Infinity;
+        for (const v of earDecisionBuf) if (v < m) m = v;
+        return m;
       }
 
       // 2) Adaptive baseline
@@ -4213,7 +4306,7 @@
           }
         }
         // Blink: count rising edge of eye-closure (open → closed).
-        const ear = smoothedEar(
+        const ear = decisionEar(
           (earVal(lm, L_EYE_IDX) + earVal(lm, R_EYE_IDX)) / 2
         );
         const closedNow = isEyeClosed(ear);
@@ -4246,7 +4339,7 @@
         const act = challenge.action;
 
         if (act === "blink") {
-          const ear = smoothedEar(
+          const ear = decisionEar(
             (earVal(lm, L_EYE_IDX) + earVal(lm, R_EYE_IDX)) / 2
           );
           if (isEyeClosed(ear)) {
@@ -4347,6 +4440,8 @@
           uChalStatus.textContent = t("statusSuccess");
           uChalBarFill.style.width = "100%";
           uChalOverlay.className  = "action-bar action-bar-bottom active success";
+          flashOverlay("successFlash", 420);
+          nzHaptic("ruleSuccess");
           addLog(t("logUniDone"));
         } else {
           uChalStatus.textContent = t("statusFail");
@@ -4387,7 +4482,7 @@
           // resets `since`.
           const earL = earVal(lm, L_EYE_IDX);
           const earR = earVal(lm, R_EYE_IDX);
-          const ear = smoothedEar((earL + earR) / 2);
+          const ear = decisionEar((earL + earR) / 2);
           const closed = isEyeClosed(ear);
           if (!universalChallenge.noblink) {
             universalChallenge.noblink = { since: null, closedStreak: 0 };
@@ -4631,37 +4726,6 @@
         if (!raw || typeof raw !== "object") return;
         var pl = raw.players;
         if (!Array.isArray(pl)) return;
-        // #region agent log
-        try {
-          var _h = window.location && window.location.hostname || "";
-          if (/^(localhost|127\.0\.0\.1|10\.|192\.168\.|172\.)/.test(_h)) {
-            var _summary = pl.map(function (q) {
-              return { n: String((q && q.name) || "?").slice(0, 8), a: q && q.alive !== false };
-            });
-            var _key = JSON.stringify(_summary);
-            if (window.__nzLastApplyKey !== _key) {
-              window.__nzLastApplyKey = _key;
-              fetch("http://127.0.0.1:7518/ingest/d4c760a9-8d27-4a7c-8005-12a2cff8b553", {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "b26e2b" },
-                body: JSON.stringify({
-                  sessionId: "b26e2b",
-                  location: "main scene/index.html:applyRoomPlayers",
-                  message: "iframe applied room player liveness",
-                  data: {
-                    hyp: "H1",
-                    self: String(raw.selfName || raw.selfId || "?").slice(0, 8),
-                    started: !!raw.roomStarted,
-                    spectator: !!raw.spectator,
-                    players: _summary,
-                  },
-                  timestamp: Date.now()
-                })
-              }).catch(function () {});
-            }
-          }
-        } catch (e) { /* ignore */ }
-        // #endregion
         var selfId = raw.selfId || "";
         var selfName = String(raw.selfName || "");
         state.netSelfId = selfId;

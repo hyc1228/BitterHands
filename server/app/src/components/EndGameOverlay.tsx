@@ -4,6 +4,7 @@ import GIF from "gif.js";
 import gifWorkerUrl from "gif.js/dist/gif.worker.js?url";
 import { animalLocalized, dict } from "../i18n";
 import { usePartyStore } from "../party/store";
+import { Animals, animalEmoji } from "../party/protocol";
 import type {
   GameEnded,
   GameEndedAward,
@@ -167,6 +168,49 @@ function awardFor(gameEnded: GameEnded, kind: AwardKey): GameEndedAward | null {
 }
 
 /* ------------------------------------------------------------------ */
+/* Top-3 podium derivation                                             */
+/* ------------------------------------------------------------------ */
+
+/** Mapping the ceremony's `AwardKey` ("mouth" / "shake" / "blink") onto the
+ *  matching `FaceCounts` field that the server publishes per-player.  Keeping
+ *  this in one place means both the per-stage podium reveal AND the
+ *  Summary-panel `Awards` cards stay in sync if the keys ever change. */
+const FACE_KEY_BY_AWARD: Record<AwardKey, keyof FaceCounts> = {
+  mouth: "mouthOpens",
+  shake: "headShakes",
+  blink: "blinks"
+};
+
+interface PodiumEntry {
+  id: string;
+  name: string;
+  count: number;
+  animal: AnimalCode | null;
+}
+
+const PODIUM_MEDALS: readonly string[] = ["🥇", "🥈", "🥉"] as const;
+
+/** Compute the top-3 podium for a given award.  We rebuild this on the
+ *  client (rather than asking the server) because every player's
+ *  `faceCounts` is already in the GAME_ENDED payload — so the only real
+ *  work is sort + slice, and the server gets to keep its single-winner
+ *  contract. Players with count == 0 are excluded so a sparse round
+ *  shows fewer rows instead of "—" filler. */
+function topPodium(players: RevealEntry[], kind: AwardKey): PodiumEntry[] {
+  const fcKey = FACE_KEY_BY_AWARD[kind];
+  return players
+    .map<PodiumEntry>((p) => ({
+      id: p.id,
+      name: p.name,
+      count: Number((p.faceCounts as FaceCounts | undefined)?.[fcKey] ?? 0) || 0,
+      animal: (p.animal as AnimalCode | null) ?? null
+    }))
+    .filter((r) => r.count > 0)
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
+    .slice(0, 3);
+}
+
+/* ------------------------------------------------------------------ */
 /* Stage panels                                                       */
 /* ------------------------------------------------------------------ */
 
@@ -231,17 +275,18 @@ function AwardPanel({
   const titleStr = t[meta.titleKey] as string;
   const subStr = t[meta.subKey] as string;
 
+  // Top-3 podium for this award.  Gold (idx 0) keeps the original winner
+  // treatment + confetti; silver/bronze are stacked beneath as a smaller
+  // "runners-up" strip so the ceremony actually announces 前三名.
+  const podium = useMemo(() => topPodium(players, kind), [players, kind]);
+  const goldId = podium[0]?.id ?? award?.id ?? null;
+
   // Each tile is a player's burst (short frame loop). Winner highlighted.
   const tiles = useMemo(
-    () => collageTiles(players, kind, award?.id ?? null),
-    [players, kind, award?.id]
+    () => collageTiles(players, kind, goldId),
+    [players, kind, goldId]
   );
-  const winnerEntry = award ? players.find((p) => p.id === award.id) ?? null : null;
-  const winnerAnimal = winnerEntry?.animal
-    ? animalLocalized[lang][winnerEntry.animal as AnimalCode] ?? winnerEntry.animal
-    : "—";
 
-  const isYou = !!youName && award && award.name === youName;
   const cardRef = useRef<HTMLDivElement | null>(null);
 
   // Reveal cinematics: collage breathes for ~1s, then a 2.4s drumroll
@@ -296,17 +341,46 @@ function AwardPanel({
       </div>
 
       {phase === "reveal" ? (
-        award ? (
-          <div className={"endgame-award-stage__winner" + (isYou ? " is-self" : "")}>
+        podium.length > 0 ? (
+          <div className="endgame-award-stage__podium">
             <Confetti />
-            <div className="endgame-award-stage__winner-line">
-              <span className="endgame-award-stage__star" aria-hidden>★</span>
-              <span className="endgame-award-stage__wname">{award.name}</span>
-              {isYou ? <span className="endgame-award-stage__you" aria-hidden> · YOU</span> : null}
-            </div>
-            <div className="endgame-award-stage__wmeta">
-              {winnerAnimal} · ×{award.count}
-            </div>
+            {podium.map((entry, idx) => {
+              const isYouRow = !!youName && entry.name === youName;
+              const place = idx === 0 ? "gold" : idx === 1 ? "silver" : "bronze";
+              const animalLabel = entry.animal
+                ? animalLocalized[lang][entry.animal] ?? entry.animal
+                : null;
+              return (
+                <div
+                  key={entry.id}
+                  className={
+                    "endgame-award-stage__podium-row" +
+                    " endgame-award-stage__podium-row--" +
+                    place +
+                    (isYouRow ? " is-self" : "")
+                  }
+                  style={{
+                    ["--podium-delay" as string]: `${idx * 220}ms`
+                  }}
+                >
+                  <span className="endgame-award-stage__podium-medal" aria-hidden>
+                    {PODIUM_MEDALS[idx] ?? "🏅"}
+                  </span>
+                  <div className="endgame-award-stage__podium-line">
+                    {idx === 0 ? (
+                      <span className="endgame-award-stage__star" aria-hidden>★</span>
+                    ) : null}
+                    <span className="endgame-award-stage__wname">{entry.name}</span>
+                    {isYouRow ? (
+                      <span className="endgame-award-stage__you" aria-hidden> · YOU</span>
+                    ) : null}
+                  </div>
+                  <div className="endgame-award-stage__wmeta">
+                    {animalLabel ? `${animalLabel} · ` : ""}×{entry.count}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className="muted endgame-award-stage__none">{t.endGameAwardNone}</div>
@@ -837,6 +911,17 @@ function SummaryPanel({
         <Awards awards={gameEnded.awards} players={allPlayers} youName={youName} t={t} />
       ) : null}
 
+      {/* Animal-team standings: which species had the most escapers + which
+          species took home the most podium awards. Aggregates over the same
+          `reveal` payload so it stays in sync with the rest of the screen. */}
+      <TeamStandings
+        players={allPlayers}
+        survivors={survivors}
+        awards={gameEnded.awards ?? null}
+        lang={lang}
+        t={t}
+      />
+
       {isPlayer && viewerEntry?.faceCounts ? (
         <PlayerStats counts={viewerEntry.faceCounts} t={t} />
       ) : null}
@@ -1057,66 +1142,338 @@ function Awards({
   youName: string;
   t: Dict;
 }) {
-  type AwardKindKey = "mouth" | "shake" | "blink";
+  type AwardKindKey = AwardKey;
   const items: Array<{
     key: AwardKindKey;
     medal: string;
     title: string;
     sub: string;
-    winner: GameEndedAward | null;
+    podium: PodiumEntry[];
+    goldWinner: GameEndedAward | null;
   }> = [
-    { key: "mouth", medal: "🥇", title: t.awardMouthTitle, sub: t.awardMouthSub, winner: awards.mouthOpens },
-    { key: "shake", medal: "🥈", title: t.awardShakeTitle, sub: t.awardShakeSub, winner: awards.headShakes },
-    { key: "blink", medal: "🥉", title: t.awardBlinkTitle, sub: t.awardBlinkSub, winner: awards.blinks }
+    {
+      key: "mouth",
+      medal: "🥇",
+      title: t.awardMouthTitle,
+      sub: t.awardMouthSub,
+      podium: topPodium(players, "mouth"),
+      goldWinner: awards.mouthOpens
+    },
+    {
+      key: "shake",
+      medal: "🥈",
+      title: t.awardShakeTitle,
+      sub: t.awardShakeSub,
+      podium: topPodium(players, "shake"),
+      goldWinner: awards.headShakes
+    },
+    {
+      key: "blink",
+      medal: "🥉",
+      title: t.awardBlinkTitle,
+      sub: t.awardBlinkSub,
+      podium: topPodium(players, "blink"),
+      goldWinner: awards.blinks
+    }
   ];
-  if (items.every((i) => !i.winner)) return null;
+  if (items.every((i) => i.podium.length === 0 && !i.goldWinner)) return null;
   return (
     <div className="endgame-awards" aria-label="Awards">
       <div className="endgame-section-label endgame-awards__head">{t.endGameAwardsHead}</div>
       <div className="endgame-awards__cards">
         {items.map((it) => {
-          const isYou = !!youName && it.winner?.name === youName;
-          const winner = it.winner ? players.find((p) => p.id === it.winner!.id) : null;
-          const burst = winner?.highlights?.[it.key]?.[0] ?? null;
+          // Gold winner drives the portrait + "is-self" highlight even when
+          // the viewer is silver / bronze — the card's hero face is always
+          // the #1 player so the eye lands on the leaderboard's top.
+          const goldEntry = it.podium[0] ?? null;
+          const goldPlayer = goldEntry
+            ? players.find((p) => p.id === goldEntry.id) ?? null
+            : null;
+          const burst = goldPlayer?.highlights?.[it.key]?.[0] ?? null;
           const portrait =
             burst && burst.length > 0
               ? burst[0]
-              : winner?.lastFrame ?? winner?.avatarUrl ?? null;
+              : goldPlayer?.lastFrame ?? goldPlayer?.avatarUrl ?? null;
+          const isSelfOnPodium =
+            !!youName && it.podium.some((row) => row.name === youName);
           return (
             <div
               key={it.key}
               className={
                 "endgame-award-card" +
-                (it.winner ? " has-winner" : "") +
-                (isYou ? " is-self" : "")
+                (it.podium.length > 0 ? " has-winner" : "") +
+                (isSelfOnPodium ? " is-self" : "")
               }
             >
               <div className="endgame-award-card__medal" aria-hidden>{it.medal}</div>
               <div className="endgame-award-card__portrait">
                 {portrait ? (
-                  <img src={portrait} alt={it.winner?.name ?? ""} loading="lazy" />
+                  <img src={portrait} alt={goldEntry?.name ?? ""} loading="lazy" />
                 ) : (
                   <span className="endgame-award-card__initial" aria-hidden>
-                    {it.winner?.name?.charAt(0).toUpperCase() ?? "—"}
+                    {goldEntry?.name?.charAt(0).toUpperCase() ?? "—"}
                   </span>
                 )}
               </div>
               <div className="endgame-award-card__title">{it.title}</div>
               <div className="endgame-award-card__sub">{it.sub}</div>
-              <div className="endgame-award-card__winner">
-                {it.winner ? (
-                  <>
-                    <span className="endgame-award-card__name">{it.winner.name}</span>
-                    <span className="endgame-award-card__count">×{it.winner.count}</span>
-                  </>
+              {/* Top-3 leaderboard for this award.  Each row gets its own
+                  medal chip + name + count; the viewer's row gets the
+                  "is-self" highlight so they can find themselves at a
+                  glance. Falls back to the muted "—" placeholder when
+                  no one earned this award this round. */}
+              <ol className="endgame-award-card__podium" aria-label={it.title}>
+                {it.podium.length > 0 ? (
+                  it.podium.map((row, idx) => {
+                    const isYouRow = !!youName && row.name === youName;
+                    return (
+                      <li
+                        key={row.id}
+                        className={
+                          "endgame-award-card__podium-row" +
+                          (idx === 0 ? " is-gold" : idx === 1 ? " is-silver" : " is-bronze") +
+                          (isYouRow ? " is-self" : "")
+                        }
+                      >
+                        <span
+                          className="endgame-award-card__podium-medal"
+                          aria-hidden
+                        >
+                          {PODIUM_MEDALS[idx] ?? "🏅"}
+                        </span>
+                        <span className="endgame-award-card__name">{row.name}</span>
+                        <span className="endgame-award-card__count">×{row.count}</span>
+                      </li>
+                    );
+                  })
                 ) : (
-                  <span className="muted endgame-award-card__none">{t.endGameAwardNone}</span>
+                  <li className="muted endgame-award-card__none">{t.endGameAwardNone}</li>
                 )}
-              </div>
+              </ol>
             </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Animal-team standings (escape & decoration leaderboards)            */
+/* ------------------------------------------------------------------ */
+
+const TEAM_ANIMAL_ORDER: AnimalCode[] = [Animals.LION, Animals.OWL, Animals.GIRAFFE];
+const TEAM_ANIMAL_COLORS: Record<AnimalCode, string> = {
+  [Animals.LION]: "#f0b14a",
+  [Animals.OWL]: "#7d6cff",
+  [Animals.GIRAFFE]: "#3fbf8a"
+};
+
+interface TeamRow {
+  animal: AnimalCode;
+  /** Numerator the panel is ranking by — escapers OR awards-won. */
+  count: number;
+  /** Denominator for context: total members of this team OR total trophies. */
+  total: number;
+  /** Tie-break for stable sorting when two teams have the same count. */
+  tieBreak: number;
+}
+
+/**
+ * Two-panel block summarising performance by animal team:
+ *   - Best escape team   (most survivors per species)
+ *   - Most decorated team (most podium awards collected by a species)
+ *
+ * Both panels share the same TeamLeaderboard layout (rank chip + emoji + bar +
+ * score) so the player can scan them at a glance. We deliberately don't add a
+ * 4th "ranking" stage to the ceremony script — these summary cards live on
+ * the Summary panel instead, where they sit naturally next to the per-player
+ * Awards block.
+ */
+function TeamStandings({
+  players,
+  survivors,
+  awards,
+  lang,
+  t
+}: {
+  players: RevealEntry[];
+  survivors: RevealEntry[];
+  awards: GameEnded["awards"] | null;
+  lang: Lang;
+  t: Dict;
+}) {
+  const escapeRows = useMemo<TeamRow[]>(() => {
+    const totals: Record<AnimalCode, number> = {
+      [Animals.LION]: 0,
+      [Animals.OWL]: 0,
+      [Animals.GIRAFFE]: 0
+    };
+    const escaped: Record<AnimalCode, number> = {
+      [Animals.LION]: 0,
+      [Animals.OWL]: 0,
+      [Animals.GIRAFFE]: 0
+    };
+    for (const p of players) {
+      if (!p.animal) continue;
+      const a = p.animal as AnimalCode;
+      if (!(a in totals)) continue;
+      totals[a] += 1;
+    }
+    for (const p of survivors) {
+      if (!p.animal) continue;
+      const a = p.animal as AnimalCode;
+      if (!(a in escaped)) continue;
+      escaped[a] += 1;
+    }
+    return TEAM_ANIMAL_ORDER.map((animal, idx) => ({
+      animal,
+      count: escaped[animal],
+      total: totals[animal],
+      tieBreak: idx
+    }));
+  }, [players, survivors]);
+
+  const awardRows = useMemo<TeamRow[]>(() => {
+    const awardCount: Record<AnimalCode, number> = {
+      [Animals.LION]: 0,
+      [Animals.OWL]: 0,
+      [Animals.GIRAFFE]: 0
+    };
+    let trophyTotal = 0;
+    if (awards) {
+      // The 3 podium awards (mouth/shake/blink); a winner with no animal
+      // still counts towards the trophy total but doesn't credit any team.
+      for (const w of [awards.mouthOpens, awards.headShakes, awards.blinks]) {
+        if (!w) continue;
+        trophyTotal += 1;
+        const winner = players.find((p) => p.id === w.id);
+        const animal = winner?.animal as AnimalCode | undefined;
+        if (animal && animal in awardCount) {
+          awardCount[animal] += 1;
+        }
+      }
+    }
+    return TEAM_ANIMAL_ORDER.map((animal, idx) => ({
+      animal,
+      count: awardCount[animal],
+      total: trophyTotal,
+      tieBreak: idx
+    }));
+  }, [awards, players]);
+
+  const escapeTotal = escapeRows.reduce((acc, r) => acc + r.count, 0);
+  const awardsTotal = awardRows.reduce((acc, r) => acc + r.count, 0);
+
+  // If neither board has any signal we hide the section entirely so the
+  // summary doesn't get padded with two empty cards.
+  if (escapeTotal === 0 && awardsTotal === 0 && (awardRows[0]?.total ?? 0) === 0) {
+    return null;
+  }
+
+  return (
+    <div className="endgame-teams" aria-label={t.endGameTeamHead}>
+      <div className="endgame-section-label endgame-teams__head">{t.endGameTeamHead}</div>
+      <div className="endgame-teams__cards">
+        <TeamLeaderboard
+          rows={escapeRows}
+          title={t.endGameTeamEscapeTitle}
+          sub={t.endGameTeamEscapeSub}
+          emptyMsg={t.endGameTeamNoEscape}
+          rowSuffix={(r) => t.endGameTeamEscapeRow(r.count, r.total)}
+          totalForBar={Math.max(...escapeRows.map((r) => r.count), 1)}
+          lang={lang}
+          isEmpty={escapeTotal === 0}
+        />
+        <TeamLeaderboard
+          rows={awardRows}
+          title={t.endGameTeamAwardsTitle}
+          sub={t.endGameTeamAwardsSub}
+          emptyMsg={t.endGameTeamNoAwards}
+          rowSuffix={(r) =>
+            t.endGameTeamAwardsRow(r.count, Math.max(r.total, awardRows[0]?.total ?? 0))
+          }
+          totalForBar={Math.max(...awardRows.map((r) => r.count), 1)}
+          lang={lang}
+          isEmpty={awardsTotal === 0}
+        />
+      </div>
+    </div>
+  );
+}
+
+function TeamLeaderboard({
+  rows,
+  title,
+  sub,
+  emptyMsg,
+  rowSuffix,
+  totalForBar,
+  lang,
+  isEmpty
+}: {
+  rows: TeamRow[];
+  title: string;
+  sub: string;
+  emptyMsg: string;
+  rowSuffix: (r: TeamRow) => string;
+  totalForBar: number;
+  lang: Lang;
+  isEmpty: boolean;
+}) {
+  const sorted = useMemo(() => {
+    const r = rows.slice();
+    r.sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.tieBreak - b.tieBreak;
+    });
+    return r;
+  }, [rows]);
+  return (
+    <div className={"endgame-team-card" + (isEmpty ? " is-empty" : "")}>
+      <div className="endgame-team-card__title">{title}</div>
+      <div className="endgame-team-card__sub muted">{sub}</div>
+      {isEmpty ? (
+        <div className="endgame-team-card__empty muted">{emptyMsg}</div>
+      ) : (
+        <ol className="endgame-team-card__list">
+          {sorted.map((row, idx) => {
+            const label = animalLocalized[lang][row.animal] ?? row.animal;
+            const pct = (row.count / totalForBar) * 100;
+            const isLeader = idx === 0 && row.count > 0;
+            return (
+              <li
+                key={row.animal}
+                className={
+                  "endgame-team-row" +
+                  (isLeader ? " is-leader" : "") +
+                  (row.count === 0 ? " is-zero" : "")
+                }
+              >
+                <span className="endgame-team-row__rank" aria-hidden>
+                  {isLeader ? "👑" : `#${idx + 1}`}
+                </span>
+                <span className="endgame-team-row__icon" aria-hidden>
+                  {animalEmoji(row.animal)}
+                </span>
+                <span className="endgame-team-row__name">{label}</span>
+                <span className="endgame-team-row__bar-wrap" aria-hidden>
+                  <span
+                    className="endgame-team-row__bar"
+                    style={{
+                      width: `${pct}%`,
+                      background: TEAM_ANIMAL_COLORS[row.animal]
+                    }}
+                  />
+                </span>
+                <span className="endgame-team-row__suffix muted">
+                  {rowSuffix(row)}
+                </span>
+              </li>
+            );
+          })}
+        </ol>
+      )}
     </div>
   );
 }

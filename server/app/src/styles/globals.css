@@ -3,26 +3,27 @@
  * Palette: graphic-noir (black / cream / rust red) per docs/artdesign.md.
  */
 
-/* 得意黑 / Smiley Sans — atelier-anchor's free oblique CJK display face.
- * One file, ships full Chinese glyph set; we wire it in below as the CJK
- * fallback for `--nz-font-display`. */
-@font-face {
-  font-family: "Smiley Sans";
-  src: url("https://cdn.jsdelivr.net/gh/atelier-anchor/smiley-sans@main/dist/SmileySans-Oblique.woff2") format("woff2");
-  font-weight: 400 900;
-  font-style: oblique 0deg 12deg;
-  font-display: swap;
-  /* Limit to CJK ranges so latin chars still render with Permanent Marker /
-     Patrick Hand and the CJK glyphs are downloaded only when actually used. */
-  unicode-range:
-    U+3000-303F,         /* CJK punctuation */
-    U+3040-309F,         /* Hiragana */
-    U+30A0-30FF,         /* Katakana */
-    U+3400-4DBF,         /* CJK Extension A */
-    U+4E00-9FFF,         /* CJK Unified Ideographs */
-    U+F900-FAFF,         /* CJK Compatibility Ideographs */
-    U+FF00-FFEF;         /* Halfwidth + Fullwidth Forms */
-}
+/* CJK font loading.  We pull two faces from Google Fonts (CDN) and limit
+ * the @font-face `unicode-range` to CJK so Latin glyphs still render with
+ * the Latin-only display faces (Permanent Marker / Patrick Hand) and the
+ * CJK glyphs are only downloaded when Chinese is actually shown.
+ *
+ * Why we replaced the previous "Smiley Sans + Noto Serif SC" pairing:
+ * 1. Smiley Sans was loaded with `font-style: oblique 0deg 12deg`, which
+ *    rendered every Chinese heading slanted.  CJK doesn't traditionally
+ *    do italics — it just looked broken.
+ * 2. Noto Serif SC was used for body text + form inputs, where its
+ *    high-contrast brush strokes feel "academic" / newspaper next to the
+ *    playful Latin pair (Permanent Marker / Patrick Hand).
+ * 3. The wide letter-spacing applied across all upper-cased "labels"
+ *    leaked into Chinese, opening awkward gaps between every glyph.
+ *
+ * The new stack uses Noto Sans SC at multiple weights as the workhorse
+ * (clean, modern, readable on mobile) and keeps Noto Serif SC only for
+ * the few intentionally "narrative" surfaces.  Smiley Sans is gone —
+ * the system-default sans rendered upright is dramatically better than
+ * Smiley Sans rendered slanted. */
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700;900&family=Noto+Serif+SC:wght@500;700;900&display=swap");
 
 :root {
   --nz-black: #0a0a0a;
@@ -44,17 +45,25 @@
   --nz-shadow-soft: 0 2px 0 rgba(0, 0, 0, 0.25), 0 6px 16px rgba(0, 0, 0, 0.28);
   --nz-shadow-card: 0 2px 0 rgba(0, 0, 0, 0.22), 0 10px 28px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(242, 239, 233, 0.06);
 
-  /* Display: Latin → "Permanent Marker"; CJK falls through to "Smiley Sans"
-     (得意黑) so Chinese headlines / button labels read with personality
-     instead of the system default sans. */
-  --nz-font-display: "Permanent Marker", "Smiley Sans", "Patrick Hand", system-ui, sans-serif;
-  /* Body / "hand": Latin → "Patrick Hand"; CJK → "Noto Serif SC" (思源宋体)
-     for a more deliberate, less generic Chinese running text. PingFang /
-     Hiragino remain as platform fallbacks for offline cases. */
-  --nz-font-hand: "Patrick Hand", "Noto Serif SC", "Source Han Serif SC", "Hiragino Sans", "PingFang SC", system-ui, sans-serif;
-  /* Long-form / serif accents — keep Palatino for English; CJK gets
-     Noto Serif SC here too so blockquotes / italics aren't a register
-     mismatch with the body. */
+  /* Display: Latin → "Permanent Marker" (the playful brand mark); CJK falls
+     through to "Noto Sans SC" at 900-weight so Chinese headlines feel
+     deliberate and weighty instead of slanted-and-wobbly.  We deliberately
+     do NOT include "Smiley Sans" here anymore — its only available cut is
+     oblique, which made every Chinese heading look italicised. */
+  --nz-font-display: "Permanent Marker", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  /* Body / running text — clean modern sans for both scripts.  Latin uses
+     the system UI sans (consistent with the player's OS); CJK uses Noto
+     Sans SC at 400/500.  This is what `<body>`, paragraphs, and form inputs
+     all inherit, so it dominates the visual register. */
+  --nz-font-body: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  /* "Hand" — casual, slightly-more-personality body for callouts.  Latin
+     keeps Patrick Hand; CJK uses Noto Sans SC at 500 (a touch heavier than
+     body so the difference reads).  Used by labels and small print. */
+  --nz-font-hand: "Patrick Hand", "Noto Sans SC", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
+  /* Long-form / serif accents — Latin: Palatino; CJK: Noto Serif SC.  Used
+     sparingly (one or two narrative surfaces).  We keep this pairing
+     because blockquote + verdict text genuinely benefits from a serif
+     register; it's just the wrong choice for body / inputs. */
   --nz-font-serif: Palatino, "Palatino Linotype", "Noto Serif SC", "Source Han Serif SC", "Book Antiqua", Georgia, ui-serif, serif;
   --nz-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
@@ -76,7 +85,9 @@ body {
   padding: 0;
   background: var(--nz-black);
   color: var(--nz-cream);
-  font-family: var(--nz-font-hand);
+  font-family: var(--nz-font-body);
+  font-size: 15px;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   -webkit-tap-highlight-color: transparent;
@@ -177,7 +188,7 @@ textarea {
   color: var(--nz-cream);
   border: 1.5px solid var(--nz-cream-line);
   border-radius: var(--nz-radius);
-  font-family: var(--nz-font-hand);
+  font-family: var(--nz-font-body);
   /* >=16px keeps iOS Safari from auto-zooming inputs on focus */
   font-size: 17px;
   outline: none;
@@ -308,6 +319,77 @@ button.danger {
   .row {
     grid-template-columns: 1fr;
   }
+}
+
+/* ----------------------------------------------------------------
+   CJK / Chinese typography polish.
+   These rules trigger only when `<html lang="zh-Hans">` (set by
+   Layout.tsx when the language toggle flips to 中文).  They fix the
+   three things that made Chinese look "ugly" before:
+
+   (a) Wide letter-spacing.  We sprinkle `letter-spacing: 0.04em` →
+       `0.22em` across labels / buttons / headings to give the Latin
+       display fonts breathing room.  CJK is already mono-width — that
+       same spacing opens visible gaps between every glyph.
+   (b) Slanted Smiley Sans on every heading.  The previous default
+       included `font-style: oblique`; we set headings back to
+       `font-style: normal` for Chinese so they stand upright.
+   (c) Half-width punctuation.  `font-feature-settings: "palt"` packs
+       full-width Chinese commas / periods / brackets into a more
+       proportional rhythm so e.g. "你好，世界" doesn't look spaced-out.
+   ---------------------------------------------------------------- */
+:lang(zh) {
+  font-feature-settings: "palt" 1;
+  letter-spacing: 0;
+  font-style: normal;
+}
+
+/* Aggressive global tracking + slant reset for Chinese.  The codebase
+   has ~50 places that set `letter-spacing` between 0.04em and 0.24em
+   (mostly for "EYEBROW LABEL"-style uppercase Latin headings).  Listing
+   every class by hand is fragile — a single new `text-transform:
+   uppercase` rule re-introduces the gap.  Using `!important` once,
+   scoped to `:lang(zh)`, keeps the rest of the codebase free of CJK
+   awareness while guaranteeing tight Chinese.  Latin fragments mixed
+   into Chinese strings (e.g. "保存 GIF") look fine without tracking
+   too — the surrounding CJK gives the line enough rhythm. */
+:lang(zh) * {
+  letter-spacing: 0 !important;
+  font-style: normal !important;
+}
+
+/* Display headings in Chinese benefit from a heavier weight (Noto Sans
+   SC ships up to 900) — without this they fall back to 400 from the
+   Latin Permanent Marker, which looks anaemic next to the bold UI. */
+:lang(zh) h1,
+:lang(zh) h2,
+:lang(zh) h3,
+:lang(zh) .endgame-headline,
+:lang(zh) .splash-title,
+:lang(zh) .nz-display {
+  font-weight: 900;
+  font-style: normal;
+}
+
+/* Inputs / placeholders in Chinese: switch off the implicit oblique
+   inheritance and let the line-height breathe a touch (CJK is denser
+   per-glyph than Latin so tight 1.4 line-height looks cramped). */
+:lang(zh) input,
+:lang(zh) select,
+:lang(zh) textarea {
+  font-family: var(--nz-font-body);
+  font-style: normal;
+  line-height: 1.55;
+}
+
+/* Body text in Chinese reads better with slightly looser line-height
+   — Latin runs comfortably at 1.4–1.5 but ideographs need ~1.65 to
+   avoid stacking too tightly when paragraphs wrap. */
+:lang(zh) body,
+:lang(zh) p,
+:lang(zh) li,
+:lang(zh) .muted {
+  line-height: 1.65;
 }
 
 /* Accessibility — reduce motion */

@@ -3,30 +3,25 @@ import { fnv1a32, pickLooksRoast, similarityPercentFor } from "./photoAnalysis.j
 import { generateMonitorLine } from "./monitorLines.js";
 import { synthesize as synthesizeVoice, getCachedAudio } from "./voice.js";
 
-// #region agent log
-// Lightweight runtime logging (multiplayer debug pass). Inert when DEBUG_LOG_URL
-// is unreachable (best-effort fetch). Only useful in local PartyKit dev where
-// 127.0.0.1:7518 is reachable from the worker runtime.
-const _DBG_URL = "http://127.0.0.1:7518/ingest/d4c760a9-8d27-4a7c-8005-12a2cff8b553";
-const _DBG_SID = "b26e2b";
-function _dbgPost(location, message, data) {
-  try {
-    fetch(_DBG_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-Debug-Session-Id": _DBG_SID },
-      body: JSON.stringify({
-        sessionId: _DBG_SID, location, message,
-        data: data || {}, timestamp: Date.now()
-      })
-    }).catch(() => {});
-  } catch { /* ignore */ }
-}
-// #endregion
-
-/** Max players (JOIN) per room — bumped to 20 for the hackathon demo (was
- *  10 in the GDD draft). The OB face wall + iframe scene scale fine to 20;
- *  bandwidth dominator is CAMERA_FRAME at ~5 fps × N which is still reasonable. */
+/** Max real human players that can JOIN a room.  Bumped to 20 for the
+ *  hackathon demo (was 10 in the GDD draft).  The OB face wall + iframe scene
+ *  scale fine to 20; bandwidth dominator is CAMERA_FRAME at ~5 fps × N which
+ *  is still reasonable.
+ *
+ *  IMPORTANT: this cap intentionally counts ONLY real humans.  OB observer
+ *  tabs (name === "ob") and AI bots (id starts with `ai_`) are excluded by
+ *  `_humanPlayerCount()` below, so spawning a few AI for testing or opening
+ *  multiple OB tabs does NOT eat into the human-player budget.  Older builds
+ *  used `players.size >= MAX_ROOM_PLAYERS` directly, which is why a room with
+ *  some AI bots / OB tabs would fill at ~12 humans even though the cap says
+ *  20. */
 const MAX_ROOM_PLAYERS = 20;
+/** Hard ceiling on AI bots in a single room — guards against accidental
+ *  fills from `OB_SPAWN_AI count: 999`.  AI bots live alongside the human
+ *  player cap (they're not counted toward MAX_ROOM_PLAYERS), and we keep
+ *  parity with the human cap so a host can stress-test a 20-entity room
+ *  end-to-end without juggling human + AI budgets. */
+const MAX_AI_BOTS = 20;
 /** End-game ceremony: how many action-edge stills the server keeps per kind, per player. */
 const HIGHLIGHTS_MAX_PER_KIND = 3;
 
@@ -130,39 +125,6 @@ export default class Server {
     /** @type {Map<string, number>} */
     this._monitorLastLockAt = new Map();
 
-    // #region agent log
-    // Per-2s message counters for the multiplayer debug pass. Skip the
-    // `health` durable-object PartyKit instantiates for its own monitoring —
-    // it has no players and only spams empty pings.
-    const _roomId = (this.party && this.party.id) || "";
-    this._dbg = {
-      enabled: _roomId !== "health",
-      counts: { broadcast: 0, cameraFrame: 0, highlight: 0, highlightBytes: 0, mainSceneState: 0, monitorBroadcast: 0 },
-      itemTaken: [],
-      lastFlush: Date.now(),
-    };
-    if (this._dbg.enabled) {
-      this._dbgInterval = setInterval(() => {
-        const c = this._dbg.counts;
-        const took = this._dbg.itemTaken.splice(0);
-        // Skip flushes that have nothing to report (idle room) so we don't
-        // drown actual gameplay signal in zeroes.
-        const isIdle = c.broadcast === 0 && c.cameraFrame === 0 && c.highlight === 0 && took.length === 0;
-        if (!isIdle) {
-          _dbgPost("server.js:per-sec", "broadcast counts (last ~2s)", {
-            hyp: "H2+H3+H6",
-            room: _roomId,
-            players: this.players.size,
-            counts: c,
-            itemTaken: took
-          });
-        }
-        this._dbg.counts = { broadcast: 0, cameraFrame: 0, highlight: 0, highlightBytes: 0, mainSceneState: 0, monitorBroadcast: 0 };
-        this._dbg.lastFlush = Date.now();
-      }, 2000);
-    }
-    // #endregion
-
     /** Monotonic counter for monitor_voice ids when no audio hash is available. */
     this._monitorVoiceSeq = 0;
 
@@ -244,7 +206,7 @@ export default class Server {
   }
 
   _spawnAiBot() {
-    if (this.players.size >= MAX_ROOM_PLAYERS) return null;
+    if (this._aiBots.size >= MAX_AI_BOTS) return null;
     const slot = this._aiBots.size;
     const preset = this._aiCharacterPreset(slot);
     const id = `ai_${slot + 1}_${Math.random().toString(36).slice(2, 6)}`;
@@ -439,11 +401,15 @@ export default class Server {
         this._reapStaleSlots();
 
         const existing = this.players.get(conn.id);
+        // OB observer tabs always join — they don't consume a player slot,
+        // they're just spectators.  This lets multiple OBs watch a full room
+        // of 20 humans without any of them being kicked as `room_full`.
+        const isObConn = name.toLowerCase() === "ob";
         if (existing) {
           existing.name = name;
           existing.lang = lang;
           this._broadcast(ServerEventTypes.PLAYER_UPDATED, this._publicPlayer(existing));
-        } else if (this.players.size >= MAX_ROOM_PLAYERS) {
+        } else if (!isObConn && this._humanPlayerCount() >= MAX_ROOM_PLAYERS) {
           conn.send(
             JSON.stringify({
               type: "error",
@@ -595,7 +561,12 @@ export default class Server {
       }
 
       case ClientMessageTypes.START: {
-        if (this.started) return;
+        if (this.started) {
+          // Surface the rejection so the client toast / Start button can
+          // un-busy itself. Without this, the OB sees "Start game" do nothing.
+          conn.send(JSON.stringify({ type: "error", error: "already_started" }));
+          return;
+        }
         // Two callers can start the round:
         //  1. The legacy /ob console: a non-player connection (no JOIN sent),
         //     so `this.players.has(conn.id)` is false. Always allowed.
@@ -767,9 +738,13 @@ export default class Server {
         // (oldest human player). Other players are ignored.
         if (!this._isHostOrOb(conn)) return;
         const requested = Number(msg?.count);
+        // AI bots have their own budget (`MAX_AI_BOTS`) and do NOT eat into
+        // the human-player cap, so spawning bots for testing won't lock out
+        // real players who try to join afterwards.
+        const aiSlotsLeft = Math.max(0, MAX_AI_BOTS - this._aiBots.size);
         const count = Number.isFinite(requested) && requested > 0
-          ? Math.min(MAX_ROOM_PLAYERS - this.players.size, Math.floor(requested))
-          : Math.min(MAX_ROOM_PLAYERS - this.players.size, 4);
+          ? Math.min(aiSlotsLeft, Math.floor(requested))
+          : Math.min(aiSlotsLeft, 4);
         if (count <= 0) return;
         for (let i = 0; i < count; i++) {
           this._spawnAiBot();
@@ -913,13 +888,6 @@ export default class Server {
         if (!this.started) return;
         const kind = msg && msg.kind;
         if (kind !== "mouth" && kind !== "shake" && kind !== "blink") return;
-        // #region agent log
-        if (this._dbg) {
-          this._dbg.counts.highlight += 1;
-          const frames = Array.isArray(msg && msg.frames) ? msg.frames : (msg && msg.dataUrl ? [msg.dataUrl] : []);
-          for (const f of frames) if (typeof f === "string") this._dbg.counts.highlightBytes += f.length;
-        }
-        // #endregion
         // New shape: { frames: string[] } (each frame a 96² JPEG dataURL). We
         // also accept the legacy { dataUrl } shape so older clients still drop
         // a single still in.
@@ -966,6 +934,64 @@ export default class Server {
         return;
       }
 
+      case ClientMessageTypes.GATE_PROGRESS: {
+        // Live "Final Check" progress relayed to OB so the lobby spotlight can
+        // show real captured-action data while the player is testing their
+        // camera. Sender must be a known player; payload is sanitized + the
+        // server stamps `playerId` from the conn (clients can't spoof another
+        // player's progress). Throttled at ~5 Hz per player to cap traffic.
+        const player = this.players.get(conn.id);
+        if (!player) return;
+        // Server-side throttle: drop bursts under 150 ms apart per player so
+        // a buggy client can't flood the room.
+        const now = Date.now();
+        const last = this._gateProgressLastTs?.get(conn.id) ?? 0;
+        if (now - last < 150) return;
+        if (!this._gateProgressLastTs) this._gateProgressLastTs = new Map();
+        this._gateProgressLastTs.set(conn.id, now);
+        const c = msg && typeof msg === "object" ? msg : {};
+        const sh = c.shake && typeof c.shake === "object" ? c.shake : {};
+        const mo = c.mouth && typeof c.mouth === "object" ? c.mouth : {};
+        const ey = c.eyes && typeof c.eyes === "object" ? c.eyes : {};
+        const clamp01 = (v) => {
+          const n = Number(v);
+          if (!Number.isFinite(n)) return 0;
+          if (n < 0) return 0;
+          if (n > 1) return 1;
+          return n;
+        };
+        const safeInt = (v, max = 9999) => {
+          const n = Number(v);
+          if (!Number.isFinite(n) || n < 0) return 0;
+          return Math.min(max, Math.floor(n));
+        };
+        const data = {
+          playerId: conn.id,
+          ts: now,
+          active: c.active === true,
+          shake: {
+            done: sh.done === true,
+            count: safeInt(sh.count, 999),
+            progress: clamp01(sh.progress)
+          },
+          mouth: {
+            done: mo.done === true,
+            openFrames: safeInt(mo.openFrames, 9999),
+            progress: clamp01(mo.progress)
+          },
+          eyes: {
+            done: ey.done === true,
+            holdMs: safeInt(ey.holdMs, 60_000),
+            progress: clamp01(ey.progress)
+          }
+        };
+        this.party.broadcast(
+          JSON.stringify({ type: ServerEventTypes.GATE_PROGRESS, data }),
+          [conn.id]
+        );
+        return;
+      }
+
       case ClientMessageTypes.MAIN_SCENE_ITEM_PICKUP: {
         if (!this.started) return;
         const player = this.players.get(conn.id);
@@ -977,9 +1003,6 @@ export default class Server {
           return;
         }
         if (this.mainSceneItemsRemoved.has(itemId)) {
-          // #region agent log
-          if (this._dbg) this._dbg.itemTaken.push({ id: itemId, by: player.name, race: "lost" });
-          // #endregion
           conn.send(
             JSON.stringify({
               type: ServerEventTypes.MAIN_SCENE_ITEMS_RESYNC,
@@ -989,9 +1012,6 @@ export default class Server {
           return;
         }
         this.mainSceneItemsRemoved.add(itemId);
-        // #region agent log
-        if (this._dbg) this._dbg.itemTaken.push({ id: itemId, by: player.name, race: "won" });
-        // #endregion
         const meta = this._mainSceneItemRegistry.get(itemId);
         // Heart restores 1 HP (capped at 3 — GDD).
         if (meta.type === "heart" && player.lives < 3) {
@@ -1041,12 +1061,56 @@ export default class Server {
     this.lastCameraFrameByPlayerId.delete(conn.id);
     this._lastMainSceneAt.delete(conn.id);
     this._avatarByPlayerId.delete(conn.id);
+    if (this._gateProgressLastTs) this._gateProgressLastTs.delete(conn.id);
+    // Notify OB so the lobby spotlight panel doesn't hang on stale gate data
+    // (the live action bars / counters belong to a player who's now gone).
+    this.party.broadcast(
+      JSON.stringify({
+        type: ServerEventTypes.GATE_PROGRESS,
+        data: {
+          playerId: conn.id,
+          ts: Date.now(),
+          active: false,
+          shake: { done: false, count: 0, progress: 0 },
+          mouth: { done: false, openFrames: 0, progress: 0 },
+          eyes: { done: false, holdMs: 0, progress: 0 }
+        }
+      })
+    );
 
     this._broadcast(ServerEventTypes.SYSTEM, {
       code: "PLAYER_LEFT",
       params: { name: player.name }
     });
     this._sendRoomSnapshot();
+
+    // When the last human leaves a started round, terminate it so the monitor
+    // tick stops and `started` flips back to false. Otherwise the DO ticks at
+    // 10 Hz forever and the next joiner is stranded in a stale game. AI bots
+    // are server-puppets, not real attendees — they should not keep a ghost
+    // round alive.
+    if (this.started) {
+      const realRemaining = Array.from(this.players.values())
+        .filter((p) => !this._aiBots.has(p.id)).length;
+      if (realRemaining === 0) this._endGame();
+    }
+  }
+
+  /**
+   * Counts only "real" human players for capacity decisions.  Excludes AI
+   * bots (id-prefixed `ai_`) and OB observer tabs (lowercased name === "ob").
+   * Used by JOIN's room-full check and the AI-spawn budget so that opening
+   * spectator tabs or filling the map with AI never forces real players out
+   * of the lobby.
+   */
+  _humanPlayerCount() {
+    let n = 0;
+    for (const p of this.players.values()) {
+      if (this._aiBots.has(p.id)) continue;
+      if (typeof p.name === "string" && p.name.toLowerCase() === "ob") continue;
+      n++;
+    }
+    return n;
   }
 
   /**
@@ -1079,6 +1143,14 @@ export default class Server {
       }
     }
     if (changed) this._sendRoomSnapshot();
+    // Mirror of the onClose end-on-empty: if the reaper just emptied a started
+    // room (mobile-bg path where onClose never fired), terminate the round so
+    // the monitor tick stops.
+    if (this.started) {
+      const realRemaining = Array.from(this.players.values())
+        .filter((p) => !this._aiBots.has(p.id)).length;
+      if (realRemaining === 0) this._endGame();
+    }
   }
 
   async onRequest(req) {
@@ -1464,14 +1536,6 @@ export default class Server {
 
   _broadcast(type, data) {
     this.party.broadcast(JSON.stringify({ type, data }));
-    // #region agent log
-    if (this._dbg) {
-      this._dbg.counts.broadcast += 1;
-      if (type === ServerEventTypes.CAMERA_FRAME) this._dbg.counts.cameraFrame += 1;
-      if (type === ServerEventTypes.MAIN_SCENE_BROADCAST) this._dbg.counts.mainSceneState += 1;
-      if (type === ServerEventTypes.MONITOR_STATE) this._dbg.counts.monitorBroadcast += 1;
-    }
-    // #endregion
   }
 
   _publicPlayer(p) {

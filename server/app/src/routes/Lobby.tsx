@@ -4,6 +4,7 @@ import CameraFrameUploader from "../components/CameraFrameUploader";
 import PlayerRowFace from "../components/PlayerRowFace";
 import Toast from "../components/Toast";
 import { readStoredRoomId } from "../constants";
+import { haptic } from "../lib/haptic";
 import { animalLocalized, dict } from "../i18n";
 import { ClientMessageTypes, type PublicPlayer } from "../party/protocol";
 import { usePartyStore } from "../party/store";
@@ -155,6 +156,7 @@ export default function Lobby() {
       : "lurker";
 
   const handleSetupCharacter = useCallback(() => {
+    haptic("tap");
     const trimmed = draftName.trim();
     if (trimmed && trimmed !== myName) {
       // Rename before walking into onboarding so the photo step / system log
@@ -167,6 +169,7 @@ export default function Lobby() {
   }, [draftName, myName, setMyName, send, lang, nav]);
 
   const handleSpectate = useCallback(() => {
+    haptic("select");
     // OB no longer has a key gate — anyone with the room code can spectate.
     // We still set the auto-connect hint so /ob picks the room up without
     // making the user retype it.
@@ -179,6 +182,7 @@ export default function Lobby() {
     // and surface the list. Server has the same check as a backstop.
     const waiting = realPlayers.filter((p) => !p.ready).map((p) => p.name);
     if (waiting.length > 0) {
+      haptic("error");
       const list = waiting.join(", ");
       usePartyStore.getState().showToast(
         lang === "zh"
@@ -187,6 +191,7 @@ export default function Lobby() {
       );
       return;
     }
+    haptic("ready");
     send(ClientMessageTypes.START);
   }, [realPlayers, send, lang]);
 

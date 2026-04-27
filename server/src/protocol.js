@@ -29,7 +29,12 @@ export const ServerEventTypes = /** @type {const} */ ({
    */
   MONITOR_VOICE: "monitor_voice",
   /** Server-authoritative Monitor (AI flashlight) position + lock target. */
-  MONITOR_STATE: "monitor_state"
+  MONITOR_STATE: "monitor_state",
+  /** Live "Final Check" gate progress relayed to OB so the spotlight panel can
+   *  show real captured-action data (head-shake count, mouth-open frames,
+   *  no-blink elapsed ms) instead of a generic mock. Sent as the player works
+   *  through the 3 face tasks during onboarding. */
+  GATE_PROGRESS: "gate_progress"
 });
 
 export const ClientMessageTypes = /** @type {const} */ ({
@@ -69,6 +74,10 @@ export const ClientMessageTypes = /** @type {const} */ ({
   /** Per-client cumulative face-action counts (mouth opens / head shakes / blinks). */
   FACE_COUNTS: "face_counts",
   /** A still snapshot of the player's webcam at the moment a face-action triggered. */
-  HIGHLIGHT: "highlight"
+  HIGHLIGHT: "highlight",
+  /** Throttled live gate-task progress sent during onboarding's Final Check.
+   *  Server caps frequency + relays as a `gate_progress` server event so OB
+   *  can drive a live action panel for the currently-spotlighted player. */
+  GATE_PROGRESS: "gate_progress"
 });
 

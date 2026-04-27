@@ -116,6 +116,12 @@ interface Dict {
   obReadyCount: (n: number, total: number) => string;
   obLobbyWaitingTitle: string;
   obLobbyCenterHint: string;
+  /** Lobby leaderboard chart on OB lobby waiting card. */
+  obAnimalLeaderTitle: string;
+  obAnimalLeaderSub: (assigned: number, total: number) => string;
+  obAnimalRank: (rank: number) => string;
+  obAnimalLeaderEmpty: string;
+  obAnimalLeaderPending: string;
   /** End-of-game settlement overlay */
   endGameTitle: string;
   endGameAlive: string;
@@ -141,6 +147,18 @@ interface Dict {
   awardShakeSub: string;
   awardBlinkTitle: string;
   awardBlinkSub: string;
+  /** Animal-team standings (escapers + most-decorated team) shown on summary. */
+  endGameTeamHead: string;
+  endGameTeamEscapeTitle: string;
+  endGameTeamEscapeSub: string;
+  endGameTeamAwardsTitle: string;
+  endGameTeamAwardsSub: string;
+  endGameTeamNoEscape: string;
+  endGameTeamNoAwards: string;
+  /** "X / Y survived" suffix shown next to the team name in the escape panel. */
+  endGameTeamEscapeRow: (alive: number, total: number) => string;
+  /** "X / Y trophies" suffix on the awards panel. Total = 3 (mouth/shake/blink). */
+  endGameTeamAwardsRow: (count: number, total: number) => string;
   /** Multi-stage end-game ceremony copy. */
   endGameCeremony: string;
   endGameCeremonySub: (alive: number, total: number) => string;
@@ -190,7 +208,7 @@ const en: Dict = {
   namePlaceholder: "e.g. Alice",
   joinBtn: "Join",
   joining: "Joining…",
-  roomFull: "This room already has the maximum of 10 players. Try another room or wait.",
+  roomFull: "This room already has the maximum of 20 players. Try another room or wait.",
   permTitle: "Before you enter",
   permIntro:
     "We use your camera/microphone locally for character creation and rule detection. No video or audio is uploaded.",
@@ -274,6 +292,11 @@ const en: Dict = {
   obReadyCount: (n, t) => `${n}/${t} ready`,
   obLobbyWaitingTitle: "Lobby — players in waiting room",
   obLobbyCenterHint: "Use ‘Start game’ on the left when you're ready. Everyone will enter the zoo together.",
+  obAnimalLeaderTitle: "Animal leaderboard",
+  obAnimalLeaderSub: (assigned, total) => `${assigned}/${total} profiles created · live`,
+  obAnimalRank: (rank) => `#${rank}`,
+  obAnimalLeaderEmpty: "No profiles yet — leaderboard fills in as players finish onboarding.",
+  obAnimalLeaderPending: "Pending",
   endGameTitle: "Night shift over",
   endGameAlive: "Escaped Alive",
   endGameDead: "Lost to the Night",
@@ -296,6 +319,15 @@ const en: Dict = {
   awardShakeSub: "Most head shakes",
   awardBlinkTitle: "Blink Master",
   awardBlinkSub: "Most blinks",
+  endGameTeamHead: "Animal teams",
+  endGameTeamEscapeTitle: "🏃 Best escape team",
+  endGameTeamEscapeSub: "Animal with the most survivors",
+  endGameTeamAwardsTitle: "🏆 Most decorated team",
+  endGameTeamAwardsSub: "Animal with the most podium awards",
+  endGameTeamNoEscape: "No team made it out — the night won.",
+  endGameTeamNoAwards: "No awards were handed out.",
+  endGameTeamEscapeRow: (alive, total) => `${alive}/${total} survived`,
+  endGameTeamAwardsRow: (count, total) => `${count}/${total} trophies`,
   endGameCeremony: "Awards Ceremony",
   endGameCeremonySub: (alive, total) =>
     `${alive} of ${total} survived. Now — tonight's standout performances.`,
@@ -343,7 +375,7 @@ const zh: Dict = {
   namePlaceholder: "例如：Alice",
   joinBtn: "加入",
   joining: "加入中…",
-  roomFull: "本房间人数已满（最多 10 人）。请换房间或稍后再试。",
+  roomFull: "本房间人数已满（最多 20 人）。请换房间或稍后再试。",
   permTitle: "进入前确认",
   permIntro: "摄像头/麦克风仅在本地用于「创建角色」和守则检测，不会上传视频或音频。",
   permCamera: "摄像头",
@@ -426,6 +458,11 @@ const zh: Dict = {
   obReadyCount: (n, t) => `${n}/${t} 已就绪`,
   obLobbyWaitingTitle: "等待房间 · 玩家集合中",
   obLobbyCenterHint: "准备好后点左侧「开始游戏」，所有玩家会同时进入。",
+  obAnimalLeaderTitle: "动物分布榜",
+  obAnimalLeaderSub: (assigned, total) => `${assigned}/${total} 已建档 · 实时更新`,
+  obAnimalRank: (rank) => `第 ${rank} 名`,
+  obAnimalLeaderEmpty: "暂无档案 — 玩家完成创建后会上榜。",
+  obAnimalLeaderPending: "待分配",
   endGameTitle: "夜班结束",
   endGameAlive: "活着逃出",
   endGameDead: "未能逃脱",
@@ -448,6 +485,15 @@ const zh: Dict = {
   awardShakeSub: "甩头次数最多",
   awardBlinkTitle: "眨眼大师",
   awardBlinkSub: "眨眼次数最多",
+  endGameTeamHead: "动物战队",
+  endGameTeamEscapeTitle: "🏃 逃出最多的动物",
+  endGameTeamEscapeSub: "幸存人数最多的物种",
+  endGameTeamAwardsTitle: "🏆 颁奖最多的动物",
+  endGameTeamAwardsSub: "登上颁奖台最多的物种",
+  endGameTeamNoEscape: "今晚没有动物逃出 — 黑夜赢了。",
+  endGameTeamNoAwards: "今晚没有人上颁奖台。",
+  endGameTeamEscapeRow: (alive, total) => `${alive}/${total} 活着`,
+  endGameTeamAwardsRow: (count, total) => `${count}/${total} 奖项`,
   endGameCeremony: "颁奖典礼",
   endGameCeremonySub: (alive, total) =>
     `${alive} / ${total} 活着逃出 · 现在——今晚的高光时刻。`,

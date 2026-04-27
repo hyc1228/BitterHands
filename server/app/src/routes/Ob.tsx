@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import EndGameOverlay from "../components/EndGameOverlay";
 import Toast from "../components/Toast";
@@ -13,7 +13,16 @@ import {
   postToMainSceneFrame,
   type ObCameraPayload
 } from "../mainSync/postToMainSceneFrame";
-import { ClientMessageTypes, animalEmoji, type CameraFrame, type Lang, type PublicPlayer } from "../party/protocol";
+import {
+  Animals,
+  ClientMessageTypes,
+  animalEmoji,
+  type AnimalCode,
+  type CameraFrame,
+  type GateProgress,
+  type Lang,
+  type PublicPlayer
+} from "../party/protocol";
 import { usePartyStore } from "../party/store";
 function obAnimalLabel(lang: Lang, animal: PublicPlayer["animal"], unknown: string): string {
   if (animal == null) return unknown;
@@ -70,6 +79,7 @@ function ObInner() {
   const send = usePartyStore((s) => s.send);
   const snapshot = usePartyStore((s) => s.snapshot);
   const cameraFrames = usePartyStore((s) => s.cameraFrames);
+  const gateProgressByPlayerId = usePartyStore((s) => s.gateProgressByPlayerId);
   const selfPlayerId = usePartyStore(
     (s) => s.snapshot?.players.find((p) => p.name === s.myName)?.id ?? ""
   );
@@ -90,6 +100,33 @@ function ObInner() {
 
   const mainSceneSrc = useMemo(() => getMainSceneFrameSrc(), []);
   const gameLive = Boolean(snapshot?.started);
+
+  // Live game-clock for the OB top bar.  Server already publishes
+  // `startedAt` + `durationMs` in every ROOM_SNAPSHOT, so the client just
+  // re-derives remaining time off `Date.now()` at 4 Hz — no extra wire
+  // traffic, and the OB clock stays in sync with the in-iframe HUD without
+  // having to reach into the iframe's internal `state.timer`.
+  const startedAt = snapshot?.startedAt ?? null;
+  const durationMs = snapshot?.durationMs ?? 0;
+  const [remainingMs, setRemainingMs] = useState<number | null>(null);
+  useEffect(() => {
+    if (!gameLive || !startedAt || !durationMs) {
+      setRemainingMs(null);
+      return;
+    }
+    const compute = () => Math.max(0, startedAt + durationMs - Date.now());
+    setRemainingMs(compute());
+    const id = setInterval(() => setRemainingMs(compute()), 250);
+    return () => clearInterval(id);
+  }, [gameLive, startedAt, durationMs]);
+  const formattedTimer = useMemo(() => {
+    if (remainingMs == null) return "";
+    const sec = Math.ceil(remainingMs / 1000);
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  }, [remainingMs]);
+  const isLowTime = remainingMs != null && remainingMs <= 15000;
 
   const pushMainSceneIframe = useCallback(() => {
     if (!snapshot?.started) return;
@@ -220,7 +257,12 @@ function ObInner() {
     () => realPlayers.filter((p) => p.id.startsWith("ai_")).length,
     [realPlayers]
   );
-  const canSpawnAi = conn === "open" && totalPlayers < 10;
+  // Server's MAX_AI_BOTS (server.js) — keep in lockstep with that constant
+  // so the disable threshold matches what JOIN/OB_SPAWN_AI will actually
+  // accept.  AI bots get their own budget and don't consume the human-player
+  // cap, so we only gate on the AI count, not totalPlayers.
+  const MAX_AI_BOTS_CLIENT = 20;
+  const canSpawnAi = conn === "open" && aiCount < MAX_AI_BOTS_CLIENT;
   const facePlayers = useMemo(
     () => realPlayers.slice(0, OB_FACE_SLOTS),
     [realPlayers]
@@ -229,68 +271,6 @@ function ObInner() {
   // `liveCount` only needs the count, not the array — avoid allocating a new
   // Array of N CameraFrame objects on every CAMERA_FRAME message (5 fps × N players).
   const liveCount = cameraFrames.size;
-
-  // #region agent log
-  // OB-perf instrumentation: per-player CAMERA_FRAME inter-arrival times. If OB
-  // looks "choppy" we'll see the gap between frames balloon here. Logged every
-  // 2 s as a histogram so we don't flood the endpoint at 5 fps × N players.
-  const _dbgFrameTracker = useRef<{
-    lastByPlayer: Map<string, number>;
-    gaps: Map<string, number[]>;
-    lastFlush: number;
-  }>({ lastByPlayer: new Map(), gaps: new Map(), lastFlush: Date.now() });
-  useEffect(() => {
-    const enabled = /^(localhost|127\.0\.0\.1|10\.|192\.168\.|172\.)/.test(
-      window.location.hostname
-    );
-    if (!enabled) return;
-    const tr = _dbgFrameTracker.current;
-    const now = Date.now();
-    cameraFrames.forEach((frame, pid) => {
-      const last = tr.lastByPlayer.get(pid);
-      if (last && frame.ts !== last) {
-        const gap = frame.ts - last;
-        if (gap > 0 && gap < 5000) {
-          let arr = tr.gaps.get(pid);
-          if (!arr) { arr = []; tr.gaps.set(pid, arr); }
-          arr.push(gap);
-        }
-      }
-      tr.lastByPlayer.set(pid, frame.ts);
-    });
-    if (now - tr.lastFlush >= 2000 && tr.gaps.size > 0) {
-      const summary: Record<string, { n: number; avg: number; max: number; p95: number }> = {};
-      tr.gaps.forEach((arr, pid) => {
-        if (arr.length === 0) return;
-        const sorted = arr.slice().sort((a, b) => a - b);
-        summary[pid.slice(0, 8)] = {
-          n: arr.length,
-          avg: Math.round(arr.reduce((s, x) => s + x, 0) / arr.length),
-          max: sorted[sorted.length - 1],
-          p95: sorted[Math.floor(sorted.length * 0.95)] ?? sorted[sorted.length - 1]
-        };
-      });
-      try {
-        fetch(
-          "http://127.0.0.1:7518/ingest/d4c760a9-8d27-4a7c-8005-12a2cff8b553",
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json", "X-Debug-Session-Id": "b26e2b" },
-            body: JSON.stringify({
-              sessionId: "b26e2b",
-              location: "Ob.tsx:cam-gaps",
-              message: "OB camera-frame inter-arrival (ms) per player",
-              data: { hyp: "H3", players: realPlayers.length, summary },
-              timestamp: now
-            })
-          }
-        ).catch(() => {});
-      } catch { /* ignore */ }
-      tr.gaps.clear();
-      tr.lastFlush = now;
-    }
-  }, [cameraFrames, realPlayers.length]);
-  // #endregion
 
   /** Click on any face avatar / player row → enter "follow this player" mode.
    *  In-game: iframe camera follows them (existing behavior). Pre-game: the
@@ -307,6 +287,10 @@ function ObInner() {
     [obCam.followId, realPlayers]
   );
   const followedFrame = obCam.followId ? cameraFrames.get(obCam.followId) ?? null : null;
+  const followedGate = obCam.followId
+    ? gateProgressByPlayerId.get(obCam.followId) ?? null
+    : null;
+  const animalCounts = useMemo(() => computeAnimalCounts(realPlayers), [realPlayers]);
 
   function handleBackToLobby() {
     // Switch the WS back to player mode so the user appears in the lobby
@@ -336,6 +320,35 @@ function ObInner() {
       >
         ← {lang === "zh" ? "返回大厅" : "Back to lobby"}
       </button>
+      {/* Connection status — moved here from the now-removed app header so
+          the operator can still see "live / off" at a glance. Same visual
+          language as the old conn-pill (cream dot = open, red = down). */}
+      <span
+        className="conn-pill ob-topbar__live"
+        aria-label={lang === "zh" ? "连接状态" : "connection status"}
+      >
+        <span
+          className={
+            "conn-dot " +
+            (conn === "open" ? "ok" : conn === "connecting" || conn === "idle" ? "" : "bad")
+          }
+        />
+        {conn === "open" ? "live" : conn === "connecting" ? "..." : conn === "idle" ? "idle" : "off"}
+      </span>
+      {/* Game clock — only rendered while the round is live; sits high in the
+          top bar so the operator can read remaining time at a glance without
+          looking down at the iframe HUD.  Switches to a pulsing red state
+          under 15 s to mirror the in-iframe low-time treatment. */}
+      {gameLive && remainingMs != null ? (
+        <span
+          className={"ob-topbar__timer" + (isLowTime ? " is-low" : "")}
+          aria-label={lang === "zh" ? "游戏剩余时间" : "Game time remaining"}
+          aria-live="off"
+        >
+          <span className="ob-topbar__timer-dot" aria-hidden />
+          <span className="ob-topbar__timer-digits">{formattedTimer}</span>
+        </span>
+      ) : null}
       <input
         className="ob-room-input ob-topbar__room"
         value={room}
@@ -426,21 +439,22 @@ function ObInner() {
                 <ObLobbySpotlight
                   player={followedPlayer}
                   frame={followedFrame}
+                  gate={followedGate}
                   lang={lang}
                   onClose={clearObFollow}
                 />
               ) : (
                 <div className={"ob-lobby-card" + (allReady ? " is-all-ready" : "")}>
-                  <div className="ob-lobby-card__pulse" aria-hidden="true">
-                    <span /><span /><span />
+                  <div className="ob-lobby-card__head">
+                    <div className="ob-lobby-card__title">{t.obLobbyWaitingTitle}</div>
+                    <div className="ob-lobby-card__count">
+                      <span className="ob-lobby-card__big">{readyCount}</span>
+                      <span className="ob-lobby-card__sep">/</span>
+                      <span className="ob-lobby-card__big">{totalPlayers}</span>
+                      <span className="ob-lobby-card__label">{t.lobbyReadyLabel}</span>
+                    </div>
                   </div>
-                  <div className="ob-lobby-card__title">{t.obLobbyWaitingTitle}</div>
-                  <div className="ob-lobby-card__count">
-                    <span className="ob-lobby-card__big">{readyCount}</span>
-                    <span className="ob-lobby-card__sep">/</span>
-                    <span className="ob-lobby-card__big">{totalPlayers}</span>
-                    <span className="ob-lobby-card__label">{t.lobbyReadyLabel}</span>
-                  </div>
+                  <AnimalChart counts={animalCounts} total={totalPlayers} lang={lang} t={t} />
                   <p className="muted ob-lobby-card__hint">{t.obLobbyCenterHint}</p>
                   {totalPlayers === 0 ? (
                     <div className="ob-lobby-card__empty muted">{t.obLobbyEmpty}</div>
@@ -839,12 +853,16 @@ function ObFollowHud({
 
 /**
  * Inline spotlight rendered in the OB lobby center pane when a face avatar
- * has been clicked pre-game. No popup — the operator clicks once, and the
- * Waiting card swaps for a big camera + that player's stage. "Back to lobby"
- * exits follow mode.
+ * has been clicked pre-game. The right-hand "what player sees" mock was
+ * replaced with a live action-capture panel: real progress bars + counters
+ * driven by the GATE_PROGRESS messages the player tab streams during Final
+ * Check. Pre-gate (just joined / quiz / reveal) the panel falls back to a
+ * stage label so OB still knows where the player is.
  */
-function derivePlayerStage(p: PublicPlayer, gameLive: boolean): {
-  key: "onboarding" | "quiz" | "reveal" | "lobby" | "ingame" | "eliminated";
+type LobbyStageKey = "onboarding" | "quiz" | "reveal" | "gate" | "lobby" | "ingame" | "eliminated";
+
+function derivePlayerStage(p: PublicPlayer, gateActive: boolean, gameLive: boolean): {
+  key: LobbyStageKey;
   zh: string;
   en: string;
 } {
@@ -853,133 +871,143 @@ function derivePlayerStage(p: PublicPlayer, gameLive: boolean): {
     return { key: "ingame", zh: "比赛中", en: "In game" };
   }
   if (p.ready) return { key: "lobby", zh: "等待大厅", en: "Lobby (ready)" };
-  if (p.animal) return { key: "reveal", zh: "揭晓 / Final Check", en: "Reveal / Final Check" };
+  if (gateActive) return { key: "gate", zh: "Final Check · 摄像头测试中", en: "Final Check · camera test" };
+  if (p.animal) return { key: "reveal", zh: "身份揭晓中", en: "Role reveal" };
   if (p.avatarUrl) return { key: "quiz", zh: "答题中", en: "Quiz" };
   return { key: "onboarding", zh: "入场中", en: "Onboarding" };
 }
 
-/**
- * Renders a stage-aware preview of "what this player is currently doing".
- * Builds an OB-side mock of the player's onboarding screen: which step icon
- * they see, the prompt text, and any data we know about (their submitted
- * profile photo, their assigned animal, etc.). For the live game stages we
- * just defer to the in-scene HUD that's already on the right.
- */
-function PlayerScreenMock({
+/** Real-time action panel for the spotlighted player. Shows the 3 Final-Check
+ *  task progress bars (head shake / mouth / no-blink) populated from the
+ *  player's live GATE_PROGRESS stream — falls back to a stage label when no
+ *  gate data is available yet. */
+function PlayerActionFeed({
+  gate,
   player,
   lang
 }: {
+  gate: GateProgress | null;
   player: PublicPlayer;
   lang: Lang;
 }) {
-  const stage = derivePlayerStage(player, false);
-  const animalIcon = animalEmoji(player.animal);
-  const animalSvg = mockAnimalSvg(player.animal);
-  // i18n inline — these strings only appear in the OB spotlight, so keeping
-  // them here avoids polluting the shared dict for what's effectively dev UX.
   const TXT = {
-    permission: { zh: "正在请求摄像头权限…", en: "Granting camera permission…" },
-    photo: { zh: "正在拍照", en: "Taking profile photo" },
-    photoHint: { zh: "对着镜头微笑 📸", en: "Smile at the camera 📸" },
-    quiz: { zh: "正在答题（共 3 题）", en: "Answering quiz (3 questions)" },
-    quizHint: { zh: "选 A / B / C", en: "Picking A / B / C" },
-    analyzing: { zh: "AI 分析中…", en: "AI analyzing…" },
-    revealHead: { zh: "已分配身份 / 揭晓", en: "Role assigned · reveal" },
-    revealAnimal: { zh: "你的身份是", en: "You are" },
-    check: { zh: "Final Check：3 个表情任务", en: "Final Check · 3 expression tasks" },
-    checkTasks: {
-      zh: ["🙂 摇头", "😮 张嘴", "👀 2 秒别眨眼"],
-      en: ["🙂 Shake head", "😮 Open mouth", "👀 Don't blink 2s"]
+    waitingTitle: { zh: "实时动作捕捉", en: "Live action capture" },
+    waitingHint: {
+      zh: "等待玩家打开摄像头（Final Check）",
+      en: "Waiting for the player to open the camera (Final Check)"
     },
-    lobby: { zh: "已就绪 · 等待房主开始", en: "Ready · waiting for host" },
-    awaiting: { zh: "尚未提交照片", en: "Awaiting profile photo" }
+    readyHint: {
+      zh: "已通过 Final Check · 等待开始",
+      en: "Passed Final Check · waiting for start"
+    },
+    shake: { zh: "🙂 摇头", en: "🙂 Head shake" },
+    mouth: { zh: "😮 张嘴", en: "😮 Mouth open" },
+    eyes: { zh: "👀 不眨眼", en: "👀 No-blink hold" },
+    shakeUnit: { zh: "次", en: "shakes" },
+    mouthUnit: { zh: "帧", en: "frames" },
+    eyesUnit: { zh: "秒", en: "s" },
+    targetEyes: { zh: "目标 2.0 秒", en: "target 2.0 s" }
   };
-  const pick = <K extends keyof typeof TXT>(k: K) =>
-    (lang === "zh" ? TXT[k].zh : TXT[k].en) as string;
+  const pick = <K extends keyof typeof TXT>(k: K) => (lang === "zh" ? TXT[k].zh : TXT[k].en);
 
-  switch (stage.key) {
-    case "onboarding":
+  if (!gate || gate.active === false) {
+    if (player.ready) {
       return (
-        <div className="ob-spot-mock ob-spot-mock--onboarding">
-          <div className="ob-spot-mock__icon">📸</div>
-          <div className="ob-spot-mock__title">{pick("permission")}</div>
-          <div className="ob-spot-mock__sub muted">{pick("awaiting")}</div>
+        <div className="ob-action-feed ob-action-feed--ready">
+          <div className="ob-action-feed__title">{pick("waitingTitle")}</div>
+          <div className="ob-action-feed__empty muted">{pick("readyHint")}</div>
         </div>
       );
-    case "quiz":
-      return (
-        <div className="ob-spot-mock ob-spot-mock--quiz">
-          {player.avatarUrl ? (
-            <img className="ob-spot-mock__photo" src={player.avatarUrl} alt="profile" />
-          ) : (
-            <div className="ob-spot-mock__icon">📝</div>
-          )}
-          <div className="ob-spot-mock__title">{pick("quiz")}</div>
-          <div className="ob-spot-mock__sub muted">{pick("quizHint")}</div>
-          <div className="ob-spot-mock__quiz">
-            <span>A</span><span>B</span><span>C</span>
-          </div>
-        </div>
-      );
-    case "reveal":
-      return (
-        <div className="ob-spot-mock ob-spot-mock--reveal">
-          {animalSvg ? (
-            <img className="ob-spot-mock__animal-svg" src={animalSvg} alt={player.animal ?? "animal"} />
-          ) : (
-            <div className="ob-spot-mock__icon">{animalIcon}</div>
-          )}
-          <div className="ob-spot-mock__title">{pick("revealAnimal")}</div>
-          <div className="ob-spot-mock__animal-name">
-            {animalIcon} {obAnimalLabel(lang, player.animal, "?")}
-          </div>
-          <div className="ob-spot-mock__sub muted">{pick("check")}</div>
-          <ul className="ob-spot-mock__tasks">
-            {(lang === "zh" ? TXT.checkTasks.zh : TXT.checkTasks.en).map((task, i) => (
-              <li key={i}>{task}</li>
-            ))}
-          </ul>
-        </div>
-      );
-    case "lobby":
-      return (
-        <div className="ob-spot-mock ob-spot-mock--lobby">
-          {animalSvg ? (
-            <img className="ob-spot-mock__animal-svg" src={animalSvg} alt={player.animal ?? "animal"} />
-          ) : (
-            <div className="ob-spot-mock__icon">✓</div>
-          )}
-          <div className="ob-spot-mock__title">{pick("lobby")}</div>
-          <div className="ob-spot-mock__animal-name">
-            {animalIcon} {obAnimalLabel(lang, player.animal, "?")}
-          </div>
-        </div>
-      );
-    default:
-      return null;
+    }
+    return (
+      <div className="ob-action-feed ob-action-feed--idle">
+        <div className="ob-action-feed__title">{pick("waitingTitle")}</div>
+        <div className="ob-action-feed__empty muted">{pick("waitingHint")}</div>
+      </div>
+    );
   }
+
+  const eyesSec = (gate.eyes.holdMs / 1000).toFixed(1);
+  return (
+    <div className="ob-action-feed ob-action-feed--live">
+      <div className="ob-action-feed__title">
+        <span className="ob-action-feed__live-dot" aria-hidden /> {pick("waitingTitle")}
+      </div>
+      <ActionTask
+        label={pick("shake")}
+        progress={gate.shake.progress}
+        done={gate.shake.done}
+        value={`${gate.shake.count}`}
+        unit={pick("shakeUnit")}
+      />
+      <ActionTask
+        label={pick("mouth")}
+        progress={gate.mouth.progress}
+        done={gate.mouth.done}
+        value={`${gate.mouth.openFrames}`}
+        unit={pick("mouthUnit")}
+      />
+      <ActionTask
+        label={pick("eyes")}
+        progress={gate.eyes.progress}
+        done={gate.eyes.done}
+        value={eyesSec}
+        unit={pick("eyesUnit")}
+        sub={pick("targetEyes")}
+      />
+    </div>
+  );
 }
 
-function mockAnimalSvg(animal: PublicPlayer["animal"]): string | null {
-  if (animal === "白狮子") return "/main-scene/lion.svg";
-  if (animal === "猫头鹰") return "/main-scene/Owl%20body.svg";
-  if (animal === "长颈鹿") return "/main-scene/giraffe.svg";
-  return null;
+function ActionTask({
+  label,
+  progress,
+  done,
+  value,
+  unit,
+  sub
+}: {
+  label: string;
+  progress: number;
+  done: boolean;
+  value: string;
+  unit: string;
+  sub?: string;
+}) {
+  const pct = Math.round(Math.max(0, Math.min(1, progress)) * 100);
+  return (
+    <div className={"ob-action-task" + (done ? " is-done" : progress > 0 ? " is-active" : "")}> 
+      <div className="ob-action-task__head">
+        <span className="ob-action-task__label">{label}</span>
+        <span className="ob-action-task__count">
+          <strong>{done ? "✓" : value}</strong>
+          {!done ? <span className="ob-action-task__unit"> {unit}</span> : null}
+        </span>
+      </div>
+      <div className="ob-action-task__bar" aria-hidden="true">
+        <div className="ob-action-task__fill" style={{ width: `${pct}%` }} />
+      </div>
+      {sub ? <div className="ob-action-task__sub muted">{sub}</div> : null}
+    </div>
+  );
 }
 
 function ObLobbySpotlight({
   player,
   frame,
+  gate,
   lang,
   onClose
 }: {
   player: PublicPlayer;
   frame: CameraFrame | null;
+  gate: GateProgress | null;
   lang: Lang;
   onClose: () => void;
 }) {
   const t = dict(lang);
-  const stage = derivePlayerStage(player, false);
+  const gateActive = !!gate && gate.active === true;
+  const stage = derivePlayerStage(player, gateActive, false);
   const stageLabel = lang === "zh" ? stage.zh : stage.en;
   const animal = obAnimalLabel(lang, player.animal, t.ownAnimalUnknown);
   const animalIcon = animalEmoji(player.animal);
@@ -995,11 +1023,8 @@ function ObLobbySpotlight({
         )}
         <span className={"ob-lobby-spotlight__stage stage-" + stage.key}>{stageLabel}</span>
       </div>
-      <div className="ob-lobby-spotlight__screen">
-        <div className="ob-lobby-spotlight__screen-label">
-          {lang === "zh" ? "玩家正在看到的画面" : "What this player sees"}
-        </div>
-        <PlayerScreenMock player={player} lang={lang} />
+      <div className="ob-lobby-spotlight__panel">
+        <PlayerActionFeed gate={gate} player={player} lang={lang} />
       </div>
       <div className="ob-lobby-spotlight__meta">
         <h3 className="ob-lobby-spotlight__name" title={player.name}>{player.name}</h3>
@@ -1010,6 +1035,198 @@ function ObLobbySpotlight({
       <button type="button" className="ghost ob-lobby-spotlight__close" onClick={onClose}>
         ← {lang === "zh" ? "返回大厅总览" : "Back to lobby"}
       </button>
+    </div>
+  );
+}
+
+/** Mini pre-game animal-distribution chart shown in the OB lobby center pane.
+ *  Counts come from `snapshot.players[].animal` (server assigns one of three
+ *  codes after SUBMIT_ANSWERS); players who haven't been assigned yet are
+ *  bucketed into "pending". Real-time reactivity is "free" — the snapshot
+ *  drives store updates and this chart is a `useMemo` over its players. */
+const ANIMAL_ORDER: AnimalCode[] = [Animals.LION, Animals.OWL, Animals.GIRAFFE];
+const ANIMAL_COLORS: Record<AnimalCode, string> = {
+  [Animals.LION]: "#f0b14a",
+  [Animals.OWL]: "#7d6cff",
+  [Animals.GIRAFFE]: "#3fbf8a"
+};
+
+function computeAnimalCounts(players: PublicPlayer[]): {
+  byAnimal: Record<AnimalCode, number>;
+  pending: number;
+} {
+  const byAnimal: Record<AnimalCode, number> = {
+    [Animals.LION]: 0,
+    [Animals.OWL]: 0,
+    [Animals.GIRAFFE]: 0
+  };
+  let pending = 0;
+  for (const p of players) {
+    if (p.animal && p.animal in byAnimal) {
+      byAnimal[p.animal as AnimalCode] += 1;
+    } else {
+      pending += 1;
+    }
+  }
+  return { byAnimal, pending };
+}
+
+/**
+ * Live "Animal leaderboard". As players finish onboarding the server assigns
+ * an animal; this chart sorts the three species by current head-count and
+ * animates row reorders (FLIP technique — measure before, measure after,
+ * inverse-transform to 0). Tie-breaker is the canonical ANIMAL_ORDER so the
+ * board doesn't flicker when two species are level.
+ */
+function AnimalChart({
+  counts,
+  total,
+  lang,
+  t
+}: {
+  counts: ReturnType<typeof computeAnimalCounts>;
+  total: number;
+  lang: Lang;
+  t: ReturnType<typeof dict>;
+}) {
+  const assigned = total - counts.pending;
+  const titleLabel = t.obAnimalLeaderTitle;
+  const subLabel = t.obAnimalLeaderSub(assigned, total);
+  const pendingLabel = t.obAnimalLeaderPending;
+
+  const ranked = useMemo(() => {
+    const rows = ANIMAL_ORDER.map((animal, idx) => ({
+      animal,
+      count: counts.byAnimal[animal],
+      tieBreak: idx
+    }));
+    rows.sort((a, b) => {
+      if (b.count !== a.count) return b.count - a.count;
+      return a.tieBreak - b.tieBreak;
+    });
+    return rows;
+  }, [counts]);
+
+  // Scale bars relative to the largest bucket — keeps the chart readable
+  // when only one animal has people in it, instead of the bars all being 33%.
+  const maxBar = Math.max(ranked[0]?.count ?? 0, 1);
+
+  // FLIP-style row reorder animation. We measure each row's `top` before the
+  // commit, again after the commit, and animate the delta to zero. This makes
+  // a 3rd-place → 1st-place jump feel like an actual leaderboard swap instead
+  // of a hard snap. We deliberately animate `transform` only — `width`
+  // already transitions on the bar fill via CSS.
+  const listRef = useRef<HTMLOListElement | null>(null);
+  const lastTopsRef = useRef<Map<string, number>>(new Map());
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const items = list.querySelectorAll<HTMLElement>("[data-animal-row]");
+    const newTops = new Map<string, number>();
+    items.forEach((el) => {
+      const key = el.dataset.animalRow ?? "";
+      newTops.set(key, el.getBoundingClientRect().top);
+    });
+    items.forEach((el) => {
+      const key = el.dataset.animalRow ?? "";
+      const oldTop = lastTopsRef.current.get(key);
+      const newTop = newTops.get(key);
+      if (oldTop == null || newTop == null) return;
+      const delta = oldTop - newTop;
+      if (Math.abs(delta) < 1) return;
+      // Cancel any in-flight animation so rapid updates don't queue.
+      el.getAnimations().forEach((a) => a.cancel());
+      el.animate(
+        [
+          { transform: `translateY(${delta}px)` },
+          { transform: "translateY(0)" }
+        ],
+        { duration: 380, easing: "cubic-bezier(0.2, 0.8, 0.3, 1)" }
+      );
+    });
+    lastTopsRef.current = newTops;
+  }, [ranked, counts.pending]);
+
+  return (
+    <div className="ob-animal-chart ob-animal-chart--leader" aria-label={titleLabel}>
+      <div className="ob-animal-chart__head">
+        <div className="ob-animal-chart__title">{titleLabel}</div>
+        <div className="ob-animal-chart__sub muted">
+          <span className="ob-animal-chart__live-dot" aria-hidden />
+          {subLabel}
+        </div>
+      </div>
+      <ol className="ob-animal-chart__list" ref={listRef}>
+        {ranked.map((row, rank) => {
+          const animal = row.animal;
+          const n = row.count;
+          const label = animalLocalized[lang][animal] ?? animal;
+          const pct = (n / maxBar) * 100;
+          const ratio = total > 0 ? Math.round((n / total) * 100) : 0;
+          const isLeader = rank === 0 && n > 0;
+          return (
+            <li
+              key={animal}
+              data-animal-row={animal}
+              className={
+                "ob-animal-row" +
+                (n > 0 ? " is-on" : "") +
+                (isLeader ? " is-leader" : "") +
+                (rank === 1 ? " is-second" : "") +
+                (rank === 2 ? " is-third" : "")
+              }
+            >
+              <span
+                key={`rank-${animal}-${rank}`}
+                className="ob-animal-row__rank nz-num-pop"
+                aria-hidden
+              >
+                {isLeader ? "👑" : t.obAnimalRank(rank + 1)}
+              </span>
+              <div className="ob-animal-row__label">
+                <span className="ob-animal-row__icon" aria-hidden>
+                  {animalEmoji(animal)}
+                </span>
+                <span className="ob-animal-row__name">{label}</span>
+              </div>
+              <div className="ob-animal-row__bar-wrap" aria-hidden="true">
+                <div
+                  className="ob-animal-row__bar"
+                  style={{ width: `${pct}%`, background: ANIMAL_COLORS[animal] }}
+                />
+              </div>
+              <div className="ob-animal-row__count">
+                <span key={`n-${animal}-${n}`} className="nz-num-pop">{n}</span>
+                <span className="ob-animal-row__pct muted"> · {ratio}%</span>
+              </div>
+            </li>
+          );
+        })}
+        {counts.pending > 0 ? (
+          <li
+            data-animal-row="pending"
+            className="ob-animal-row ob-animal-row--pending"
+          >
+            <span className="ob-animal-row__rank ob-animal-row__rank--pending" aria-hidden>···</span>
+            <div className="ob-animal-row__label">
+              <span className="ob-animal-row__icon" aria-hidden>⌛</span>
+              <span className="ob-animal-row__name muted">{pendingLabel}</span>
+            </div>
+            <div className="ob-animal-row__bar-wrap" aria-hidden="true">
+              <div
+                className="ob-animal-row__bar ob-animal-row__bar--pending"
+                style={{ width: `${(counts.pending / Math.max(maxBar, counts.pending)) * 100}%` }}
+              />
+            </div>
+            <div className="ob-animal-row__count">
+              <span key={`p-${counts.pending}`} className="nz-num-pop">{counts.pending}</span>
+            </div>
+          </li>
+        ) : null}
+      </ol>
+      {assigned === 0 ? (
+        <div className="ob-animal-chart__empty muted">{t.obAnimalLeaderEmpty}</div>
+      ) : null}
     </div>
   );
 }

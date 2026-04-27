@@ -133,10 +133,17 @@ export type BlinkHoldState = {
   since: number | null;
   /** Consecutive sub-threshold frames; used by `updateNoBlink`'s de-bounce (optional). */
   closedStreak?: number;
+  /**
+   * Last raw avg-EAR seen. Used by `updateNoBlink` to compute MIN over a 2-frame
+   * window so a single mobile-camera frame that captures only the rising/falling
+   * edge of a real blink (EAR ~0.10) is preserved instead of being averaged back
+   * up above the closed-eye threshold by an adjacent open frame (EAR ~0.20).
+   */
+  prevEar?: number;
 };
 
 export function createBlinkHoldState(): BlinkHoldState {
-  return { done: false, since: null, closedStreak: 0 };
+  return { done: false, since: null, closedStreak: 0, prevEar: undefined };
 }
 
 /**
@@ -263,16 +270,21 @@ export function updateNoBlink(
 ): BlinkHoldState {
   if (s.done) return s;
   const avg = (earValue(lm, LEFT_EYE_EAR) + earValue(lm, RIGHT_EYE_EAR)) / 2;
-  // Track consecutive sub-threshold frames on the state object (re-used `closedStreak` field).
-  const streak = (avg < openThresh ? (s.closedStreak ?? 0) + 1 : 0);
+  // Use MIN over the current + previous frame instead of just the current value.
+  // Real blinks dip the EAR; if MediaPipe samples only the rising/falling edge
+  // (single frame at ~0.10), the prev-frame open value (~0.20) doesn't dilute it.
+  // This is the React-side analogue of the iframe's decisionEar() window.
+  const prev = Number.isFinite(s.prevEar) ? (s.prevEar as number) : avg;
+  const decisionEar = Math.min(avg, prev);
+  const streak = (decisionEar < openThresh ? (s.closedStreak ?? 0) + 1 : 0);
   if (streak >= resetFrames) {
-    return { done: false, since: null, closedStreak: streak };
+    return { done: false, since: null, closedStreak: streak, prevEar: avg };
   }
   const since = s.since ?? now;
   if (now - since >= holdMs) {
-    return { done: true, since, closedStreak: streak };
+    return { done: true, since, closedStreak: streak, prevEar: avg };
   }
-  return { done: false, since, closedStreak: streak };
+  return { done: false, since, closedStreak: streak, prevEar: avg };
 }
 
 export function noBlinkProgress(s: BlinkHoldState, now: number, holdMs: number): number {

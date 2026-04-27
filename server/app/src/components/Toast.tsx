@@ -30,7 +30,12 @@ export default function Toast({ durationMs = 4200 }: { durationMs?: number }) {
   if (!toast) return null;
 
   let body: string = toast;
+  // Tag warning-class messages (host-only, ready-required, etc.) so the
+  // CSS variant `.nz-toast.warn` can render them with a red border + ! icon.
+  // Plain info toasts get the default styling.
+  let isWarn = false;
   if (toast.startsWith("still-setting-up")) {
+    isWarn = true;
     const names = toast.includes(":") ? toast.split(":")[1] : "";
     if (lang === "zh") {
       body = names
@@ -42,6 +47,7 @@ export default function Toast({ durationMs = 4200 }: { durationMs?: number }) {
         : "Some players are still creating profiles — wait until everyone's ready";
     }
   } else if (toast === "not-host") {
+    isWarn = true;
     body = lang === "zh" ? "只有房主可以开始游戏" : "Only the host can start the game";
   }
   // Suppress lint: t is unused after the prefix rewrites; intentional —
@@ -50,7 +56,7 @@ export default function Toast({ durationMs = 4200 }: { durationMs?: number }) {
 
   return (
     <div
-      className="nz-toast"
+      className={"nz-toast" + (isWarn ? " warn" : "")}
       role="status"
       aria-live="polite"
       onClick={() => clearToast()}

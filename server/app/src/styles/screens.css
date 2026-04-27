@@ -830,6 +830,13 @@
      content (room row + start row + AI row + roster + iframe) can grow
      past the viewport and the browser handles scrolling. */
   min-height: 0;
+  /* The app-header is no longer rendered on /ob (see Layout.tsx), so the
+     top breathing room from the shell can also tighten — the topbar then
+     hugs the safe-area inset and the camera wall + map shift up by ~50 px. */
+  padding-top: max(env(safe-area-inset-top), 8px);
+  /* Same: drop the inter-section gap to nothing on OB so the topbar sits
+     flush with what would have been the header's baseline. */
+  gap: 8px;
 }
 /* The actual blocker for "page won't scroll" was .app-main's
    `flex: 1; min-height: 0` combo: it locked the main column to the
@@ -922,12 +929,95 @@
   border-color: rgba(214, 64, 46, 0.55);
   color: var(--nz-cream);
 }
+/* Inline "live" pill in the topbar (replaces the old header conn pill).
+   Same visual size as the back-button so the row reads as one band. */
+.ob-topbar__live {
+  min-height: 32px;
+  padding: 0 10px;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  border-radius: 999px;
+  border: 1px solid rgba(242, 239, 233, 0.18);
+  background: rgba(0, 0, 0, 0.28);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
 .ob-topbar__room {
   width: 9rem;
   max-width: min(9rem, 100%);
   min-height: 32px;
   font-size: 14px;
   flex: 0 0 auto;
+}
+
+/* Game-clock pill — only rendered while a round is live (see Ob.tsx).
+   We give it a touch more presence than the surrounding controls (taller,
+   bigger digits, brand-red border) because remaining time is the OB
+   operator's single most-watched piece of state during a session.
+   Mono + tabular-nums keeps the digits from twitching when seconds tick. */
+.ob-topbar__timer {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid rgba(214, 64, 46, 0.45);
+  background: rgba(214, 64, 46, 0.12);
+  color: var(--nz-cream);
+  font-family: var(--nz-font-mono);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  flex: 0 0 auto;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+  transition: color 200ms ease, border-color 200ms ease,
+    background 200ms ease, box-shadow 200ms ease;
+}
+.ob-topbar__timer-digits {
+  font-variant-numeric: tabular-nums;
+}
+.ob-topbar__timer-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--nz-red);
+  box-shadow: 0 0 8px rgba(214, 64, 46, 0.65);
+  animation: nz-live-pulse 1.4s ease-in-out infinite;
+}
+/* Last-15-seconds urgency: warm the colour up, swap the dot's gentle
+   live-pulse for a faster heartbeat, and add a soft outer ring so the
+   operator's peripheral vision can still catch the change. */
+.ob-topbar__timer.is-low {
+  color: #ffd9d4;
+  border-color: rgba(214, 64, 46, 0.85);
+  background: rgba(214, 64, 46, 0.22);
+  animation: ob-topbar-timer-pulse 800ms ease-in-out infinite;
+}
+.ob-topbar__timer.is-low .ob-topbar__timer-dot {
+  animation-duration: 600ms;
+}
+@keyframes ob-topbar-timer-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25),
+      0 0 0 0 rgba(214, 64, 46, 0);
+  }
+  50% {
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25),
+      0 0 0 6px rgba(214, 64, 46, 0.18);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .ob-topbar__timer.is-low {
+    animation: none;
+  }
+  .ob-topbar__timer-dot {
+    animation: none;
+  }
 }
 .ob-topbar__btn {
   min-height: 32px;
@@ -1329,98 +1419,294 @@
   margin-top: 4px;
   font-size: 12px;
 }
-.ob-lobby-spotlight__screen {
+/* Spotlight side-panel hosting the live action feed (replaces the old
+   "what player sees" mock). On portrait the panel stacks under the camera
+   feed; on landscape (>= 900px) the spotlight grid swaps to two columns
+   (feed | panel) — see `.ob-lobby-spotlight` landscape rule below. */
+.ob-lobby-spotlight__panel {
   display: grid;
   gap: 8px;
-  padding: 10px;
+}
+
+/* Live action capture feed — the 3 Final-Check task progress bars driven by
+   the player's GATE_PROGRESS stream. Pre-camera (no gate data yet) it falls
+   back to a one-line muted hint. */
+.ob-action-feed {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--nz-radius);
+  border: 1px solid var(--nz-cream-line);
+  background: linear-gradient(180deg, rgba(28,22,22,0.92), rgba(10,10,10,0.92));
+}
+.ob-action-feed__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--nz-font-display);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--nz-cream);
+}
+.ob-action-feed__live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--nz-red);
+  box-shadow: 0 0 0 3px rgba(214, 64, 46, 0.18);
+  animation: nz-live-pulse 1.4s ease-in-out infinite;
+}
+@keyframes nz-live-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(0.85); }
+}
+.ob-action-feed__empty {
+  font-size: 12px;
+  line-height: 1.4;
+}
+.ob-action-feed--ready .ob-action-feed__title {
+  color: #aef0b6;
+}
+.ob-action-feed--ready {
+  border-color: rgba(120, 200, 140, 0.55);
+}
+.ob-action-task {
+  display: grid;
+  gap: 4px;
+  padding: 6px 8px;
+  border-radius: var(--nz-radius-sm);
+  border: 1px solid rgba(242, 239, 233, 0.12);
+  background: rgba(0, 0, 0, 0.28);
+  transition: border-color 200ms ease, background 200ms ease;
+}
+.ob-action-task.is-active {
+  border-color: rgba(255, 196, 0, 0.55);
+  background: rgba(255, 196, 0, 0.06);
+}
+.ob-action-task.is-done {
+  border-color: rgba(120, 200, 140, 0.65);
+  background: rgba(120, 200, 140, 0.08);
+}
+.ob-action-task__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.ob-action-task__label {
+  font-size: 12px;
+  color: var(--nz-cream);
+  letter-spacing: 0.04em;
+}
+.ob-action-task__count {
+  font-family: var(--nz-font-display);
+  font-size: 13px;
+  color: var(--nz-cream);
+}
+.ob-action-task.is-done .ob-action-task__count {
+  color: #aef0b6;
+}
+.ob-action-task__unit {
+  font-family: var(--nz-font-body);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: var(--nz-cream-dim);
+  text-transform: uppercase;
+}
+.ob-action-task__bar {
+  height: 6px;
+  width: 100%;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.ob-action-task__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ffd66a, #f0b14a);
+  transition: width 220ms cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+.ob-action-task.is-done .ob-action-task__fill {
+  background: linear-gradient(90deg, #aef0b6, #3fbf8a);
+}
+.ob-action-task__sub {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+/* Live "Animal leaderboard" on the OB lobby waiting card. As players finish
+   onboarding the server assigns an animal; the chart sorts species by current
+   head-count and animates row reorders via FLIP (see `AnimalChart` in
+   routes/Ob.tsx). Tie-breaker is the canonical ANIMAL_ORDER so a 1-vs-1 tie
+   doesn't cause flicker. */
+.ob-animal-chart {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
   border-radius: var(--nz-radius);
   border: 1px dashed var(--nz-cream-line);
-  background: rgba(0, 0, 0, 0.32);
+  background:
+    linear-gradient(180deg, rgba(255, 220, 90, 0.05), rgba(0, 0, 0, 0)) ,
+    rgba(0, 0, 0, 0.30);
 }
-.ob-lobby-spotlight__screen-label {
+.ob-animal-chart__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ob-animal-chart__title {
   font-family: var(--nz-font-display);
-  font-size: 10px;
-  letter-spacing: 0.24em;
+  font-size: 11px;
+  letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--nz-cream-dim);
 }
-.ob-spot-mock {
-  display: grid;
+.ob-animal-chart__sub {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
-  text-align: center;
-  padding: 10px;
-  border-radius: var(--nz-radius-sm);
-  background: linear-gradient(180deg, rgba(28,22,22,0.85), rgba(10,10,10,0.85));
-  border: 1px solid rgba(242,239,233,0.10);
-  animation: nz-spot-mock-pop 320ms cubic-bezier(0.2, 1.4, 0.3, 1) 1;
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
-@keyframes nz-spot-mock-pop {
-  0% { opacity: 0; transform: translateY(4px) scale(0.97); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
-}
-.ob-spot-mock__icon {
-  font-size: 36px;
-  line-height: 1;
-}
-.ob-spot-mock__title {
-  font-family: var(--nz-font-display);
-  font-size: 13px;
-  letter-spacing: 0.06em;
-  color: var(--nz-cream);
-}
-.ob-spot-mock__sub { font-size: 11px; }
-.ob-spot-mock__photo {
-  width: 64px;
-  height: 64px;
+.ob-animal-chart__live-dot {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  object-fit: cover;
-  margin: 0 auto;
-  border: 2px solid var(--nz-cream-line);
+  background: #ff5a4a;
+  box-shadow: 0 0 0 0 rgba(255, 90, 74, 0.55);
+  animation: nz-live-pulse 1500ms ease-in-out infinite;
 }
-.ob-spot-mock__animal-svg {
-  width: 96px;
-  height: 96px;
-  margin: 0 auto;
-  object-fit: contain;
-  filter: drop-shadow(0 4px 14px rgba(0,0,0,0.55));
+@keyframes nz-live-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(255, 90, 74, 0.55); }
+  50%      { box-shadow: 0 0 0 6px rgba(255, 90, 74, 0); }
 }
-.ob-spot-mock__animal-name {
-  font-family: var(--nz-font-display);
-  font-size: 16px;
-  letter-spacing: 0.04em;
-  color: #ffd66a;
-}
-.ob-spot-mock__quiz {
-  display: flex;
-  justify-content: center;
-  gap: 8px;
-}
-.ob-spot-mock__quiz span {
-  width: 28px;
-  height: 28px;
-  display: inline-grid;
-  place-items: center;
-  border: 1.5px solid var(--nz-cream-line);
-  border-radius: 50%;
-  font-family: var(--nz-font-display);
-  font-size: 13px;
-  color: var(--nz-cream);
-  background: rgba(0,0,0,0.4);
-}
-.ob-spot-mock__tasks {
+.ob-animal-chart__list {
   list-style: none;
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 4px;
-  font-size: 11px;
-  color: var(--nz-cream-dim);
+  gap: 6px;
+  counter-reset: animal-rank;
 }
-.ob-spot-mock__tasks li {
-  padding: 4px 8px;
-  border: 1px solid rgba(242,239,233,0.18);
-  border-radius: 4px;
-  background: rgba(0,0,0,0.32);
+.ob-animal-chart__empty {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 4px 2px 0;
+}
+.ob-animal-row {
+  display: grid;
+  grid-template-columns: 32px 96px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  border-radius: var(--nz-radius-sm);
+  background: rgba(0, 0, 0, 0.18);
+  transition: background 200ms ease, box-shadow 200ms ease, transform 200ms ease;
+  will-change: transform;
+}
+.ob-animal-row.is-on {
+  background: rgba(255, 255, 255, 0.04);
+}
+.ob-animal-row.is-leader {
+  background: linear-gradient(90deg, rgba(255, 220, 90, 0.18), rgba(255, 220, 90, 0.04));
+  box-shadow: inset 0 0 0 1px rgba(255, 220, 90, 0.42);
+}
+.ob-animal-row__rank {
+  font-family: var(--nz-font-display);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--nz-cream-dim);
+  text-align: center;
+  padding: 3px 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  min-width: 32px;
+}
+.ob-animal-row.is-leader .ob-animal-row__rank {
+  background: rgba(255, 220, 90, 0.22);
+  color: #ffdc5a;
+  font-size: 14px;
+}
+.ob-animal-row__rank--pending {
+  background: transparent;
+  color: var(--nz-cream-dim);
+  letter-spacing: 0.18em;
+}
+.ob-animal-row__label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--nz-cream);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ob-animal-row__icon {
+  font-size: 18px;
+  line-height: 1;
+}
+.ob-animal-row__name {
+  font-family: var(--nz-font-display);
+  letter-spacing: 0.04em;
+}
+.ob-animal-row__bar-wrap {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.ob-animal-row__bar {
+  height: 100%;
+  border-radius: 999px;
+  /* width / background are set inline per row. */
+  transition: width 380ms cubic-bezier(0.2, 0.8, 0.3, 1);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+.ob-animal-row__bar--pending {
+  background: rgba(242, 239, 233, 0.32);
+}
+.ob-animal-row__count {
+  font-family: var(--nz-font-display);
+  font-size: 13px;
+  color: var(--nz-cream);
+  min-width: 56px;
+  text-align: right;
+}
+.ob-animal-row.is-leader .ob-animal-row__count {
+  font-size: 15px;
+  color: #ffdc5a;
+}
+.ob-animal-row__pct {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+.ob-animal-row--pending {
+  opacity: 0.78;
+}
+
+/* Landscape: when the OB shell has the room (≥ 900 px container) lay the
+   spotlight as two columns — feed | action panel — so the operator can see
+   the camera + the live counters side-by-side without scrolling. The meta
+   row (name + animal) and the close button drop to a single full-width row
+   below. */
+@media (min-width: 900px) {
+  .ob-lobby-spotlight {
+    max-width: 720px;
+    grid-template-columns: minmax(220px, 1fr) minmax(240px, 1.1fr);
+    grid-template-areas:
+      "feed panel"
+      "meta meta"
+      "close close";
+    gap: 12px 14px;
+    padding: 16px 16px 14px;
+  }
+  .ob-lobby-spotlight__feed { grid-area: feed; aspect-ratio: 1; }
+  .ob-lobby-spotlight__panel { grid-area: panel; align-self: stretch; }
+  .ob-lobby-spotlight__meta { grid-area: meta; }
+  .ob-lobby-spotlight__close { grid-area: close; justify-self: start; }
 }
 
 .ob-follow-hud {
@@ -2804,23 +3090,19 @@
   border-color: rgba(120, 200, 140, 0.55);
   background: rgba(60, 130, 90, 0.12);
 }
-.ob-lobby-card__pulse {
-  display: grid;
-  grid-auto-flow: column;
-  gap: 6px;
+/* The .ob-lobby-card__head wraps title + ready/total count side-by-side now
+   that the inline animal-distribution chart owns the rest of the card body —
+   stretches full-width inside the centered card. */
+.ob-lobby-card__head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
-.ob-lobby-card__pulse span {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
-  background: var(--nz-red);
-  opacity: 0.6;
-  animation: nz-lobby-pulse 1.4s ease-in-out infinite;
-}
-.ob-lobby-card__pulse span:nth-child(2) { animation-delay: 0.18s; }
-.ob-lobby-card__pulse span:nth-child(3) { animation-delay: 0.36s; }
-.ob-lobby-card.is-all-ready .ob-lobby-card__pulse span {
-  background: rgba(120, 200, 140, 1);
+.ob-lobby-card .ob-animal-chart {
+  width: 100%;
 }
 
 .ob-lobby-card__title {
@@ -3268,6 +3550,111 @@
   font-size: 13px;
 }
 
+/* =============================================================
+   Per-award podium reveal — Gold / Silver / Bronze rows.
+
+   Gold (idx 0) inherits the existing `.endgame-award-stage__winner`
+   look (warm gold border, big display name, confetti riding on top)
+   so the cinematic moment is preserved.  Silver and bronze are
+   smaller secondary rows that stamp in 220 ms and 440 ms after gold,
+   respectively, so the audience reads top → bottom without all 3
+   landing at the same beat.  Per-row delay comes from the
+   `--podium-delay` custom property set on the row in JSX.
+   ============================================================= */
+.endgame-award-stage__podium {
+  position: relative;
+  display: grid;
+  gap: 6px;
+}
+.endgame-award-stage__podium-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--nz-radius);
+  border: 1.5px solid rgba(242, 239, 233, 0.18);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.32));
+  opacity: 0;
+  animation: nz-stamp-in 600ms cubic-bezier(0.2, 1.4, 0.3, 1) both;
+  animation-delay: var(--podium-delay, 0ms);
+}
+.endgame-award-stage__podium-medal {
+  font-size: 22px;
+  line-height: 1;
+}
+.endgame-award-stage__podium-line {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  font-family: var(--nz-font-display);
+  font-size: clamp(15px, 2.4vw, 18px);
+  letter-spacing: 0.06em;
+  color: var(--nz-cream);
+  min-width: 0;
+}
+.endgame-award-stage__podium-line .endgame-award-stage__wname {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Gold row keeps the original "winner" look — bigger type, warmer
+   border, slight glow.  Silver and bronze step down in saturation
+   so the eye lands on gold first. */
+.endgame-award-stage__podium-row--gold {
+  padding: 14px 14px;
+  border: 2px solid rgba(255, 220, 90, 0.65);
+  background: linear-gradient(135deg, rgba(255, 220, 90, 0.16), rgba(0, 0, 0, 0.4));
+}
+.endgame-award-stage__podium-row--gold .endgame-award-stage__podium-medal {
+  font-size: 30px;
+}
+.endgame-award-stage__podium-row--gold .endgame-award-stage__podium-line {
+  font-size: clamp(20px, 4.6vw, 28px);
+  letter-spacing: 0.1em;
+}
+.endgame-award-stage__podium-row--gold .endgame-award-stage__wname {
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.45);
+}
+.endgame-award-stage__podium-row--gold.is-self {
+  border-color: rgba(255, 220, 90, 1);
+  box-shadow: 0 0 0 2px rgba(255, 220, 90, 0.6), 0 0 24px rgba(255, 220, 90, 0.45);
+}
+.endgame-award-stage__podium-row--silver {
+  border-color: rgba(220, 224, 232, 0.5);
+  background: linear-gradient(135deg, rgba(220, 224, 232, 0.12), rgba(0, 0, 0, 0.34));
+}
+.endgame-award-stage__podium-row--silver.is-self {
+  border-color: rgba(220, 224, 232, 0.95);
+  box-shadow: 0 0 0 1px rgba(220, 224, 232, 0.4);
+}
+.endgame-award-stage__podium-row--bronze {
+  border-color: rgba(205, 127, 50, 0.5);
+  background: linear-gradient(135deg, rgba(205, 127, 50, 0.14), rgba(0, 0, 0, 0.34));
+}
+.endgame-award-stage__podium-row--bronze.is-self {
+  border-color: rgba(205, 127, 50, 1);
+  box-shadow: 0 0 0 1px rgba(205, 127, 50, 0.5);
+}
+
+/* OB-mode bumps the podium type up so it reads from across a room. */
+.endgame-stage--ob .endgame-award-stage__podium-row--gold .endgame-award-stage__podium-line {
+  font-size: clamp(28px, 4.2vw, 50px);
+}
+.endgame-stage--ob .endgame-award-stage__podium-row--gold .endgame-award-stage__podium-medal {
+  font-size: 44px;
+}
+.endgame-stage--ob .endgame-award-stage__podium-row--silver .endgame-award-stage__podium-line,
+.endgame-stage--ob .endgame-award-stage__podium-row--bronze .endgame-award-stage__podium-line {
+  font-size: clamp(18px, 2.4vw, 26px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .endgame-award-stage__podium-row {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 /* OB-mode bigger ceremony — scales medals / winner / collage tiles up
    so it reads from across the room on a big screen. Designed for
    landscape (the OB console is always wide); on tall screens the rules
@@ -3327,6 +3714,7 @@
   .endgame-stage--ob .endgame-collage-wrap { grid-area: collage; }
   .endgame-stage--ob .endgame-award-stage__title { grid-area: title; }
   .endgame-stage--ob .endgame-award-stage__winner { grid-area: winner; }
+  .endgame-stage--ob .endgame-award-stage__podium { grid-area: winner; }
   .endgame-stage--ob .endgame-award-stage__placeholder { grid-area: winner; }
   .endgame-stage--ob .endgame-collage {
     /* Bigger tiles when we have a dedicated column for them. */
@@ -3708,6 +4096,195 @@
   color: #ffd66a;
 }
 .endgame-award-card__none { font-size: 12px; }
+
+/* Top-3 mini-leaderboard inside each summary award card.
+   Replaces the old single-line winner row.  Three compact rows,
+   each with a medal chip + name + count.  Gold has slightly
+   stronger emphasis; silver and bronze de-saturate so the eye
+   still lands on #1 first.  The container hides any list-style
+   inherited from <ol>. */
+.endgame-award-card__podium {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  width: 100%;
+}
+.endgame-award-card__podium-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(242, 239, 233, 0.1);
+}
+.endgame-award-card__podium-row.is-gold {
+  background: linear-gradient(90deg, rgba(255, 220, 90, 0.18), rgba(255, 220, 90, 0.04));
+  border-color: rgba(255, 220, 90, 0.5);
+}
+.endgame-award-card__podium-row.is-silver {
+  background: linear-gradient(90deg, rgba(220, 224, 232, 0.14), rgba(0, 0, 0, 0.04));
+  border-color: rgba(220, 224, 232, 0.32);
+}
+.endgame-award-card__podium-row.is-bronze {
+  background: linear-gradient(90deg, rgba(205, 127, 50, 0.14), rgba(0, 0, 0, 0.04));
+  border-color: rgba(205, 127, 50, 0.4);
+}
+.endgame-award-card__podium-row.is-self {
+  outline: 1.5px solid rgba(255, 220, 90, 0.85);
+  outline-offset: 0;
+}
+.endgame-award-card__podium-medal {
+  font-size: 14px;
+  line-height: 1;
+}
+.endgame-award-card__podium-row .endgame-award-card__name {
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  max-width: 14ch;
+}
+.endgame-award-card__podium-row.is-gold .endgame-award-card__name {
+  font-size: 14px;
+}
+.endgame-award-card__podium-row .endgame-award-card__count {
+  font-size: 12px;
+}
+.endgame-award-card__podium-row.is-gold .endgame-award-card__count {
+  color: #ffd66a;
+}
+.endgame-award-card__podium-row.is-silver .endgame-award-card__count {
+  color: #e6e9f0;
+}
+.endgame-award-card__podium-row.is-bronze .endgame-award-card__count {
+  color: #f0b27a;
+}
+
+/* =============================================================
+   Animal-team standings (Awards Ceremony summary) — two
+   side-by-side leaderboards: most escapers + most decorated.
+   ============================================================= */
+.endgame-teams {
+  display: grid;
+  gap: 10px;
+}
+.endgame-teams__head {
+  text-align: center;
+}
+.endgame-teams__cards {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 1fr;
+}
+@media (min-width: 720px) {
+  .endgame-teams__cards { grid-template-columns: 1fr 1fr; }
+}
+.endgame-team-card {
+  display: grid;
+  gap: 8px;
+  padding: 12px 14px 14px;
+  border-radius: var(--nz-radius);
+  border: 1px dashed var(--nz-cream-line);
+  background:
+    linear-gradient(180deg, rgba(255, 220, 90, 0.05), rgba(0, 0, 0, 0)) ,
+    rgba(0, 0, 0, 0.34);
+}
+.endgame-team-card.is-empty {
+  opacity: 0.78;
+}
+.endgame-team-card__title {
+  font-family: var(--nz-font-display);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  color: var(--nz-cream);
+}
+.endgame-team-card__sub {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+.endgame-team-card__empty {
+  font-size: 12px;
+  padding: 6px 0 2px;
+}
+.endgame-team-card__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+}
+.endgame-team-row {
+  display: grid;
+  grid-template-columns: 32px 22px minmax(60px, 1fr) minmax(60px, 1.1fr) auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: var(--nz-radius-sm);
+  background: rgba(0, 0, 0, 0.20);
+  font-size: 13px;
+  color: var(--nz-cream);
+  transition: background 200ms ease, box-shadow 200ms ease;
+}
+.endgame-team-row.is-leader {
+  background: linear-gradient(90deg, rgba(255, 220, 90, 0.20), rgba(255, 220, 90, 0.05));
+  box-shadow: inset 0 0 0 1px rgba(255, 220, 90, 0.42);
+}
+.endgame-team-row.is-zero {
+  opacity: 0.6;
+}
+.endgame-team-row__rank {
+  font-family: var(--nz-font-display);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--nz-cream-dim);
+  text-align: center;
+  padding: 3px 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  min-width: 32px;
+}
+.endgame-team-row.is-leader .endgame-team-row__rank {
+  background: rgba(255, 220, 90, 0.22);
+  color: #ffdc5a;
+  font-size: 14px;
+}
+.endgame-team-row__icon {
+  font-size: 18px;
+  line-height: 1;
+  text-align: center;
+}
+.endgame-team-row__name {
+  font-family: var(--nz-font-display);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.endgame-team-row__bar-wrap {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.endgame-team-row__bar {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  transition: width 380ms cubic-bezier(0.2, 0.8, 0.3, 1);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.18);
+}
+.endgame-team-row__suffix {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+.endgame-team-row.is-leader .endgame-team-row__suffix {
+  color: #ffdc5a;
+}
 
 /* =============================================================
    Group photo (class photo) — 5-col grid of every player tile.
@@ -4496,3 +5073,130 @@ button.is-busy::before {
   color: var(--nz-cream);
 }
 
+/* =============================================================
+   UI consistency pack — applies the polish-pack micro-interactions
+   uniformly across primary actions so player flow feels coherent.
+   All effects respect prefers-reduced-motion via the global
+   reduced-motion rule in globals.css.
+   ============================================================= */
+
+/* a) Primary-button ripple — every `button.primary` is now ripple-
+      enabled by default (no need to thread `data-nz-ripple` through
+      every JSX site). The ::after pseudo lives behind the label. */
+button.primary {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+}
+button.primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 70%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at center,
+    rgba(255, 255, 255, 0.42) 0%,
+    rgba(255, 255, 255, 0) 70%);
+  pointer-events: none;
+  opacity: 0;
+}
+button.primary:active:not(:disabled)::after {
+  animation: nz-tap-ripple 480ms cubic-bezier(0.22, 0.9, 0.34, 1) 1;
+}
+
+/* b) Ready celebration — runs once when the self-card first flips to
+      the ready state. The lobby-self-card--ready class is applied at
+      that transition by Lobby.tsx, so the keyframe plays exactly once
+      per mount. Subtle scale + warm halo. */
+@keyframes nz-ready-pop {
+  0%   { transform: scale(0.96); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45); }
+  35%  {
+    transform: scale(1.02);
+    box-shadow:
+      0 12px 30px rgba(0, 0, 0, 0.45),
+      0 0 0 3px rgba(108, 240, 140, 0.45),
+      0 0 24px rgba(108, 240, 140, 0.35);
+  }
+  100% { transform: scale(1); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45); }
+}
+.lobby-self-card--ready {
+  animation: nz-ready-pop 700ms cubic-bezier(0.2, 1.4, 0.3, 1) 1;
+  transform-origin: center;
+}
+
+/* c) Onboard "all-tasks-passed" glow on the gate wrap — visual echo
+      of the haptic("success") buzz fired in ExpressionGate. Briefly
+      breathes the gate frame green-ish before the parent advances. */
+@keyframes nz-gate-passed-glow {
+  0%, 100% {
+    box-shadow:
+      0 12px 30px rgba(0, 0, 0, 0.45),
+      0 0 0 0 rgba(108, 240, 140, 0);
+  }
+  40% {
+    box-shadow:
+      0 14px 36px rgba(0, 0, 0, 0.45),
+      0 0 0 3px rgba(108, 240, 140, 0.55),
+      0 0 32px rgba(108, 240, 140, 0.45);
+  }
+}
+.gate-wrap.is-passed {
+  animation: nz-gate-passed-glow 900ms ease-out 1;
+}
+
+/* d) Toast pop — the toast already slides in; add a small warning-tint
+      variant for error-class messages (e.g. "X hasn't created a profile
+      yet"). React passes className="warn" when applicable; falls back to
+      the default if the class isn't set. */
+.nz-toast.warn {
+  border-color: rgba(214, 64, 46, 0.65);
+  background: linear-gradient(180deg, rgba(36, 14, 14, 0.95), rgba(18, 6, 6, 0.95));
+}
+.nz-toast.warn .nz-toast__msg::before {
+  content: "!";
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  margin-right: 8px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(214, 64, 46, 0.85);
+  color: var(--nz-red);
+  font-family: var(--nz-font-display);
+  font-size: 13px;
+  text-align: center;
+  line-height: 16px;
+  vertical-align: -3px;
+}
+
+/* e) Quiz-option hover/active — make the answer buttons feel responsive
+      on touch (tiny press-down) and visible on desktop hover. The ripple
+      from (a) above also applies once we promote them to primary at the
+      JSX level — but they're not primary, so we add a dedicated press
+      animation here that doesn't collide. */
+.quiz-options button {
+  transition: transform 120ms ease, border-color 180ms ease, background 180ms ease;
+}
+@media (hover: hover) {
+  .quiz-options button:hover:not(:disabled) {
+    border-color: rgba(214, 64, 46, 0.55);
+    background: rgba(40, 16, 16, 0.45);
+  }
+}
+.quiz-options button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+/* f) Reveal card — a one-shot scale-in so the personality reveal lands
+      with weight rather than fading in at the same speed as the normal
+      card. Pairs with the haptic("success") fired on reveal arrival. */
+@keyframes nz-reveal-card-in {
+  0%   { opacity: 0; transform: translateY(14px) scale(0.92); }
+  60%  { opacity: 1; transform: translateY(-2px) scale(1.03); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.reveal-card {
+  animation: nz-reveal-card-in 540ms cubic-bezier(0.2, 1.2, 0.3, 1) 1;
+  transform-origin: center top;
+}
