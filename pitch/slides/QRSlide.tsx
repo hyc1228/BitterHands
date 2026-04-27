@@ -2,7 +2,7 @@ import { QRCodeSVG } from 'qrcode.react'
 
 /** Live URL the QR encodes. Swap if the host changes. */
 const JOIN_URL = 'https://nocturne-zoo.hyc1228.partykit.dev/'
-const ROOM_CODE = 'hackathon'
+const ROOM_CODE = 'supercell'
 const MAX_PLAYERS = 10
 
 export function QRSlide() {

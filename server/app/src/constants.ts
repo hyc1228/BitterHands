@@ -1,13 +1,13 @@
 /** Default PartyKit room id when none is stored in localStorage. Lowercase so
- *  case-insensitive entry ("Hackathon" / "HACKATHON" / "hackathon") all
+ *  case-insensitive entry ("Supercell" / "SUPERCELL" / "supercell") all
  *  resolve to the same Durable Object. UI displays via .toUpperCase(). */
-export const DEFAULT_ROOM_ID = "hackathon";
+export const DEFAULT_ROOM_ID = "supercell";
 
 /** Older defaults we want to overwrite if a returning visitor still has them in
  *  localStorage; otherwise they'd silently keep landing in the wrong room.
  *  Stored values are compared case-insensitively. */
 const STALE_DEFAULT_ROOM_IDS = new Set([
-  "junction", "main", "lobby", "default", "test-room", "hackathon"
+  "junction", "main", "lobby", "default", "test-room", "hackathon", "supercell"
 ]);
 
 /** Read the user's chosen room from localStorage. Always normalises to
