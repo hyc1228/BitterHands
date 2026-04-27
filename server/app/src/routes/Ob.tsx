@@ -393,15 +393,6 @@ function ObInner() {
 
     <div className="ob-grid ob-grid--single">
       <section className="card stack ob-scene-card ob-scene-card--full" aria-label="ob-right">
-        <div className="section-title ob-scene-title">
-          <span>
-            {t.cameras} <span className="muted">({liveCount} live)</span>
-          </span>
-          <span className="muted ob-scene-hint" style={{ fontSize: 12, letterSpacing: "0.06em" }}>
-            {gameLive ? t.obMainSceneLabel : t.obLobbyLabel}
-          </span>
-        </div>
-
         {!gameLive ? (
           // Mirror the in-game layout (5 face slots ┃ center waiting card ┃ 5 face slots) so
           // the screen doesn't reshuffle when OB hits Start. The center cell shows lobby state

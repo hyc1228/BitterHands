@@ -1033,39 +1033,39 @@
 }
 
 .ob-face-column {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  align-items: center;
-  gap: 6px;
+  /* Was a single 10-tall column; now a 2-column × 5-row grid per side, so
+     20 players read as 4 grid columns total (left 2 + map + right 2). The
+     individual slot still uses its own flex stack (face circle on top,
+     name/animal below). */
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: min-content;
+  align-items: start;
+  justify-items: center;
+  gap: 8px 6px;
   padding: 4px 0;
-  min-width: 78px;
-  /* Intentionally NO max-height + overflow here: when there are 20 players
-     the column is taller than the layout's min-height, and clipping it
-     internally (which is what max-height + overflow-y did) hid the bottom
-     slots and forced an in-card scrollbar that was easy to miss. Letting
-     the column grow lets the whole layout / card / main / document grow
-     together so the browser handles scrolling natively. */
+  /* 2 cols × 78 px slot width + 6 px gap + a touch of breathing room. */
+  min-width: 168px;
 }
-/* 10 slots per column at the 20-player cap. Slot dimensions tuned so:
-     10 × (face 52 + label 22 + gap 6) ≈ 800 px → fits inside the 78 vh /
-     820 px scene layout without needing to scroll on a 1080 p monitor.
-     Smaller phones hit the overflow-y: auto path above. */
+/* 2 × 5 grid per side (10 slots) at the 20-player cap. Now that we only
+   stack 5 rows tall there's room to bring the face circles back up to
+   readable sizes — the previous 36–52 px clamp was tight for 10-deep
+   single columns. */
 .ob-face-column .ob-face-circle {
-  width: clamp(36px, 3.6vw, 52px);
-  height: clamp(36px, 3.6vw, 52px);
+  width: clamp(48px, 4.8vw, 68px);
+  height: clamp(48px, 4.8vw, 68px);
 }
 .ob-face-column .ob-face-name {
-  font-size: 10px;
+  font-size: 11px;
   line-height: 1.1;
-  max-width: 78px;
+  max-width: 84px;
 }
 .ob-face-column .ob-face-animal {
-  font-size: 9px;
+  font-size: 10px;
   line-height: 1.1;
 }
 .ob-face-column .ob-face-slot {
-  gap: 2px;
+  gap: 3px;
 }
 
 .ob-scene-center {
@@ -1747,6 +1747,9 @@
   }
 
   .ob-face-column {
+    /* Mobile: 5-col strip below the iframe instead of the desktop 2×5.
+       Drop the grid in favour of an auto-flow row that wraps cleanly. */
+    display: flex;
     flex-direction: row;
     flex-wrap: wrap;
     justify-content: center;
