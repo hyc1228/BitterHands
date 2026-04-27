@@ -831,6 +831,15 @@
      past the viewport and the browser handles scrolling. */
   min-height: 0;
 }
+/* The actual blocker for "page won't scroll" was .app-main's
+   `flex: 1; min-height: 0` combo: it locked the main column to the
+   viewport so anything taller stayed clipped. For OB only, let the
+   main grow with its content so the document can become taller than
+   100 vh and the browser handles scrolling natively. */
+.ob-shell .app-main {
+  flex: 0 0 auto;
+  min-height: auto;
+}
 
 /* Right side (camera wall + iframe) is the operator's actual focus.
    Bump its share of the grid and shrink the left to match. */
@@ -923,26 +932,37 @@
 .ob-face-column {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  /* `flex-start` instead of `space-between` so 10 slots stack tightly without
+     space-between forcing them past the parent's height when the viewport is
+     short. Combined with overflow-y the column scrolls if needed. */
+  justify-content: flex-start;
   align-items: center;
   gap: 6px;
   padding: 4px 0;
-  /* Was 86px when each side held 5 faces; with 10 per side at 20-player cap
-     we keep the column the same width but the slots render tighter. */
-  min-width: 86px;
+  min-width: 78px;
+  max-height: 100%;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
-/* When the room is at full 20-player capacity the face circles need to shrink
-   to fit 10 vertically. Driven by an attribute set in Ob.tsx so partial rooms
-   stay visually generous. */
+/* 10 slots per column at the 20-player cap. Slot dimensions tuned so:
+     10 × (face 52 + label 22 + gap 6) ≈ 800 px → fits inside the 78 vh /
+     820 px scene layout without needing to scroll on a 1080 p monitor.
+     Smaller phones hit the overflow-y: auto path above. */
 .ob-face-column .ob-face-circle {
-  width: clamp(40px, 4.4vw, 64px);
-  height: clamp(40px, 4.4vw, 64px);
+  width: clamp(36px, 3.6vw, 52px);
+  height: clamp(36px, 3.6vw, 52px);
 }
 .ob-face-column .ob-face-name {
-  font-size: 11px;
+  font-size: 10px;
+  line-height: 1.1;
+  max-width: 78px;
 }
 .ob-face-column .ob-face-animal {
-  font-size: 10px;
+  font-size: 9px;
+  line-height: 1.1;
+}
+.ob-face-column .ob-face-slot {
+  gap: 2px;
 }
 
 .ob-scene-center {
