@@ -2852,12 +2852,27 @@
   position: fixed;
   inset: 0;
   z-index: 70;
-  display: grid;
-  place-items: center;
+  /* Flex column with top alignment so a card taller than the viewport
+     overflows downward and the mask actually scrolls. `place-items:
+     center` (the previous value) traps oversized children in centering
+     and the bottom of the card becomes unreachable on phone portrait. */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
   background: radial-gradient(ellipse 70% 60% at 50% 30%, rgba(214, 64, 46, 0.18), rgba(0, 0, 0, 0.85) 70%);
   padding: max(env(safe-area-inset-top), 16px) 14px max(env(safe-area-inset-bottom), 16px);
-  overflow: auto;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   animation: nz-endgame-mask 320ms ease-out both;
+}
+/* Center the card vertically when it actually fits — the flex column
+   above only centers when content is shorter than the mask. Use
+   `margin: auto 0` so short cards visually center, tall ones still
+   scroll naturally. */
+.endgame-mask > .endgame-card,
+.endgame-mask > .endgame-stage {
+  margin: auto 0;
 }
 @keyframes nz-endgame-mask {
   0% { opacity: 0; }
@@ -3778,6 +3793,72 @@
   flex-wrap: wrap;
 }
 .endgame-actions--summary > button { flex: 1 1 140px; min-height: 44px; }
+
+/* =============================================================
+   Summary-panel responsive tweaks
+   - Phone portrait (≤540 px / portrait): tighten padding + tile
+     sizes, let save buttons fit 2×2.
+   - OB landscape (≥1024 px landscape): larger group tiles, 3-col
+     roster so all 20 players fit on one screen without scrolling
+     inside the card.
+   ============================================================= */
+@media (max-width: 540px) {
+  .endgame-card--summary {
+    padding: 18px 14px 14px;
+    gap: 12px;
+  }
+  .endgame-group__grid {
+    grid-template-columns: repeat(auto-fit, minmax(64px, 1fr));
+    gap: 6px;
+    padding: 6px;
+  }
+  .endgame-group__name { font-size: 9px; }
+  .endgame-award-card {
+    padding: 12px 10px 10px;
+  }
+  .endgame-award-card__medal { font-size: 30px; }
+  .endgame-award-card__portrait { width: 64px; height: 64px; }
+  .endgame-award-card__name { font-size: 13px; }
+  .endgame-roster__list { max-height: 30vh; }
+  .endgame-actions--summary > button {
+    flex: 1 1 calc(50% - 4px);
+    min-height: 40px;
+    font-size: 13px;
+    padding: 0 10px;
+  }
+}
+
+@media (orientation: portrait) and (max-height: 800px) {
+  /* Tall but narrow phones — group photo gets a strict 4-col cap so
+     each tile reads big enough to recognise the face. */
+  .endgame-group__grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) and (orientation: landscape) {
+  /* Wider OB / desktop — class photo gets 5 columns at a comfortable
+     min size, awards keep their 3-card row, roster gets 3 columns so
+     20 players fit on screen. */
+  .endgame-group__grid {
+    grid-template-columns: repeat(5, minmax(120px, 1fr));
+    gap: 12px;
+    padding: 10px;
+  }
+  .endgame-stage--ob .endgame-roster__list {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+  .endgame-stage--ob .endgame-actions--summary > button {
+    flex: 0 1 220px;
+  }
+}
+
+@media (min-width: 1440px) and (orientation: landscape) {
+  /* Big-screen OB — 5 cols looks balanced; tile size scales up. */
+  .endgame-stage--ob .endgame-group__grid {
+    grid-template-columns: repeat(5, minmax(160px, 1fr));
+  }
+}
 
 /* OB lobby start row — compact (the camera wall is the focus, this row is
    just a quick action that should sit out of the way). */
