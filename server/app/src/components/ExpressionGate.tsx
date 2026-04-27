@@ -195,6 +195,22 @@ export default function ExpressionGate({ onPassed }: Props) {
     if (s) setEnabled(true);
   }, [start, onPassed]);
 
+  // Auto-start the camera as soon as the gate mounts — there's no longer a
+  // manual "Enable camera" button (it was getting clipped on narrow phones),
+  // so we kick off detection immediately.  If the user previously denied
+  // permission the browser will reject `start()` and the camErr overlay
+  // shows a retry button below.
+  const autoStartedRef = useRef(false);
+  useEffect(() => {
+    if (autoStartedRef.current) return;
+    if (enabled) return;
+    autoStartedRef.current = true;
+    void handleStart();
+    // We deliberately fire-and-forget — `handleStart` already handles errors
+    // (they surface via `camError` from `useCameraStream`).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleRetry = useCallback(() => {
     shakeRef.current = createShakeState();
     mouthRef.current = createMouthState();
@@ -297,13 +313,26 @@ export default function ExpressionGate({ onPassed }: Props) {
           muted
           aria-hidden={enabled ? undefined : true}
         />
-        {!enabled ? (
-          <button type="button" className="primary gate-start" onClick={handleStart}>
-            📷 {t.gateEnable}
-          </button>
+        {/* No manual "enable camera" button — the gate auto-starts on mount.
+            When the camera is still warming up (no error, no stream yet),
+            we surface a soft "starting…" hint so the stage isn't just a
+            black rectangle. */}
+        {!enabled && !camErr ? (
+          <div className="gate-overlay">📷 {t.gateLoading}</div>
         ) : null}
         {meshLoading ? <div className="gate-overlay">{t.gateLoading}</div> : null}
-        {camErr ? <div className="gate-overlay gate-overlay--err">⚠ {camErr}</div> : null}
+        {camErr ? (
+          <div className="gate-overlay gate-overlay--err">
+            <span>⚠ {camErr}</span>
+            <button
+              type="button"
+              className="primary gate-overlay__retry"
+              onClick={handleStart}
+            >
+              📷 {t.gateEnable}
+            </button>
+          </div>
+        ) : null}
         {meshErr ? <div className="gate-overlay gate-overlay--err">⚠ {meshErr}</div> : null}
       </div>
 

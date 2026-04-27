@@ -2675,15 +2675,6 @@
   /* Selfie-mirror so directions match the user's perception. */
   transform: scaleX(-1);
 }
-.gate-start {
-  position: absolute;
-  inset: auto auto 12px 50%;
-  transform: translateX(-50%);
-  z-index: 2;
-  min-height: 42px;
-  padding: 0 18px;
-  font-size: 14px;
-}
 .gate-overlay {
   position: absolute;
   inset: 0;
@@ -2702,6 +2693,19 @@
   text-align: center;
   padding: 0 14px;
   font-family: var(--nz-font-hand);
+  font-size: 14px;
+  /* Stack the warning message and the retry button vertically — single
+     grid cell with `place-items: center` collapses children, so we
+     switch to flex-column for the error variant. */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.gate-overlay__retry {
+  min-height: 42px;
+  padding: 0 18px;
   font-size: 14px;
 }
 
