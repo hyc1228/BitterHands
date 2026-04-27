@@ -891,7 +891,7 @@ function PlayerScreenMock({
       zh: ["🙂 摇头", "😮 张嘴", "👀 2 秒别眨眼"],
       en: ["🙂 Shake head", "😮 Open mouth", "👀 Don't blink 2s"]
     },
-    lobby: { zh: "已就绪 · 等待 OB 开局", en: "Ready · waiting for OB to start" },
+    lobby: { zh: "已就绪 · 等待房主开始", en: "Ready · waiting for host" },
     awaiting: { zh: "尚未提交照片", en: "Awaiting profile photo" }
   };
   const pick = <K extends keyof typeof TXT>(k: K) =>
