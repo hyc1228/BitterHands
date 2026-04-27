@@ -166,3 +166,37 @@ if (listResult.status === 0) {
 const sizeMb = (fs.statSync(OUT_ZIP).size / (1024 * 1024)).toFixed(2);
 log("ok", `nocturne-zoo-itch.zip ready (${sizeMb} MB)`);
 log("ok", `upload to itch → enable "Click to launch in fullscreen" for camera permission.`);
+
+// 5. Optional: push to itch.io via butler (the official itch CLI).
+//    Triggered by `npm run deploy:itch` (which sets ITCH_DEPLOY=1).
+//    Skipped for plain `npm run build:itch` so the zip can be inspected
+//    locally first.  Configure target with ITCH_TARGET (default below).
+if (process.env.ITCH_DEPLOY === "1") {
+  const ITCH_TARGET = process.env.ITCH_TARGET?.trim() || "huyuchen/nocturne-zoo:html5";
+  // Tag this upload with a git-short-sha + ISO date so itch.io's "Devlog"
+  // / changelog isn't a wall of `v1, v2, v3`.  Falls through to butler's
+  // own auto-numbering if git isn't available for any reason.
+  let userVersion = process.env.ITCH_USERVERSION?.trim() || "";
+  if (!userVersion) {
+    const sha = spawnSync("git", ["rev-parse", "--short", "HEAD"], { encoding: "utf8" });
+    if (sha.status === 0 && sha.stdout) {
+      const stamp = new Date().toISOString().slice(0, 10);
+      userVersion = `${stamp}-${sha.stdout.trim()}`;
+    }
+  }
+  const pushArgs = ["push", OUT_ZIP, ITCH_TARGET];
+  if (userVersion) pushArgs.push("--userversion", userVersion);
+  log("push", `butler push → ${ITCH_TARGET}${userVersion ? ` (v=${userVersion})` : ""}`);
+  const pushResult = spawnSync("butler", pushArgs, { stdio: "inherit" });
+  if (pushResult.status !== 0) {
+    fail(
+      "`butler push` failed. Common causes:\n" +
+        "  • Not logged in:  run `butler login` once (opens browser).\n" +
+        `  • Project doesn't exist yet: create https://itch.io/game/new\n` +
+        `    with the URL slug \`${ITCH_TARGET.split(":")[0].split("/")[1]}\`,\n` +
+        "    set Kind=HTML, then re-run.\n" +
+        "  • Wrong target: override with ITCH_TARGET=user/game:channel."
+    );
+  }
+  log("ok", `pushed to itch.io — see https://${ITCH_TARGET.split("/")[0]}.itch.io/${ITCH_TARGET.split("/")[1].split(":")[0]}`);
+}

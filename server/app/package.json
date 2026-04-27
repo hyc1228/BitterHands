@@ -9,6 +9,7 @@
     "dev": "vite",
     "build": "tsc -b --noEmit && vite build",
     "build:itch": "node ../scripts/build-itch.mjs",
+    "deploy:itch": "ITCH_DEPLOY=1 node ../scripts/build-itch.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
