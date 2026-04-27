@@ -13,9 +13,25 @@
     <title>Nocturne Zoo</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
+    <!--
+      Latin display + body (Permanent Marker + Patrick Hand) come from Google
+      Fonts; CJK display (得意黑 / Smiley Sans) is loaded from jsDelivr (the
+      atelier-anchor official release), CJK body (思源宋体 / Noto Serif SC)
+      from Google. Browsers fall through the family stack per-glyph, so
+      latin chars hit the marker fonts and Chinese chars hit Smiley Sans /
+      Noto Serif SC automatically — no JS needed.
+    -->
     <link
       rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Patrick+Hand&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Patrick+Hand&family=Noto+Serif+SC:wght@400;600;700&display=swap"
+    />
+    <link
+      rel="preload"
+      as="font"
+      type="font/woff2"
+      href="https://cdn.jsdelivr.net/gh/atelier-anchor/smiley-sans@main/dist/SmileySans-Oblique.woff2"
+      crossorigin
     />
   </head>
   <body>

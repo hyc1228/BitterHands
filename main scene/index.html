@@ -9,12 +9,25 @@
     <title>Nocturne Zoo · Main Scene</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Patrick+Hand&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Caveat:wght@600;700&family=Patrick+Hand&family=Noto+Serif+SC:wght@400;600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="player-id-labels.css" />
     <style>
+      /* 得意黑 / Smiley Sans for CJK display in the iframe — kept in sync
+         with the React shell's globals.css so log lines, alerts, and
+         labels read with the same Chinese voice everywhere. */
+      @font-face {
+        font-family: "Smiley Sans";
+        src: url("https://cdn.jsdelivr.net/gh/atelier-anchor/smiley-sans@main/dist/SmileySans-Oblique.woff2") format("woff2");
+        font-weight: 400 900;
+        font-style: oblique 0deg 12deg;
+        font-display: swap;
+        unicode-range: U+3000-303F, U+3040-309F, U+30A0-30FF, U+3400-4DBF,
+          U+4E00-9FFF, U+F900-FAFF, U+FF00-FFEF;
+      }
       *,
       *::before,
       *::after {
@@ -26,7 +39,8 @@
         height: 100%;
         background: #161618;
         color: #fff;
-        font-family: "Patrick Hand", "Comic Sans MS", system-ui, sans-serif;
+        /* Latin → Patrick Hand, CJK → Noto Serif SC for body text. */
+        font-family: "Patrick Hand", "Noto Serif SC", "Source Han Serif SC", "Comic Sans MS", system-ui, sans-serif;
         overflow: hidden;
         overscroll-behavior: none;
         user-select: none;
@@ -89,7 +103,7 @@
         grid-template-columns: 1fr auto 1fr;
         align-items: center;
         padding: 16px 18px 6px;
-        font-family: "Caveat", cursive;
+        font-family: "Caveat", "Smiley Sans", cursive;
       }
       .rec {
         display: flex;
@@ -186,7 +200,7 @@
         right: 0;
         bottom: 8px;
         text-align: center;
-        font-family: "Patrick Hand", cursive;
+        font-family: "Patrick Hand", "Noto Serif SC", cursive;
         font-size: 13px;
         color: rgba(255, 255, 255, 0.35);
         pointer-events: none;
@@ -204,7 +218,7 @@
         color: #131313;
         border: 2.5px solid #0d0d0d;
         border-radius: 22px;
-        font-family: "Patrick Hand", cursive;
+        font-family: "Patrick Hand", "Noto Serif SC", cursive;
         box-shadow: 3px 3px 0 #000;
         transform: rotate(-0.5deg);
         height: 142px;
@@ -239,7 +253,7 @@
       }
       .log h2 {
         margin: 0 0 4px;
-        font-family: "Caveat", cursive;
+        font-family: "Caveat", "Smiley Sans", cursive;
         font-weight: 700;
         font-size: 24px;
         letter-spacing: 2px;
@@ -738,7 +752,7 @@
         overflow: hidden;
         z-index: 22;
         pointer-events: none;
-        font-family: "Caveat", cursive;
+        font-family: "Caveat", "Smiley Sans", cursive;
       }
       .action-bar.active {
         display: block;
@@ -788,13 +802,13 @@
       }
       .action-bar .bar-label {
         flex: 0 0 auto;
-        font-family: "Caveat", cursive;
+        font-family: "Caveat", "Smiley Sans", cursive;
         font-weight: 700;
       }
       .action-bar .bar-status {
         flex: 1 1 auto;
         min-width: 0;
-        font-family: "Patrick Hand", cursive;
+        font-family: "Patrick Hand", "Noto Serif SC", cursive;
         font-weight: 400;
         font-size: 13.5px;
         color: #1a1a1a;
@@ -848,7 +862,7 @@
       #deathOverlay.fading { opacity: 0; }
       #deathOverlay .death-icon { font-size: 3rem; }
       #deathOverlay .death-title {
-        font-family: "Caveat", cursive;
+        font-family: "Caveat", "Smiley Sans", cursive;
         font-size: 2rem;
         font-weight: 700;
         color: #ff4444;
@@ -857,7 +871,7 @@
       #deathOverlay .death-sub {
         font-size: 0.82rem;
         color: #888;
-        font-family: "Patrick Hand", cursive;
+        font-family: "Patrick Hand", "Noto Serif SC", cursive;
         letter-spacing: 1px;
         max-width: 220px;
         text-align: center;
@@ -867,7 +881,7 @@
         appearance: none;
         margin-top: 8px;
         padding: 10px 18px;
-        font-family: "Caveat", cursive;
+        font-family: "Caveat", "Smiley Sans", cursive;
         font-size: 1.1rem;
         letter-spacing: 0.06em;
         background: #d6402e;
@@ -896,7 +910,7 @@
         padding: 3px 12px;
         font-size: 0.72rem;
         color: #ff6666;
-        font-family: "Patrick Hand", cursive;
+        font-family: "Patrick Hand", "Noto Serif SC", cursive;
         letter-spacing: 1px;
         pointer-events: none;
       }
@@ -1960,7 +1974,7 @@
             x: 0,
             y: spec.nameY,
             "text-anchor": "middle",
-            "font-family": "Patrick Hand, cursive",
+            "font-family": "Patrick Hand, Noto Serif SC, cursive",
             "font-size": 13,
             fill: "rgba(255,255,255,0.7)",
             "letter-spacing": 1,
@@ -1997,7 +2011,7 @@
             x: 0,
             y: -H / 2 - 8,
             "text-anchor": "middle",
-            "font-family": "Patrick Hand, cursive",
+            "font-family": "Patrick Hand, Noto Serif SC, cursive",
             "font-size": 13,
             fill: "rgba(255,255,255,0.55)",
             "letter-spacing": 1,

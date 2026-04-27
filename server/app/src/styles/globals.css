@@ -3,6 +3,27 @@
  * Palette: graphic-noir (black / cream / rust red) per docs/artdesign.md.
  */
 
+/* 得意黑 / Smiley Sans — atelier-anchor's free oblique CJK display face.
+ * One file, ships full Chinese glyph set; we wire it in below as the CJK
+ * fallback for `--nz-font-display`. */
+@font-face {
+  font-family: "Smiley Sans";
+  src: url("https://cdn.jsdelivr.net/gh/atelier-anchor/smiley-sans@main/dist/SmileySans-Oblique.woff2") format("woff2");
+  font-weight: 400 900;
+  font-style: oblique 0deg 12deg;
+  font-display: swap;
+  /* Limit to CJK ranges so latin chars still render with Permanent Marker /
+     Patrick Hand and the CJK glyphs are downloaded only when actually used. */
+  unicode-range:
+    U+3000-303F,         /* CJK punctuation */
+    U+3040-309F,         /* Hiragana */
+    U+30A0-30FF,         /* Katakana */
+    U+3400-4DBF,         /* CJK Extension A */
+    U+4E00-9FFF,         /* CJK Unified Ideographs */
+    U+F900-FAFF,         /* CJK Compatibility Ideographs */
+    U+FF00-FFEF;         /* Halfwidth + Fullwidth Forms */
+}
+
 :root {
   --nz-black: #0a0a0a;
   --nz-ink: #161616;
@@ -23,9 +44,18 @@
   --nz-shadow-soft: 0 2px 0 rgba(0, 0, 0, 0.25), 0 6px 16px rgba(0, 0, 0, 0.28);
   --nz-shadow-card: 0 2px 0 rgba(0, 0, 0, 0.22), 0 10px 28px rgba(0, 0, 0, 0.32), inset 0 0 0 1px rgba(242, 239, 233, 0.06);
 
-  --nz-font-display: "Permanent Marker", "Patrick Hand", system-ui, sans-serif;
-  --nz-font-hand: "Patrick Hand", "Hiragino Sans", "PingFang SC", system-ui, sans-serif;
-  --nz-font-serif: Palatino, "Palatino Linotype", "Book Antiqua", Georgia, ui-serif, serif;
+  /* Display: Latin → "Permanent Marker"; CJK falls through to "Smiley Sans"
+     (得意黑) so Chinese headlines / button labels read with personality
+     instead of the system default sans. */
+  --nz-font-display: "Permanent Marker", "Smiley Sans", "Patrick Hand", system-ui, sans-serif;
+  /* Body / "hand": Latin → "Patrick Hand"; CJK → "Noto Serif SC" (思源宋体)
+     for a more deliberate, less generic Chinese running text. PingFang /
+     Hiragino remain as platform fallbacks for offline cases. */
+  --nz-font-hand: "Patrick Hand", "Noto Serif SC", "Source Han Serif SC", "Hiragino Sans", "PingFang SC", system-ui, sans-serif;
+  /* Long-form / serif accents — keep Palatino for English; CJK gets
+     Noto Serif SC here too so blockquotes / italics aren't a register
+     mismatch with the body. */
+  --nz-font-serif: Palatino, "Palatino Linotype", "Noto Serif SC", "Source Han Serif SC", "Book Antiqua", Georgia, ui-serif, serif;
   --nz-font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   --nz-pad-x: clamp(14px, 4vw, 28px);
