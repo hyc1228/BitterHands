@@ -1040,6 +1040,11 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-auto-rows: min-content;
+  /* Centre the 5 rows of slots vertically within the column track so the
+     face circles line up with the middle of the map iframe rather than
+     stacking against the top. `align-content` controls how implicit rows
+     are distributed across the (taller, stretched) grid container. */
+  align-content: center;
   align-items: start;
   justify-items: center;
   gap: 8px 6px;
