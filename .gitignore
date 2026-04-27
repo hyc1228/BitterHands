@@ -46,3 +46,10 @@ server/public/avatars/**
 server/itch-build/
 nocturne-zoo-itch.zip
 
+# itch.io page assets (cover + screenshots) generated from pitch slides.
+# Source images live in pitch/preview/ and resource/; the resized
+# versions in itch-assets/ are deterministic build outputs you upload
+# manually via the itch.io web UI.
+itch-assets/*.png
+itch-assets/*.jpg
+
