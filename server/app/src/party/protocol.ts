@@ -48,6 +48,8 @@ export const ClientMessageTypes = {
   OB_SPAWN_AI: "ob_spawn_ai",
   /** OB-only: clear all AI players from the room. */
   OB_DESPAWN_AI: "ob_despawn_ai",
+  /** Host-only: forcibly remove a specific player from the room. */
+  KICK_PLAYER: "kick_player",
   MAIN_SCENE_STATE: "main_scene_state",
   MAIN_SCENE_ITEM_PICKUP: "main_scene_item_pickup",
   /** Per-client cumulative face-action counters reported every few seconds. */
@@ -69,6 +71,9 @@ export interface PublicPlayer {
   avatarUrl: string | null;
   /** Player passed Final Check and is in the lobby. OB starts the game when enough are ready. */
   ready?: boolean;
+  /** Lobby host (oldest human player). Server-derived; flips automatically when
+   *  the previous host leaves. UI uses this to show host-only controls. */
+  host?: boolean;
 }
 
 export interface RoomSnapshot {

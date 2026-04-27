@@ -23,8 +23,10 @@ function _dbgPost(location, message, data) {
 }
 // #endregion
 
-/** Max players (JOIN) per room — matches GDD 5–10; hard cap 10. */
-const MAX_ROOM_PLAYERS = 10;
+/** Max players (JOIN) per room — bumped to 20 for the hackathon demo (was
+ *  10 in the GDD draft). The OB face wall + iframe scene scale fine to 20;
+ *  bandwidth dominator is CAMERA_FRAME at ~5 fps × N which is still reasonable. */
+const MAX_ROOM_PLAYERS = 20;
 /** End-game ceremony: how many action-edge stills the server keeps per kind, per player. */
 const HIGHLIGHTS_MAX_PER_KIND = 3;
 
@@ -594,11 +596,16 @@ export default class Server {
 
       case ClientMessageTypes.START: {
         if (this.started) return;
-        // OB-only: connections that didn't JOIN have no player entry. This guarantees the
-        // whole room transitions together when a non-playing operator decides to begin.
+        // Two callers can start the round:
+        //  1. The legacy /ob console: a non-player connection (no JOIN sent),
+        //     so `this.players.has(conn.id)` is false. Always allowed.
+        //  2. The lobby host (oldest human player). Identified by
+        //     `_hostPlayerId()`. Anyone else with a player entry is rejected.
         if (this.players.has(conn.id)) {
-          conn.send(JSON.stringify({ type: "error", error: "start_forbidden_player" }));
-          return;
+          if (this._hostPlayerId() !== conn.id) {
+            conn.send(JSON.stringify({ type: "error", error: "start_forbidden_non_host" }));
+            return;
+          }
         }
         this.started = true;
         this.startedAt = Date.now();
@@ -739,8 +746,9 @@ export default class Server {
       }
 
       case ClientMessageTypes.OB_SPAWN_AI: {
-        // OB-only: connections that joined as a player have an entry in `players`.
-        if (this.players.has(conn.id)) return;
+        // Allowed for: OB-side console (no player entry) OR the lobby host
+        // (oldest human player). Other players are ignored.
+        if (!this._isHostOrOb(conn)) return;
         const requested = Number(msg?.count);
         const count = Number.isFinite(requested) && requested > 0
           ? Math.min(MAX_ROOM_PLAYERS - this.players.size, Math.floor(requested))
@@ -749,15 +757,13 @@ export default class Server {
         for (let i = 0; i < count; i++) {
           this._spawnAiBot();
         }
-        // Keep them wandering even outside an active round so the OB face wall
-        // looks alive while the operator gets ready to start.
         this._ensureAiTick();
         this._sendRoomSnapshot();
         return;
       }
 
       case ClientMessageTypes.OB_DESPAWN_AI: {
-        if (this.players.has(conn.id)) return;
+        if (!this._isHostOrOb(conn)) return;
         for (const id of Array.from(this._aiBots.keys())) {
           this._removeAiBot(id);
         }
@@ -765,6 +771,43 @@ export default class Server {
           clearInterval(this._aiTick);
           this._aiTick = null;
         }
+        this._sendRoomSnapshot();
+        return;
+      }
+
+      case ClientMessageTypes.KICK_PLAYER: {
+        // Host-only: forcibly remove a specific player (or AI bot) from the
+        // room. OB-side console is also allowed since it has the same
+        // operator-level authority.
+        if (!this._isHostOrOb(conn)) return;
+        const targetId = typeof msg?.targetId === "string" ? msg.targetId : "";
+        if (!targetId || targetId === conn.id) return;
+        if (this._aiBots.has(targetId)) {
+          this._removeAiBot(targetId);
+          this._sendRoomSnapshot();
+          return;
+        }
+        const target = this.players.get(targetId);
+        if (!target) return;
+        this._broadcast(ServerEventTypes.SYSTEM, {
+          code: "PLAYER_LEFT",
+          params: { name: target.name }
+        });
+        this.players.delete(targetId);
+        this.lastCameraFrameByPlayerId.delete(targetId);
+        this._lastMainSceneAt.delete(targetId);
+        this._avatarByPlayerId.delete(targetId);
+        // Hint the kicked WS to close itself; PartyKit lets us address a
+        // specific connection by id via `getConnection`.
+        try {
+          const targetConn = typeof this.party.getConnection === "function"
+            ? this.party.getConnection(targetId)
+            : null;
+          if (targetConn) {
+            try { targetConn.send(JSON.stringify({ type: "error", error: "kicked" })); } catch { /* ignore */ }
+            try { targetConn.close(4001, "kicked"); } catch { /* ignore */ }
+          }
+        } catch { /* ignore */ }
         this._sendRoomSnapshot();
         return;
       }
@@ -1423,12 +1466,40 @@ export default class Server {
       alive: p.alive,
       violations: p.violations,
       avatarUrl: p.avatarUrl ?? null,
-      ready: !!p.ready
+      ready: !!p.ready,
+      host: this._hostPlayerId() === p.id
     };
   }
 
+  /** True for either an OB-side connection (no player entry) OR the lobby
+   *  host. Used to gate room-management messages (start, spawn AI, kick). */
+  _isHostOrOb(conn) {
+    if (!this.players.has(conn.id)) return true;
+    return this._hostPlayerId() === conn.id;
+  }
+
+  /** Host = the human (non-AI) player with the smallest joinedAt. AI bots
+   *  never host. Recomputed every snapshot/update so when the current host
+   *  leaves, the next-oldest player automatically inherits the controls. */
+  _hostPlayerId() {
+    let best = null;
+    for (const p of this.players.values()) {
+      if (this._aiBots.has(p.id)) continue;
+      if (!best || p.joinedAt < best.joinedAt) best = p;
+    }
+    return best ? best.id : null;
+  }
+
   _publicSnapshot() {
-    const players = Array.from(this.players.values()).map((p) => this._publicPlayer(p));
+    const players = Array.from(this.players.values())
+      // Stable order across clients: humans by joinedAt, AI last.
+      .sort((a, b) => {
+        const aAi = this._aiBots.has(a.id) ? 1 : 0;
+        const bAi = this._aiBots.has(b.id) ? 1 : 0;
+        if (aAi !== bAi) return aAi - bAi;
+        return a.joinedAt - b.joinedAt;
+      })
+      .map((p) => this._publicPlayer(p));
     const readyCount = players.reduce((n, p) => (p.ready ? n + 1 : n), 0);
     return {
       roomId: this.party.id,

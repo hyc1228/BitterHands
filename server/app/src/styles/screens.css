@@ -888,9 +888,24 @@
   flex-direction: column;
   justify-content: space-between;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
   padding: 4px 0;
+  /* Was 86px when each side held 5 faces; with 10 per side at 20-player cap
+     we keep the column the same width but the slots render tighter. */
   min-width: 86px;
+}
+/* When the room is at full 20-player capacity the face circles need to shrink
+   to fit 10 vertically. Driven by an attribute set in Ob.tsx so partial rooms
+   stay visually generous. */
+.ob-face-column .ob-face-circle {
+  width: clamp(40px, 4.4vw, 64px);
+  height: clamp(40px, 4.4vw, 64px);
+}
+.ob-face-column .ob-face-name {
+  font-size: 11px;
+}
+.ob-face-column .ob-face-animal {
+  font-size: 10px;
 }
 
 .ob-scene-center {
@@ -3749,5 +3764,161 @@ button.is-busy::before {
     box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
     z-index: 3;
   }
+}
+
+/* =============================================================
+   Lobby hub — the always-on screen players land on after entering
+   the room code. Holds:
+   - room tag (top)
+   - ready / total counter
+   - self block (lurker name input + buttons OR ready summary)
+   - host control row (start / spawn AI / clear AI)
+   - roster (with kick × for host)
+   ============================================================= */
+.lobby-wrap--hub {
+  padding-bottom: max(env(safe-area-inset-bottom, 0px), 24px);
+}
+.lobby-card--hub {
+  width: min(560px, 100%);
+}
+.lobby-roomtag {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 8px;
+  align-self: flex-start;
+  padding: 4px 12px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid var(--nz-cream-line);
+  font-family: var(--nz-font-display);
+}
+.lobby-roomtag__label {
+  font-size: 10px;
+  letter-spacing: 0.32em;
+  color: var(--nz-cream-dim);
+  text-transform: uppercase;
+}
+.lobby-roomtag__code {
+  font-size: 14px;
+  letter-spacing: 0.18em;
+  color: var(--nz-red);
+}
+
+.lobby-self-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px 14px 12px;
+  border-radius: var(--nz-radius);
+  border: 1.5px solid var(--nz-cream-line);
+  background: linear-gradient(180deg, rgba(28, 22, 22, 0.85), rgba(10, 10, 10, 0.85));
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.45);
+}
+.lobby-self-card--lurker label {
+  margin-bottom: 4px;
+}
+.lobby-self-card__btns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.lobby-self-card__btns > button { flex: 1 1 140px; }
+.lobby-self-card--ready {
+  text-align: center;
+}
+.lobby-self-card__name {
+  font-family: var(--nz-font-display);
+  font-size: 18px;
+  letter-spacing: 0.06em;
+  color: var(--nz-cream);
+}
+.lobby-self-card__animal {
+  font-size: 13px;
+  color: var(--nz-cream-dim);
+}
+.lobby-self-card__status {
+  font-family: var(--nz-font-display);
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  color: #6cf08c;
+}
+
+.lobby-host-row {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border-radius: var(--nz-radius);
+  border: 1.5px solid rgba(255, 196, 0, 0.55);
+  background: rgba(255, 196, 0, 0.06);
+  animation: nz-host-row-in 320ms cubic-bezier(0.2, 1.4, 0.3, 1) 1;
+}
+@keyframes nz-host-row-in {
+  0% { opacity: 0; transform: translateY(-4px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.lobby-host-row__label {
+  font-family: var(--nz-font-display);
+  font-size: 12px;
+  letter-spacing: 0.22em;
+  color: #ffd66a;
+}
+.lobby-host-row__btns {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.lobby-host-row__btns > button {
+  flex: 1 1 120px;
+  min-height: 40px;
+  padding: 0 12px;
+  font-size: 14px;
+}
+
+.lobby-list--hub {
+  max-height: 38vh;
+  overflow-y: auto;
+}
+.lobby-row {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  padding: 6px 8px;
+  border-radius: var(--nz-radius-sm);
+  background: rgba(0, 0, 0, 0.32);
+  border: 1px solid rgba(242, 239, 233, 0.10);
+}
+.lobby-row.is-self {
+  border-color: rgba(214, 64, 46, 0.55);
+}
+.lobby-row.is-host {
+  background: linear-gradient(90deg, rgba(255, 196, 0, 0.08), rgba(0, 0, 0, 0.32));
+}
+.lobby-row-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14px;
+}
+.lobby-row-host { font-size: 12px; }
+.lobby-row-mark {
+  font-family: var(--nz-font-display);
+  font-size: 14px;
+  color: #6cf08c;
+}
+.lobby-row.is-waiting .lobby-row-mark { color: var(--nz-cream-dim); }
+.lobby-row-kick {
+  min-width: 32px;
+  min-height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(214, 64, 46, 0.55);
+  color: rgba(214, 64, 46, 0.85);
+  font-size: 14px;
+  line-height: 1;
+}
+.lobby-row-kick:hover:not(:disabled) {
+  background: rgba(214, 64, 46, 0.18);
+  color: var(--nz-cream);
 }
 

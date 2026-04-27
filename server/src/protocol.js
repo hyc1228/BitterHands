@@ -59,6 +59,9 @@ export const ClientMessageTypes = /** @type {const} */ ({
   OB_SPAWN_AI: "ob_spawn_ai",
   /** OB-only: remove all AI bots from the room. */
   OB_DESPAWN_AI: "ob_despawn_ai",
+  /** Host-only: forcibly remove a specific player from the room. Server
+   *  validates the sender is the lobby host (oldest human player). */
+  KICK_PLAYER: "kick_player",
   /** Authoritative playfield: position, anim id, optional FX; relayed to everyone including OB. */
   MAIN_SCENE_STATE: "main_scene_state",
   /** Request picking up a map item (id matches main-scene h1, a1, …). */

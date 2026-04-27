@@ -199,6 +199,24 @@ function ObInner() {
     };
   }, [setMode]);
 
+  // Spectate-from-lobby handoff: when the lobby's "Spectate as OB" button is
+  // clicked it sets `nz.ob.autoConnect = roomId` in sessionStorage, then
+  // navigates here. Pick that up once on mount and auto-run the connect flow
+  // so the operator doesn't have to click Connect again.
+  useEffect(() => {
+    let target: string | null = null;
+    try { target = sessionStorage.getItem("nz.ob.autoConnect"); } catch { /* ignore */ }
+    if (!target) return;
+    try { sessionStorage.removeItem("nz.ob.autoConnect"); } catch { /* ignore */ }
+    if (conn === "open" || conn === "connecting") return;
+    setRoom(target);
+    try { localStorage.setItem("nz.obRoom", target); } catch { /* ignore */ }
+    connect({ roomId: target, name: "ob", lang, mode: "ob" }).catch((err) => {
+      setError(err instanceof Error ? err.message : String(err));
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function handleStartGame() {
     send(ClientMessageTypes.START);
   }
@@ -454,7 +472,7 @@ function ObInner() {
           // (ready count + "Waiting for OB" / Start hint) instead of the main-scene iframe.
           <div className="ob-scene-layout ob-scene-layout--lobby">
             <div className="ob-face-column" aria-label="ob-faces-left">
-              {Array.from({ length: 5 }, (_, j) => {
+              {Array.from({ length: 10 }, (_, j) => {
                 const i = j;
                 const player = facePlayers[i] ?? null;
                 return (
@@ -501,8 +519,8 @@ function ObInner() {
             </div>
 
             <div className="ob-face-column" aria-label="ob-faces-right">
-              {Array.from({ length: 5 }, (_, j) => {
-                const i = j + 5;
+              {Array.from({ length: 10 }, (_, j) => {
+                const i = j + 10;
                 const player = facePlayers[i] ?? null;
                 return (
                   <ObFaceSlot
@@ -525,7 +543,7 @@ function ObInner() {
           // map cell is taller now so the operator gets a bigger global view.
           <div className="ob-scene-layout">
             <div className="ob-face-column" aria-label="ob-faces-left">
-              {Array.from({ length: 5 }, (_, j) => {
+              {Array.from({ length: 10 }, (_, j) => {
                 const i = j;
                 const player = facePlayers[i] ?? null;
                 return (
@@ -626,8 +644,8 @@ function ObInner() {
             </div>
 
             <div className="ob-face-column" aria-label="ob-faces-right">
-              {Array.from({ length: 5 }, (_, j) => {
-                const i = j + 5;
+              {Array.from({ length: 10 }, (_, j) => {
+                const i = j + 10;
                 const player = facePlayers[i] ?? null;
                 return (
                   <ObFaceSlot

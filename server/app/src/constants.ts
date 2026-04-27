@@ -1,23 +1,34 @@
-/** Default PartyKit room id when none is stored in localStorage. Matches the
- *  Hackathon demo branding so a fresh visitor lands in the same room as the OB. */
-export const DEFAULT_ROOM_ID = "Hackathon";
+/** Default PartyKit room id when none is stored in localStorage. Lowercase so
+ *  case-insensitive entry ("Hackathon" / "HACKATHON" / "hackathon") all
+ *  resolve to the same Durable Object. UI displays via .toUpperCase(). */
+export const DEFAULT_ROOM_ID = "hackathon";
 
 /** Older defaults we want to overwrite if a returning visitor still has them in
- *  localStorage; otherwise they'd silently keep landing in the wrong room. */
-const STALE_DEFAULT_ROOM_IDS = new Set(["junction", "main", "lobby", "default", "test-room"]);
+ *  localStorage; otherwise they'd silently keep landing in the wrong room.
+ *  Stored values are compared case-insensitively. */
+const STALE_DEFAULT_ROOM_IDS = new Set([
+  "junction", "main", "lobby", "default", "test-room", "hackathon"
+]);
 
-/** Read the user's chosen room from localStorage but auto-clear if it's just
- *  the previous default — so the new DEFAULT_ROOM_ID actually takes effect on
- *  return visits without forcing the user to manually retype. */
+/** Read the user's chosen room from localStorage. Always normalises to
+ *  lowercase + auto-clears stale legacy defaults. Lowercase match is what
+ *  makes the room code case-insensitive end-to-end. */
 export function readStoredRoomId(storageKey: "nz.roomId" | "nz.obRoom" = "nz.roomId"): string {
   try {
     const raw = localStorage.getItem(storageKey);
     if (!raw) return DEFAULT_ROOM_ID;
-    if (STALE_DEFAULT_ROOM_IDS.has(raw)) {
+    const lower = raw.trim().toLowerCase();
+    if (!lower) return DEFAULT_ROOM_ID;
+    if (STALE_DEFAULT_ROOM_IDS.has(lower) && lower !== DEFAULT_ROOM_ID) {
       localStorage.removeItem(storageKey);
       return DEFAULT_ROOM_ID;
     }
-    return raw;
+    // Backfill: rewrite the stored value in canonical lowercase so future
+    // reads (and other tabs sharing localStorage) all land on the same room.
+    if (lower !== raw) {
+      try { localStorage.setItem(storageKey, lower); } catch { /* ignore */ }
+    }
+    return lower;
   } catch {
     return DEFAULT_ROOM_ID;
   }
@@ -34,7 +45,7 @@ export function readStoredRoomId(storageKey: "nz.roomId" | "nz.obRoom" = "nz.roo
 export const DEFAULT_MAIN_SCENE_PATH = "main-scene/_iframe";
 
 /** Max face slots on the OB “camera wall” (matches server room cap). */
-export const OB_FACE_SLOTS = 10;
+export const OB_FACE_SLOTS = 20;
 
 /** In lobby, how many player feeds to highlight up top (build-profile watch). */
 export const OB_LOBBY_SPOTLIGHTS = 4;
