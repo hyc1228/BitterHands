@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import CameraFrameUploader from "../components/CameraFrameUploader";
 import PlayerRowFace from "../components/PlayerRowFace";
+import Toast from "../components/Toast";
 import { readStoredRoomId } from "../constants";
 import { animalLocalized, dict } from "../i18n";
 import { expectedObKey, writeStoredObKey } from "../lib/obAuth";
@@ -148,8 +149,20 @@ export default function Lobby() {
   }, [nav, roomId]);
 
   const handleStartGame = useCallback(() => {
+    // Client-side preflight: if anyone hasn't set up a character yet, refuse
+    // and surface the list. Server has the same check as a backstop.
+    const waiting = realPlayers.filter((p) => !p.ready).map((p) => p.name);
+    if (waiting.length > 0) {
+      const list = waiting.join(", ");
+      usePartyStore.getState().showToast(
+        lang === "zh"
+          ? `${list} 还在创建角色 — 等所有人就绪后再开始`
+          : `${list} hasn't created a profile yet — wait until everyone's ready`
+      );
+      return;
+    }
     send(ClientMessageTypes.START);
-  }, [send]);
+  }, [realPlayers, send, lang]);
 
   const handleSpawnAi = useCallback(() => {
     send(ClientMessageTypes.OB_SPAWN_AI, { count: 4 });
@@ -165,6 +178,7 @@ export default function Lobby() {
 
   return (
     <div className="lobby-wrap lobby-wrap--hub">
+      <Toast />
       {/* Camera upload covers the lurker phase too — the player's camera (if
           permission was granted earlier in this browser) feeds the OB face
           wall + this lobby's roster avatars while they decide. */}

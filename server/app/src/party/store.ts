@@ -48,6 +48,12 @@ interface PartyStoreState {
   answersSubmitted: boolean;
   /** Set when server sends `{ type: "error" }` (e.g. room_full). */
   connectError: string | null;
+  /** Soft toast message — surfaced for non-fatal feedback (e.g. host tried
+   *  to start before everyone has set up a profile). Auto-cleared after a
+   *  few seconds by whoever rendered it; also exposed via `clearToast`. */
+  toast: string | null;
+  showToast: (msg: string) => void;
+  clearToast: () => void;
   /** Latest main-scene pose per connection id (from `main_scene_broadcast`). */
   mainScenePeers: Record<string, MainScenePeerState>;
   mainSceneItemInbox: MainSceneItemInboxEntry[];
@@ -164,6 +170,9 @@ export const usePartyStore = create<PartyStoreState>((set, get) => ({
   photoSubmitted: false,
   answersSubmitted: false,
   connectError: null,
+  toast: null,
+  showToast: (msg) => set({ toast: msg }),
+  clearToast: () => set({ toast: null }),
   mainScenePeers: {},
   mainSceneItemInbox: [],
   monitorVoiceInbox: [],
@@ -326,8 +335,19 @@ function handleServerEnvelope(
   _dbgRecvCount(t);
   // #endregion
   if (t === "error") {
-    const e = msg as { type: "error"; error: string; max?: number };
-    set({ connectError: e.error });
+    const e = msg as { type: "error"; error: string; max?: number; waiting?: string[] };
+    // Most errors are room-level (room_full, bad_photo, …) and stay in
+    // connectError so the route gating logic can act on them. A few are
+    // soft, recoverable feedback for the host — surface those as a toast
+    // instead so they don't get treated as fatal.
+    if (e.error === "start_not_all_ready") {
+      const list = (e.waiting ?? []).filter(Boolean).join(", ");
+      set({ toast: list ? `still-setting-up:${list}` : "still-setting-up" });
+    } else if (e.error === "start_forbidden_non_host") {
+      set({ toast: "not-host" });
+    } else {
+      set({ connectError: e.error });
+    }
     return;
   }
   if (t === ServerEventTypes.ROOM_SNAPSHOT) {

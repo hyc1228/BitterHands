@@ -1,6 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import EndGameOverlay from "../components/EndGameOverlay";
+import Toast from "../components/Toast";
 import { getMainSceneFrameSrc, OB_FACE_SLOTS, readStoredRoomId } from "../constants";
 import { isObAuthorized, isObKeyMatch, writeStoredObKey } from "../lib/obAuth";
 import { animalLocalized, dict } from "../i18n";
@@ -215,6 +216,19 @@ function ObInner() {
   }, []);
 
   function handleStartGame() {
+    // Don't yank lurkers (no profile yet) into the live scene — surface a
+    // toast listing who still needs to finish character creation. Server
+    // also enforces this with `start_not_all_ready`.
+    const waiting = realPlayers.filter((p) => !p.ready).map((p) => p.name);
+    if (waiting.length > 0) {
+      const list = waiting.join(", ");
+      usePartyStore.getState().showToast(
+        lang === "zh"
+          ? `${list} 还在创建角色 — 等所有人就绪后再开始`
+          : `${list} hasn't created a profile yet — wait until everyone's ready`
+      );
+      return;
+    }
     send(ClientMessageTypes.START);
   }
 
@@ -362,6 +376,7 @@ function ObInner() {
 
   return (
     <>
+    <Toast />
     {/* Top control bar — back, room input, connect, Start, AI, ready/AI counts.
         Replaces the entire former left column so the camera wall + iframe can
         own the rest of the page. Keeps host/OB controls reachable without

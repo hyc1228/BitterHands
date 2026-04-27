@@ -847,6 +847,52 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* =============================================================
+   Global toast — bound to store.toast. Fixed top-center, slides in.
+   ============================================================= */
+.nz-toast {
+  position: fixed;
+  top: max(env(safe-area-inset-top, 0px), 16px);
+  left: 50%;
+  z-index: 100;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px 10px 16px;
+  border-radius: var(--nz-radius);
+  background: linear-gradient(180deg, rgba(40, 16, 16, 0.96), rgba(20, 8, 8, 0.96));
+  border: 1.5px solid rgba(214, 64, 46, 0.6);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--nz-cream);
+  cursor: pointer;
+  max-width: min(560px, calc(100vw - 32px));
+  animation: nz-toast-in 260ms cubic-bezier(0.2, 1.4, 0.3, 1) 1;
+}
+@keyframes nz-toast-in {
+  0%   { opacity: 0; transform: translate(-50%, -10px); }
+  100% { opacity: 1; transform: translate(-50%, 0); }
+}
+.nz-toast__msg {
+  flex: 1 1 auto;
+}
+.nz-toast__close {
+  flex: 0 0 auto;
+  min-height: 0;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(242, 239, 233, 0.35);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--nz-cream);
+  font-size: 14px;
+  line-height: 1;
+}
+.nz-toast__close:hover { background: rgba(214, 64, 46, 0.4); }
+
 /* OB top bar — back / room / connect / Start / AI controls, all in a single
    horizontal strip above the scene. Wraps on narrow screens. */
 .ob-topbar {

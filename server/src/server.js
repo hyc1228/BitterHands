@@ -607,6 +607,23 @@ export default class Server {
             return;
           }
         }
+        // Refuse to start when any HUMAN player hasn't completed character
+        // setup yet — otherwise lurkers get yanked into the live scene with
+        // no animal / no role and the round is broken for them. AI bots are
+        // always treated as ready (they don't have a setup flow).
+        const waiting = [];
+        for (const p of this.players.values()) {
+          if (this._aiBots.has(p.id)) continue;
+          if (!p.ready) waiting.push(p.name);
+        }
+        if (waiting.length > 0) {
+          conn.send(JSON.stringify({
+            type: "error",
+            error: "start_not_all_ready",
+            waiting
+          }));
+          return;
+        }
         this.started = true;
         this.startedAt = Date.now();
         this.mainSceneItemsRemoved = new Set();
