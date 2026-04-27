@@ -3945,7 +3945,7 @@ button.is-busy::before {
 }
 .lobby-roomtag {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   align-self: flex-start;
   padding: 4px 12px;
@@ -3953,6 +3953,7 @@ button.is-busy::before {
   background: rgba(0, 0, 0, 0.45);
   border: 1px solid var(--nz-cream-line);
   font-family: var(--nz-font-display);
+  min-height: 30px;
 }
 .lobby-roomtag__label {
   font-size: 10px;
@@ -3964,6 +3965,49 @@ button.is-busy::before {
   font-size: 14px;
   letter-spacing: 0.18em;
   color: var(--nz-red);
+}
+/* Pill is now a button — clickable to swap rooms. Reset native button
+   chrome and give it a subtle hover so it reads as interactive. */
+.lobby-roomtag--btn {
+  cursor: pointer;
+  font-family: var(--nz-font-display);
+  color: inherit;
+}
+.lobby-roomtag--btn:hover {
+  border-color: rgba(214, 64, 46, 0.55);
+  background: rgba(40, 16, 16, 0.55);
+}
+.lobby-roomtag__edit-hint {
+  font-size: 11px;
+  color: var(--nz-cream-dim);
+  margin-left: 2px;
+}
+.lobby-roomtag--edit {
+  padding: 4px 6px 4px 12px;
+  gap: 6px;
+  flex-wrap: wrap;
+  border-color: rgba(214, 64, 46, 0.55);
+}
+.lobby-roomtag__input {
+  width: 8.5rem;
+  min-height: 28px;
+  padding: 0 8px;
+  font-family: var(--nz-font-display);
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  color: var(--nz-red);
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(214, 64, 46, 0.55);
+  border-radius: 999px;
+  text-transform: uppercase;
+}
+.lobby-roomtag__save,
+.lobby-roomtag__cancel {
+  min-height: 28px;
+  padding: 0 12px;
+  font-size: 11px;
+  letter-spacing: 0.16em;
+  border-radius: 999px;
 }
 
 .lobby-self-card {

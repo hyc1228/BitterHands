@@ -40,8 +40,14 @@ export default function Lobby() {
   const snapshot = usePartyStore((s) => s.snapshot);
   const rulesCard = usePartyStore((s) => s.rulesCard);
 
-  // The room code lives in localStorage from the Join screen.
-  const roomId = useMemo(() => readStoredRoomId("nz.roomId"), []);
+  // Live room code — kept in state (not memo) so the user can edit it
+  // mid-lobby and the connect effect re-fires against the new room.
+  const [roomId, setRoomId] = useState<string>(() => readStoredRoomId("nz.roomId"));
+  const [editingRoom, setEditingRoom] = useState(false);
+  const [roomDraft, setRoomDraft] = useState(roomId);
+  // Tracks whether READY has been sent for the current player slot. Reset
+  // when the user switches rooms (the new room starts everyone as a lurker).
+  const sentReady = useRef(false);
 
   // Drop the user back to the room-code entrance if they hit /lobby with no
   // room set yet (e.g. directly typing the URL).
@@ -60,25 +66,51 @@ export default function Lobby() {
     return `Visitor-${seed}`;
   });
 
-  // Connect to the room as a player on first mount (or on retry). We use the
-  // current draftName so the lurker is visible to others right away. JOIN is
-  // re-sent as part of `connect`, and re-running connect later (e.g. after a
-  // close) just renames the same WS slot.
+  // Connect to the room as a player whenever roomId changes (initial mount
+  // OR the user typed a new code in the room editor). JOIN is sent as part
+  // of `connect`. Switching rooms hard-disconnects the old WS and opens a
+  // fresh one in the new room — the previous room's lurker slot times out.
   //
   // Also: if the user arrived here from /ob (they were spectating and clicked
   // "Back to lobby"), the existing socket is still in OB mode. Detect that
   // and force a fresh player-mode connection so they show up in the roster.
+  const lastConnectedRoomRef = useRef<string | null>(null);
   useEffect(() => {
     const prevMode = usePartyStore.getState().mode;
     setMode("player");
     if (!roomId) return;
-    const playerAlready = prevMode === "player" && (conn === "open" || conn === "connecting");
+    const sameRoom = lastConnectedRoomRef.current === roomId;
+    const playerAlready = sameRoom && prevMode === "player" && (conn === "open" || conn === "connecting");
     if (playerAlready) return;
     setMyName(draftName);
     connect({ roomId, name: draftName, lang, mode: "player" }).catch(() => {
       /* surfaced via connectError in store; we render it below */
     });
+    lastConnectedRoomRef.current = roomId;
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId]);
+
+  const handleEditRoom = useCallback(() => {
+    setRoomDraft(roomId);
+    setEditingRoom(true);
+  }, [roomId]);
+
+  const handleSaveRoom = useCallback(() => {
+    const next = roomDraft.trim().toLowerCase();
+    if (!next) return;
+    setEditingRoom(false);
+    if (next === roomId) return;
+    try { localStorage.setItem("nz.roomId", next); } catch { /* ignore */ }
+    setRoomId(next);
+    // Resetting the ready-flag tracker — server starts the new room with
+    // ready=false anyway, so the existing useEffect re-sends READY when
+    // the player has an animal again. (Lurkers don't need it.)
+    sentReady.current = false;
+  }, [roomDraft, roomId]);
+
+  const handleCancelEditRoom = useCallback(() => {
+    setEditingRoom(false);
+    setRoomDraft(roomId);
   }, [roomId]);
 
   // Once the round actually starts, jump everyone into the live scene.
@@ -90,7 +122,6 @@ export default function Lobby() {
 
   // Re-send READY automatically when we already have an animal but the
   // server lost our `ready` flag (reconnect after refresh).
-  const sentReady = useRef(false);
   useEffect(() => {
     if (conn !== "open") return;
     const me = snapshot?.players.find((p) => p.name === myName);
@@ -183,10 +214,53 @@ export default function Lobby() {
         <div className="lobby-pulse" aria-hidden="true">
           <span /><span /><span />
         </div>
-        <div className="lobby-roomtag">
-          <span className="lobby-roomtag__label">{t.roomLabel}</span>
-          <span className="lobby-roomtag__code">{roomId.toUpperCase()}</span>
-        </div>
+        {editingRoom ? (
+          <form
+            className="lobby-roomtag lobby-roomtag--edit"
+            onSubmit={(e) => { e.preventDefault(); handleSaveRoom(); }}
+          >
+            <span className="lobby-roomtag__label">{t.roomLabel}</span>
+            <input
+              className="lobby-roomtag__input"
+              autoFocus
+              autoComplete="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              value={roomDraft}
+              onChange={(e) => setRoomDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") handleCancelEditRoom();
+              }}
+              placeholder={t.roomPlaceholder}
+              aria-label={t.roomLabel}
+            />
+            <button
+              type="submit"
+              className="primary lobby-roomtag__save"
+              disabled={!roomDraft.trim() || roomDraft.trim().toLowerCase() === roomId}
+            >
+              {lang === "zh" ? "切换" : "Switch"}
+            </button>
+            <button
+              type="button"
+              className="ghost lobby-roomtag__cancel"
+              onClick={handleCancelEditRoom}
+            >
+              {lang === "zh" ? "取消" : "Cancel"}
+            </button>
+          </form>
+        ) : (
+          <button
+            type="button"
+            className="lobby-roomtag lobby-roomtag--btn"
+            onClick={handleEditRoom}
+            title={lang === "zh" ? "点击切换房间码" : "Click to change the room code"}
+          >
+            <span className="lobby-roomtag__label">{t.roomLabel}</span>
+            <span className="lobby-roomtag__code">{roomId.toUpperCase()}</span>
+            <span className="lobby-roomtag__edit-hint" aria-hidden>✎</span>
+          </button>
+        )}
         <h1 className="section-title lobby-title">{t.lobbyTitle}</h1>
 
         <div className="lobby-counter" role="status" aria-live="polite">
