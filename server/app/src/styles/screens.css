@@ -1035,17 +1035,17 @@
 .ob-face-column {
   display: flex;
   flex-direction: column;
-  /* `flex-start` instead of `space-between` so 10 slots stack tightly without
-     space-between forcing them past the parent's height when the viewport is
-     short. Combined with overflow-y the column scrolls if needed. */
   justify-content: flex-start;
   align-items: center;
   gap: 6px;
   padding: 4px 0;
   min-width: 78px;
-  max-height: 100%;
-  overflow-y: auto;
-  scrollbar-width: thin;
+  /* Intentionally NO max-height + overflow here: when there are 20 players
+     the column is taller than the layout's min-height, and clipping it
+     internally (which is what max-height + overflow-y did) hid the bottom
+     slots and forced an in-card scrollbar that was easy to miss. Letting
+     the column grow lets the whole layout / card / main / document grow
+     together so the browser handles scrolling natively. */
 }
 /* 10 slots per column at the 20-player cap. Slot dimensions tuned so:
      10 × (face 52 + label 22 + gap 6) ≈ 800 px → fits inside the 78 vh /
