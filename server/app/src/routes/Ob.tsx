@@ -15,8 +15,6 @@ import {
 } from "../mainSync/postToMainSceneFrame";
 import { ClientMessageTypes, animalEmoji, type CameraFrame, type Lang, type PublicPlayer } from "../party/protocol";
 import { usePartyStore } from "../party/store";
-import PlayerRowFace from "../components/PlayerRowFace";
-
 function obAnimalLabel(lang: Lang, animal: PublicPlayer["animal"], unknown: string): string {
   if (animal == null) return unknown;
   return animalLocalized[lang][animal] ?? animal;
@@ -364,104 +362,80 @@ function ObInner() {
 
   return (
     <>
-    <div className="ob-grid">
-      <section className="card stack" aria-label="ob-left">
-        <div className="ob-room-row">
-          <button
-            type="button"
-            className="ghost ob-back-btn"
-            onClick={handleBackToLobby}
-            title={lang === "zh" ? "返回大厅创建角色" : "Back to lobby"}
-          >
-            ← {lang === "zh" ? "返回大厅" : "Back to lobby"}
-          </button>
-          <input
-            className="ob-room-input"
-            value={room}
-            onChange={(e) => setRoom(e.target.value)}
-            placeholder={t.roomPlaceholder}
-            aria-label={t.roomLabel}
-          />
-          {conn === "open" ? (
-            <button onClick={() => disconnect()}>disconnect</button>
-          ) : (
-            <button className="primary" onClick={handleConnect}>
-              connect
-            </button>
-          )}
-        </div>
-        {error ? <div style={{ color: "#ff9a8a" }}>{error}</div> : null}
-        {!gameLive ? (
-          <div className={"ob-start-row" + (allReady ? " is-all-ready" : "")}>
-            <button
-              type="button"
-              className="primary ob-start-btn"
-              onClick={handleStartGame}
-              disabled={!canStart}
-              aria-disabled={!canStart}
-            >
-              {t.obStartGame}
-            </button>
-            <span className="muted ob-start-meta">
-              {/* keyed wrappers re-mount each tick the count flips so the
-                  nz-num-pop CSS animation actually replays. */}
-              <span key={`r-${readyCount}`} className="nz-num-pop">{readyCount}</span>
-              {" / "}
-              <span key={`t-${totalPlayers}`} className="nz-num-pop">{totalPlayers}</span>
-              {" "}
-              {t.lobbyReadyLabel ?? "ready"}
-            </span>
-          </div>
-        ) : null}
-        <div className="ob-ai-row">
-          <button
-            type="button"
-            className="ob-ai-btn"
-            onClick={handleSpawnAi}
-            disabled={!canSpawnAi}
-            title="Add 4 synthetic players (lion / owl / giraffe SVG avatars) that wander the map. Useful to see the multiplayer view without recruiting humans."
-          >
-            + Spawn 4 AI
-          </button>
-          <button
-            type="button"
-            className="ob-ai-btn ob-ai-btn--ghost"
-            onClick={handleDespawnAi}
-            disabled={conn !== "open" || aiCount === 0}
-          >
-            Clear AI
-          </button>
-          <span
-            key={aiFlashKey}
-            className="muted ob-ai-meta is-flash"
-          >
-            <span key={`ai-${aiCount}`} className="nz-num-pop">{aiCount}</span>
-            {" AI in room"}
-          </span>
-        </div>
-        <div>
-          <div className="section-title">
-            {t.players} <span className="muted">({players.length})</span>
-          </div>
-          <div className="players-list">
-            {players.length === 0 ? (
-              <div className="muted">—</div>
-            ) : (
-              players.map((p) => (
-                <ObPlayer
-                  key={p.id}
-                  player={p}
-                  lang={lang}
-                  onPickFollow={p.name.toLowerCase() !== "ob" ? () => pickObFollow(p.id) : undefined}
-                  followPicked={obCam.mode === "follow" && obCam.followId === p.id}
-                />
-              ))
-            )}
-          </div>
-        </div>
-      </section>
+    {/* Top control bar — back, room input, connect, Start, AI, ready/AI counts.
+        Replaces the entire former left column so the camera wall + iframe can
+        own the rest of the page. Keeps host/OB controls reachable without
+        eating real estate from the actual focus (everyone's faces). */}
+    <div className="ob-topbar" aria-label="ob-controls">
+      <button
+        type="button"
+        className="ghost ob-topbar__back"
+        onClick={handleBackToLobby}
+        title={lang === "zh" ? "返回大厅创建角色" : "Back to lobby"}
+      >
+        ← {lang === "zh" ? "返回大厅" : "Back to lobby"}
+      </button>
+      <input
+        className="ob-room-input ob-topbar__room"
+        value={room}
+        onChange={(e) => setRoom(e.target.value)}
+        placeholder={t.roomPlaceholder}
+        aria-label={t.roomLabel}
+      />
+      {conn === "open" ? (
+        <button className="ob-topbar__btn" onClick={() => disconnect()}>disconnect</button>
+      ) : (
+        <button className="primary ob-topbar__btn" onClick={handleConnect}>connect</button>
+      )}
 
-      <section className="card stack ob-scene-card" aria-label="ob-right">
+      {!gameLive ? (
+        <button
+          type="button"
+          className={
+            "primary ob-topbar__btn ob-topbar__btn--start" +
+            (allReady ? " is-all-ready" : "")
+          }
+          onClick={handleStartGame}
+          disabled={!canStart}
+          aria-disabled={!canStart}
+        >
+          {t.obStartGame}
+        </button>
+      ) : null}
+
+      <span className="muted ob-topbar__count" title={lang === "zh" ? "已就绪 / 总人数" : "ready / total"}>
+        <span key={`r-${readyCount}`} className="nz-num-pop">{readyCount}</span>
+        {" / "}
+        <span key={`t-${totalPlayers}`} className="nz-num-pop">{totalPlayers}</span>
+      </span>
+
+      <button
+        type="button"
+        className="ob-topbar__btn ob-ai-btn"
+        onClick={handleSpawnAi}
+        disabled={!canSpawnAi}
+        title={lang === "zh" ? "添加 4 个 AI 玩家" : "Spawn 4 AI players"}
+      >
+        + AI
+      </button>
+      <button
+        type="button"
+        className="ob-topbar__btn ob-ai-btn ob-ai-btn--ghost"
+        onClick={handleDespawnAi}
+        disabled={conn !== "open" || aiCount === 0}
+      >
+        {lang === "zh" ? "清除 AI" : "Clear AI"}
+      </button>
+      <span key={aiFlashKey} className="muted ob-topbar__count is-flash">
+        <span key={`ai-${aiCount}`} className="nz-num-pop">{aiCount}</span>
+        {" AI"}
+      </span>
+
+      {error ? <div className="ob-topbar__err">{error}</div> : null}
+    </div>
+
+    <div className="ob-grid ob-grid--single">
+      <section className="card stack ob-scene-card ob-scene-card--full" aria-label="ob-right">
         <div className="section-title ob-scene-title">
           <span>
             {t.cameras} <span className="muted">({liveCount} live)</span>
@@ -845,48 +819,6 @@ const ObFaceSlot = memo(
     prev.followSelected === next.followSelected &&
     prev.pickable === next.pickable
 );
-
-function ObPlayer({
-  player,
-  lang,
-  onPickFollow,
-  followPicked
-}: {
-  player: PublicPlayer;
-  lang: Lang;
-  onPickFollow?: () => void;
-  followPicked?: boolean;
-}) {
-  const t = dict(lang);
-  const animal = obAnimalLabel(lang, player.animal, t.ownAnimalUnknown);
-  return (
-    <div className={`player${followPicked ? " ob-player-picked" : ""}`}>
-      <span className="name ob-obname">
-        {onPickFollow ? (
-          <button
-            type="button"
-            className="ob-player-face-hit"
-            onClick={onPickFollow}
-            aria-label={t.obCamFollow + ": " + player.name}
-          >
-            <PlayerRowFace player={player} />
-          </button>
-        ) : (
-          <PlayerRowFace player={player} />
-        )}
-        <span className="ob-obname-col">
-          <span>{player.name}</span>
-          <span className="ob-player-animal" title={animal}>
-            {animal}
-          </span>
-        </span>
-      </span>
-      <span className="badge">
-        {`♥ ${player.lives} · V ${player.violations}`}
-      </span>
-    </div>
-  );
-}
 
 /**
  * Floating HUD overlay shown on top of the main-scene iframe when OB is following a
