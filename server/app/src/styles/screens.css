@@ -3328,6 +3328,15 @@
   width: min(640px, 100%);
   max-height: 100%;
   display: grid;
+  /* CRITICAL: without an explicit column track the implicit grid uses
+     `auto` columns, which size to min-content.  When a child (e.g. the
+     Class photo grid with aspect-ratio'd image tiles) has a min-content
+     larger than the card's declared width, the auto column expands and
+     the card's children visibly bleed past the rounded card border on
+     desktop browsers.  Pinning the single column to `minmax(0, 1fr)`
+     keeps every grid-item child clamped to the card's content width
+     no matter how chunky their intrinsic size is. */
+  grid-template-columns: minmax(0, 1fr);
   gap: 14px;
   padding: 26px 22px 22px;
   border-radius: var(--nz-radius-lg);
@@ -3337,6 +3346,13 @@
   text-align: center;
   isolation: isolate;
   animation: nz-endgame-card 480ms cubic-bezier(0.2, 1.4, 0.3, 1) both;
+  /* Defensive: as a flex item inside `.endgame-mask` the card defaults
+     to `min-width: auto`.  An over-eager grandchild grid (Class photo
+     with aspect-ratio image tiles) can otherwise push min-content past
+     the declared 640px cap and spill past the viewport — exactly the
+     "Summary card right edge runs off-screen" bug we kept getting on
+     desktop browsers. */
+  min-width: 0;
 }
 .endgame-card--alive {
   border-color: rgba(120, 200, 140, 0.55);
@@ -4482,6 +4498,14 @@
 .endgame-group {
   display: grid;
   gap: 8px;
+  /* Parent `.endgame-card` is itself a grid; this section is a grid
+     item, which defaults to `min-width: auto` (= min-content).  When
+     the inner `.endgame-group__grid` carries aspect-ratio'd image
+     tiles its min-content can balloon past the card's max-width and
+     visibly bleed past the card border on desktop viewports.  Force
+     `min-width: 0` so the section honours the card's width cap and
+     the inner grid actually fits its tracks. */
+  min-width: 0;
 }
 .endgame-group__head {
   text-align: center;
@@ -4495,6 +4519,16 @@
   border-radius: var(--nz-radius);
   border: 1px dashed var(--nz-cream-line);
   background: rgba(0, 0, 0, 0.32);
+  /* This grid is a grid item inside `.endgame-group` (also a grid).
+     Without an explicit `min-width: 0` it inherits `auto` (=
+     min-content), and the `aspect-ratio: 1` image tiles inside the
+     cells inflate min-content high enough that the grid balloons
+     past the card border — that's exactly the "Class photo grid
+     overshoots the card on a desktop browser" bug. */
+  min-width: 0;
+  /* Belt and braces: keep the grid clamped to its container, even if
+     some descendant later resurrects the same min-content blow-up. */
+  max-width: 100%;
 }
 @media (min-width: 720px) {
   .endgame-group__grid {
@@ -4506,6 +4540,15 @@
   display: grid;
   gap: 2px;
   text-align: center;
+  /* CRITICAL: grid items default to `min-width: auto` (= min-content),
+     which equals the longest unbreakable inline child.  The
+     `.endgame-group__name` below uses `white-space: nowrap`, so the
+     min-content of each cell is the FULL name string.  That defeats
+     `minmax(0, 1fr)` on the parent grid — the 5-col layout starts
+     bleeding past the card border.  Forcing `min-width: 0` lets the
+     cell shrink with its track so the grid actually fits inside the
+     card on every viewport. */
+  min-width: 0;
 }
 .endgame-group__cell img,
 .endgame-group__cell .endgame-group__initial {
@@ -4636,8 +4679,13 @@
 @media (min-width: 1024px) and (orientation: landscape) {
   /* Wider OB / desktop — class photo gets 5 columns at a comfortable
      min size, awards keep their 3-card row, roster gets 3 columns so
-     20 players fit on screen. */
-  .endgame-group__grid {
+     20 players fit on screen.
+     IMPORTANT: scoped to `.endgame-stage--ob` only.  The player stage
+     is capped at `min(640px, 100%)`, but `repeat(5, minmax(120px, 1fr))`
+     forces a 668px minimum on the grid which then bleeds outside the
+     card and out of the viewport on a desktop browser.  OB's stage is
+     `min(1200px, 96vw)` so the wide grid fits comfortably there. */
+  .endgame-stage--ob .endgame-group__grid {
     grid-template-columns: repeat(5, minmax(120px, 1fr));
     gap: 12px;
     padding: 10px;
