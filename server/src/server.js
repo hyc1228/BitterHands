@@ -37,6 +37,15 @@ const CONE_LEN = 260;
 const CONE_HALF = Math.PI / 6;
 const CHAL_MAX = 8;
 const MONITOR_TICK_MS = 100;
+/** Scaling rule: 1 monitor per N humans, minimum 1.  GDD: "every 5 players,
+ *  add another supervisor".  Bumped down or up by `_recomputeMonitorRoster()`
+ *  on game start + every JOIN/onClose while a round is live. */
+const PLAYERS_PER_MONITOR = 5;
+/** Hard ceiling so a flooded room (or AI-bot stress test pushing past 20)
+ *  doesn't end up with more flashlights than there is map.  Matches the
+ *  MAX_ROOM_PLAYERS / 5 ceiling but kept explicit so changing the cap on
+ *  one side doesn't silently change the monitor count. */
+const MAX_MONITORS = 6;
 const MAIN_SCENE_ITEM_DEFS = [
   { id: "h1", type: "heart", x: CX_MS - 80, y: CY_MS - 340 },
   { id: "h2", type: "heart", x: CX_MS - 320, y: CY_MS - 60 },
@@ -129,20 +138,25 @@ export default class Server {
     this._monitorVoiceSeq = 0;
 
     /**
-     * Server-authoritative Monitor (AI flashlight) state. Mirror of the iframe
-     * `state.monitor` shape. Ticks at MONITOR_TICK_MS while the room is started
-     * and the result is broadcast to every connection so all phones + the OB
-     * tab see the same position / aim / lock target.
+     * Server-authoritative Monitor (AI flashlight) roster.  Multiple monitors
+     * scale with the human player count via `_recomputeMonitorRoster()`
+     * (1 per `PLAYERS_PER_MONITOR`, capped at `MAX_MONITORS`).  Each entry
+     * ticks independently at MONITOR_TICK_MS and the full list is broadcast
+     * so every phone + the OB tab render the same N flashlights.
      *
-     * @type {{
-     *   x: number, y: number, aimAngle: number, mode: "sweep"|"locked",
-     *   moving: boolean, targetId: string|null, lockTimer: number,
-     *   sweepDir: 1|-1, sweepTimer: number,
+     * Empty between rounds; populated when the game starts and adjusted on
+     * JOIN / onClose while a round is live.  Ids are `m0`..`m{N-1}` so the
+     * iframe can upsert by id without rebuilding nodes every frame.
+     *
+     * @type {Array<{
+     *   id: string, x: number, y: number, aimAngle: number,
+     *   mode: "sweep"|"locked", moving: boolean, targetId: string|null,
+     *   lockTimer: number, sweepDir: 1|-1, sweepTimer: number,
      *   patrolTarget: {x:number,y:number}|null, patrolTimer: number,
      *   lured: {x:number,y:number}|null, retargetIn: number
-     * }}
+     * }>}
      */
-    this.monitor = this._initialMonitorState();
+    this.monitors = [];
 
     /** Latest known position per player from MAIN_SCENE_STATE; the monitor
      * tick uses these to chase / cone-detect. Cleared on game end. */
@@ -164,22 +178,87 @@ export default class Server {
     this._aiTick = null;
   }
 
-  _initialMonitorState() {
+  /**
+   * Build a fresh monitor record for slot index `slot` out of `total` total.
+   * Spawns are spread around the map center on a circle so multiple monitors
+   * don't overlap on game start (would look like one fat flashlight).  Slot 0
+   * sits at the legacy single-monitor pose (top-center) so a 1-monitor room
+   * matches the old behaviour byte-for-byte.
+   */
+  _makeMonitor(id, slot, total) {
+    if (total <= 1) {
+      return {
+        id,
+        x: CX_MS,
+        y: CY_MS - 200,
+        aimAngle: 0,
+        mode: "sweep",
+        moving: false,
+        targetId: null,
+        lockTimer: 0,
+        sweepDir: 1,
+        sweepTimer: 1,
+        patrolTarget: null,
+        patrolTimer: 0,
+        lured: null,
+        retargetIn: 0
+      };
+    }
+    // Spread around a ring centered on the map. Start at the top so slot 0
+    // is roughly where the single-monitor build used to spawn.
+    const angle = -Math.PI / 2 + (slot / total) * Math.PI * 2;
+    const radius = 320;
+    const x = Math.max(MAP_BORDER, Math.min(MAP_W_MS - MAP_BORDER, CX_MS + Math.cos(angle) * radius));
+    const y = Math.max(MAP_BORDER, Math.min(MAP_H_MS - MAP_BORDER, CY_MS + Math.sin(angle) * radius));
     return {
-      x: CX_MS,
-      y: CY_MS - 200,
-      aimAngle: 0,
+      id,
+      x,
+      y,
+      aimAngle: angle,            // each monitor starts looking outward
       mode: "sweep",
       moving: false,
       targetId: null,
       lockTimer: 0,
-      sweepDir: 1,
-      sweepTimer: 1,
+      sweepDir: slot % 2 === 0 ? 1 : -1, // alternate scan dir so they don't sync up
+      sweepTimer: 1 + Math.random() * 2,
       patrolTarget: null,
       patrolTimer: 0,
       lured: null,
       retargetIn: 0
     };
+  }
+
+  /** GDD scaling rule: 1 monitor per PLAYERS_PER_MONITOR humans, min 1, capped. */
+  _targetMonitorCount() {
+    const humans = this._humanPlayerCount();
+    const target = Math.max(1, Math.ceil(humans / PLAYERS_PER_MONITOR));
+    return Math.min(MAX_MONITORS, target);
+  }
+
+  /**
+   * Add or remove monitors so `this.monitors.length === _targetMonitorCount()`.
+   * Idempotent + incremental: existing entries keep their pose / lock state, so
+   * a mid-round JOIN that triggers a new spawn doesn't yank flashlights off
+   * the players the existing monitors were already chasing.  Only called while
+   * the round is started; bails otherwise.
+   */
+  _recomputeMonitorRoster() {
+    if (!this.started) return;
+    const target = this._targetMonitorCount();
+    const current = this.monitors.length;
+    if (current === target) return;
+    if (current < target) {
+      for (let slot = current; slot < target; slot++) {
+        this.monitors.push(this._makeMonitor(`m${slot}`, slot, target));
+      }
+    } else {
+      // Drop the highest-index monitors. They're the most recently spawned,
+      // so removing them is least disruptive (a monitor that's been chasing
+      // someone for the last 30s sits at a low index and stays).
+      while (this.monitors.length > target) {
+        this.monitors.pop();
+      }
+    }
   }
 
   // -------------------------------------------------------------
@@ -449,6 +528,9 @@ export default class Server {
           };
           this.players.set(conn.id, player);
           this._broadcast(ServerEventTypes.PLAYER_JOINED, this._publicPlayer(player));
+          // Mid-round join: a 6th human means a 2nd supervisor spawns now,
+          // an 11th means a 3rd, etc.  No-op pre-round (`started === false`).
+          this._recomputeMonitorRoster();
         }
 
         this._sendRoomSnapshot();
@@ -598,7 +680,8 @@ export default class Server {
         this.started = true;
         this.startedAt = Date.now();
         this.mainSceneItemsRemoved = new Set();
-        this.monitor = this._initialMonitorState();
+        this.monitors = [];
+        this._recomputeMonitorRoster();
         this._playerPositions.clear();
         this._monitorLastLockAt.clear();
         this._startMonitorTick();
@@ -800,6 +883,9 @@ export default class Server {
             try { targetConn.close(4001, "kicked"); } catch { /* ignore */ }
           }
         } catch { /* ignore */ }
+        // Mirror onClose: keep the supervisor count in step with the
+        // post-kick headcount.
+        if (this.started) this._recomputeMonitorRoster();
         this._sendRoomSnapshot();
         return;
       }
@@ -823,7 +909,8 @@ export default class Server {
         this.started = true;
         this.startedAt = Date.now();
         this.mainSceneItemsRemoved = new Set();
-        this.monitor = this._initialMonitorState();
+        this.monitors = [];
+        this._recomputeMonitorRoster();
         this._playerPositions.clear();
         this._monitorLastLockAt.clear();
         this._startMonitorTick();
@@ -1018,14 +1105,25 @@ export default class Server {
           player.lives += 1;
           this._broadcast(ServerEventTypes.PLAYER_UPDATED, this._publicPlayer(player));
         }
-        // Alarm: lure the Monitor AI toward the pickup site server-side, so
-        // every client sees the same diversion (was previously each client's
-        // own independent monitor reacting locally).
+        // Alarm: lure the NEAREST monitor toward the pickup site server-side,
+        // so every client sees the same diversion (was previously each
+        // client's own independent monitor reacting locally).  With multiple
+        // monitors we pick just the closest one — distractions read better as
+        // "that one supervisor heard it" than every flashlight pivoting in
+        // unison.
         if (meta.type === "alarm") {
-          this.monitor.lured = { x: meta.x, y: meta.y };
-          this.monitor.retargetIn = 4;
-          this.monitor.mode = "sweep";
-          this.monitor.targetId = null;
+          let nearest = null;
+          let bestD = Infinity;
+          for (const mon of this.monitors) {
+            const d = Math.hypot(mon.x - meta.x, mon.y - meta.y);
+            if (d < bestD) { bestD = d; nearest = mon; }
+          }
+          if (nearest) {
+            nearest.lured = { x: meta.x, y: meta.y };
+            nearest.retargetIn = 4;
+            nearest.mode = "sweep";
+            nearest.targetId = null;
+          }
         }
         this._broadcast(ServerEventTypes.MAIN_SCENE_ITEM_TAKEN, {
           itemId,
@@ -1092,7 +1190,13 @@ export default class Server {
     if (this.started) {
       const realRemaining = Array.from(this.players.values())
         .filter((p) => !this._aiBots.has(p.id)).length;
-      if (realRemaining === 0) this._endGame();
+      if (realRemaining === 0) {
+        this._endGame();
+      } else {
+        // Otherwise keep the supervisor count in step with the new headcount
+        // (e.g. dropping from 6→5 humans removes the 2nd monitor mid-round).
+        this._recomputeMonitorRoster();
+      }
     }
   }
 
@@ -1149,7 +1253,13 @@ export default class Server {
     if (this.started) {
       const realRemaining = Array.from(this.players.values())
         .filter((p) => !this._aiBots.has(p.id)).length;
-      if (realRemaining === 0) this._endGame();
+      if (realRemaining === 0) {
+        this._endGame();
+      } else if (changed) {
+        // Stale-slot reaper just dropped at least one player — resync the
+        // supervisor count along with the cleaned-up roster.
+        this._recomputeMonitorRoster();
+      }
     }
   }
 
@@ -1260,7 +1370,7 @@ export default class Server {
       const now = Date.now();
       const dt = Math.min(0.5, (now - this._monitorLastTickAt) / 1000);
       this._monitorLastTickAt = now;
-      this._tickMonitor(dt);
+      this._tickMonitors(dt);
       this._broadcastMonitorState();
     }, MONITOR_TICK_MS);
   }
@@ -1271,20 +1381,26 @@ export default class Server {
     }
   }
   _broadcastMonitorState() {
-    const m = this.monitor;
     this._broadcast(ServerEventTypes.MONITOR_STATE, {
-      x: m.x,
-      y: m.y,
-      aimAngle: m.aimAngle,
-      mode: m.mode,
-      moving: m.moving,
-      targetId: m.targetId,
-      lured: m.lured ? { x: m.lured.x, y: m.lured.y } : null,
+      monitors: this.monitors.map((m) => ({
+        id: m.id,
+        x: m.x,
+        y: m.y,
+        aimAngle: m.aimAngle,
+        mode: m.mode,
+        moving: m.moving,
+        targetId: m.targetId,
+        lured: m.lured ? { x: m.lured.x, y: m.lured.y } : null
+      })),
       ts: Date.now()
     });
   }
-  _tickMonitor(dt) {
-    const m = this.monitor;
+  _tickMonitors(dt) {
+    for (const m of this.monitors) {
+      this._tickMonitor(dt, m);
+    }
+  }
+  _tickMonitor(dt, m) {
     const wrap = (a) => {
       while (a > Math.PI) a -= 2 * Math.PI;
       while (a < -Math.PI) a += 2 * Math.PI;
@@ -1439,6 +1555,9 @@ export default class Server {
     if (!this.started) return;
     this.started = false;
     this._stopMonitorTick();
+    // Drop the supervisor roster so a stale list doesn't leak into the next
+    // round — `_recomputeMonitorRoster()` rebuilds it on game start.
+    this.monitors = [];
     // Cancel any in-flight respawn timers so they don't fire post-round.
     for (const h of this._itemRespawnTimers.values()) clearTimeout(h);
     this._itemRespawnTimers.clear();

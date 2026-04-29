@@ -231,8 +231,11 @@ export type MainSceneItemInboxEntry =
   | { kind: "respawn"; data: MainSceneItemRespawn }
   | { kind: "resync"; removedItemIds: string[] };
 
-/** Authoritative Monitor (AI flashlight) pose, broadcast at ~10 Hz. */
-export interface MonitorStateMessage {
+/** One supervisor's authoritative pose. Multiple supervisors can be present;
+ *  count scales with the human player roster (1 per 5, capped server-side). */
+export interface MonitorPose {
+  /** Stable id (`m0`, `m1`, ...) so iframe consumers can upsert by id. */
+  id: string;
   x: number;
   y: number;
   aimAngle: number;
@@ -240,6 +243,11 @@ export interface MonitorStateMessage {
   moving: boolean;
   targetId: string | null;
   lured: { x: number; y: number } | null;
+}
+
+/** Authoritative Monitor (AI flashlight) roster, broadcast at ~10 Hz. */
+export interface MonitorStateMessage {
+  monitors: MonitorPose[];
   /** Wall-clock timestamp from the server; clients can use it to drop stale frames. */
   ts: number;
 }
