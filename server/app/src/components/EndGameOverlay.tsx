@@ -8,6 +8,7 @@ import { Animals, animalEmoji } from "../party/protocol";
 import type {
   GameEnded,
   GameEndedAward,
+  GameEndedRevealEntry,
   AnimalCode,
   Lang,
   FaceCounts,
@@ -17,7 +18,18 @@ import type {
 import type { dict as dictFn } from "../i18n";
 
 type Dict = ReturnType<typeof dictFn>;
-type RevealEntry = GameEnded["reveal"][number];
+/**
+ * Hydrated reveal entry: server-side metadata from `GAME_ENDED.reveal[]`
+ * plus the heavy media (highlights, fallback frames, portrait sources)
+ * that arrives via separate `GAME_ENDED_MEDIA` broadcasts.  The ceremony
+ * renders against this merged shape so every panel stays oblivious to
+ * the split-message wire protocol.  Media fields stay optional because
+ * the matching `GAME_ENDED_MEDIA` may not have arrived yet, may have
+ * been pruned by the server's size guard, or may have come from an
+ * older "single-message" server build that embedded everything in
+ * `GAME_ENDED.reveal[]` directly (handled below by the merge fallback).
+ */
+type RevealEntry = GameEndedRevealEntry;
 type AwardKey = "mouth" | "shake" | "blink";
 
 const BURST_PLAY_INTERVAL_MS = 110; // tile frame swap rate (≈9 fps)
@@ -51,6 +63,7 @@ export default function EndGameOverlay({ viewerRole = "player", homePath }: Prop
   const t = dict(lang);
   const nav = useNavigate();
   const gameEnded = usePartyStore((s) => s.gameEnded);
+  const gameEndedMedia = usePartyStore((s) => s.gameEndedMedia);
   const myName = usePartyStore((s) => s.myName);
   const clearGameEnded = usePartyStore((s) => s.clearGameEnded);
 
@@ -78,9 +91,30 @@ export default function EndGameOverlay({ viewerRole = "player", homePath }: Prop
     });
   }, []);
 
-  const realPlayers = useMemo(
-    () => (gameEnded?.reveal ?? []).filter((p) => p.name.toLowerCase() !== "ob"),
-    [gameEnded]
+  // Merge each player's metadata reveal entry with the heavy media that
+  // arrives in separate GAME_ENDED_MEDIA broadcasts.  Modern servers send
+  // an empty media payload up-front (or none yet) and stream the bursts
+  // afterwards; older "single-message" servers embedded everything inline.
+  // The merge prefers a freshly-arrived media entry if present, but falls
+  // back to legacy fields baked into the reveal so the overlay keeps
+  // working against either server build.  Recomputed whenever any media
+  // message lands so ceremony tiles light up progressively.
+  const realPlayers = useMemo<RevealEntry[]>(
+    () =>
+      (gameEnded?.reveal ?? [])
+        .filter((p) => p.name.toLowerCase() !== "ob")
+        .map((p) => {
+          const m = gameEndedMedia.get(p.id);
+          if (!m) return p;
+          return {
+            ...p,
+            highlights: m.highlights ?? p.highlights,
+            avatarUrl: m.avatarUrl ?? p.avatarUrl ?? null,
+            lastFrame: m.lastFrame ?? p.lastFrame ?? null,
+            fallbackBurst: m.fallbackBurst ?? p.fallbackBurst ?? []
+          };
+        }),
+    [gameEnded, gameEndedMedia]
   );
   const survivors = useMemo(() => realPlayers.filter((p) => p.alive !== false), [realPlayers]);
   const eliminated = useMemo(() => realPlayers.filter((p) => p.alive === false), [realPlayers]);
@@ -91,6 +125,30 @@ export default function EndGameOverlay({ viewerRole = "player", homePath }: Prop
   const isPlayer = viewerRole !== "ob";
   const youLived = isPlayer && viewerEntry ? viewerEntry.alive !== false : false;
 
+  // Diagnostic: surface ceremony render counts so a "background but empty"
+  // failure in the field points at the right layer immediately. If this
+  // never fires, the overlay isn't even mounting (no GAME_ENDED received).
+  // If it fires with realPlayers=0, the server's reveal payload was empty.
+  // If it fires with realPlayers>0 but the ceremony still looks blank,
+  // suspect a render-time error in one of the panels (check the next log
+  // line — React tends to spew error stacks adjacent to this).
+  useEffect(() => {
+    if (!gameEnded) return;
+    // eslint-disable-next-line no-console
+    console.info(
+      "[ceremony] EndGameOverlay render",
+      {
+        stage: stage.kind + (stage.kind === "award" ? `:${stage.key}` : ""),
+        revealRaw: gameEnded.reveal?.length ?? 0,
+        realPlayers: realPlayers.length,
+        survivors: survivors.length,
+        eliminated: eliminated.length,
+        viewerRole,
+        mediaArrived: gameEndedMedia.size
+      }
+    );
+  }, [gameEnded, stage, realPlayers, survivors, eliminated, viewerRole, gameEndedMedia]);
+
   if (!gameEnded) return null;
 
   const handleHome = () => {
@@ -99,13 +157,45 @@ export default function EndGameOverlay({ viewerRole = "player", homePath }: Prop
   };
   const handleSkip = () => setStage({ kind: "summary" });
 
+  // Hard-fallback: if the server somehow shipped a GAME_ENDED with an
+  // empty reveal list, render a clear placeholder card instead of an
+  // invisible "background only" panel — that exact symptom kept showing
+  // up in the field and was indistinguishable from a hung render. With
+  // this a tester can immediately see "ceremony fired but had 0 players"
+  // in big text rather than a silent black overlay.
+  const ceremonyEmpty = realPlayers.length === 0;
+
+  // True while an award stage is in its locked reveal-dwell — the parent uses
+  // this to disable the Skip button so a stray tap on "Skip" can't blast
+  // past the gold winner the moment they appear. AwardPanel owns the
+  // dwell-timer; it pulses this up via callback below.
+  const [awardDwellActive, setAwardDwellActive] = useState(false);
+
   const stageClass =
     "endgame-stage" + (viewerRole === "ob" ? " endgame-stage--ob" : "");
 
   return (
     <div className="endgame-mask" role="dialog" aria-modal="true" aria-labelledby="endgameTitle">
       <div className={stageClass} key={stageKey(stage)}>
-        {stage.kind === "intro" ? (
+        {ceremonyEmpty ? (
+          <div className="endgame-card endgame-intro" role="alert">
+            <div className="endgame-eyebrow">{t.endGameTitle}</div>
+            <h1 id="endgameTitle" className="endgame-headline endgame-intro__head">
+              {lang === "zh" ? "本局没有玩家数据" : "No round data to show"}
+            </h1>
+            <p className="endgame-sub muted">
+              {lang === "zh"
+                ? "服务端发来了游戏结束事件，但玩家名单是空的。请检查 PartyKit 部署是否最新，或在控制台查看 [ceremony] 日志。"
+                : "The server announced game-end but the player list was empty. Make sure the PartyKit deploy is up to date, then check the [ceremony] logs in the browser console."}
+            </p>
+            <div className="endgame-actions">
+              <button className="primary" onClick={handleHome}>
+                {t.endGameBackHome}
+              </button>
+            </div>
+          </div>
+        ) : null}
+        {!ceremonyEmpty && stage.kind === "intro" ? (
           <IntroPanel
             t={t}
             survivors={survivors.length}
@@ -113,7 +203,7 @@ export default function EndGameOverlay({ viewerRole = "player", homePath }: Prop
             onNext={advance}
           />
         ) : null}
-        {stage.kind === "award" ? (
+        {!ceremonyEmpty && stage.kind === "award" ? (
           <AwardPanel
             t={t}
             kind={stage.key}
@@ -123,9 +213,10 @@ export default function EndGameOverlay({ viewerRole = "player", homePath }: Prop
             lang={lang}
             viewerRole={viewerRole}
             onNext={advance}
+            onDwellChange={setAwardDwellActive}
           />
         ) : null}
-        {stage.kind === "summary" ? (
+        {!ceremonyEmpty && stage.kind === "summary" ? (
           <SummaryPanel
             t={t}
             lang={lang}
@@ -144,7 +235,19 @@ export default function EndGameOverlay({ viewerRole = "player", homePath }: Prop
 
       {stage.kind !== "summary" ? (
         <div className="endgame-skip">
-          <button type="button" className="ghost" onClick={handleSkip}>
+          <button
+            type="button"
+            className="ghost"
+            onClick={handleSkip}
+            disabled={awardDwellActive}
+            title={
+              awardDwellActive
+                ? lang === "zh"
+                  ? "颁奖时刻 · 看完获奖名单再跳过"
+                  : "Hold for the winner — Skip unlocks after the reveal"
+                : undefined
+            }
+          >
             {t.endGameSkip}
           </button>
         </div>
@@ -252,6 +355,26 @@ const AWARD_META: Record<
 
 type AwardPhase = "collage" | "countdown" | "reveal";
 
+/** Award stage timing — tuned so phone viewers can actually read the gold
+ *  winner's name before tapping Next. Drumroll is noticeably slower
+ *  (≈3.6 s with bigger between-tick beats) and the reveal forces a long
+ *  dwell where Next stays disabled AND visibly counts down, so a stray
+ *  double-tap (or accidental Skip tap) can't blink past the podium.
+ *  6 s feels long when you're calmly reading; on a phone with a 5-name
+ *  podium it's actually about right. */
+const AWARD_TIMINGS = {
+  /** How long the collage breathes before the countdown overlay starts. */
+  collageMs: 1200,
+  /** Between-tick interval inside the 3 → 2 → 1 drumroll. */
+  tickMs: 950,
+  /** Forced dwell on the reveal phase before the Next button is enabled.
+   *  Long enough to read 3 podium rows + winner animal. The card still
+   *  stays open after the timer — only the auto-advance gate lifts. */
+  revealDwellMs: 6000,
+  /** Step size for the visible Next-button countdown (e.g. "Next (3…)"). */
+  countdownStepMs: 1000
+};
+
 function AwardPanel({
   t,
   kind,
@@ -260,7 +383,8 @@ function AwardPanel({
   youName,
   lang,
   viewerRole,
-  onNext
+  onNext,
+  onDwellChange
 }: {
   t: Dict;
   kind: AwardKey;
@@ -270,6 +394,10 @@ function AwardPanel({
   lang: Lang;
   viewerRole: "player" | "ob";
   onNext: () => void;
+  /** Called true while the locked reveal-dwell is active, false when the
+   *  Next button has unlocked (or before reveal even starts). Parent uses
+   *  this to disable the Skip button during the dwell. */
+  onDwellChange?: (active: boolean) => void;
 }) {
   const meta = AWARD_META[kind];
   const titleStr = t[meta.titleKey] as string;
@@ -289,28 +417,87 @@ function AwardPanel({
 
   const cardRef = useRef<HTMLDivElement | null>(null);
 
-  // Reveal cinematics: collage breathes for ~1s, then a 2.4s drumroll
-  // (3 → 2 → 1 → ✦) overlays it, then the winner block stamps in with
-  // a confetti burst. Resets each time `kind` changes (next award).
+  // Reveal cinematics: collage breathes, then a slowed 3 → 2 → 1 drumroll
+  // overlays it, then the winner block stamps in with a confetti burst.
+  // After reveal a `revealDwellMs` gate keeps Next disabled long enough to
+  // actually read the podium — the previous version let an impatient Next
+  // tap clear the gold winner's name before the eye could land on it.
+  // Resets each time `kind` changes (next award).
   const [phase, setPhase] = useState<AwardPhase>("collage");
   const [tick, setTick] = useState(3);
+  const [revealReady, setRevealReady] = useState(false);
+  // Visible "Next (3…)" countdown so phone viewers can SEE that the button
+  // is intentionally disabled and that the screen will hold for N more
+  // seconds. Without this, a disabled grey button reads as "broken" and
+  // people frantically tap somewhere else (like the Skip button).
+  const [secondsLeft, setSecondsLeft] = useState<number>(
+    Math.ceil(AWARD_TIMINGS.revealDwellMs / 1000)
+  );
   useEffect(() => {
     setPhase("collage");
     setTick(3);
-    const t1 = window.setTimeout(() => setPhase("countdown"), 1000);
-    const t2 = window.setTimeout(() => setTick(2), 1000 + 700);
-    const t3 = window.setTimeout(() => setTick(1), 1000 + 1400);
-    const t4 = window.setTimeout(() => setPhase("reveal"), 1000 + 2100);
+    setRevealReady(false);
+    const totalDwellSec = Math.ceil(AWARD_TIMINGS.revealDwellMs / 1000);
+    setSecondsLeft(totalDwellSec);
+    const { collageMs, tickMs, revealDwellMs, countdownStepMs } = AWARD_TIMINGS;
+    const countdownStart = collageMs;
+    const tick2At = countdownStart + tickMs;
+    const tick1At = countdownStart + tickMs * 2;
+    const revealAt = countdownStart + tickMs * 3;
+    const dwellEndsAt = revealAt + revealDwellMs;
+    const t1 = window.setTimeout(() => setPhase("countdown"), countdownStart);
+    const t2 = window.setTimeout(() => setTick(2), tick2At);
+    const t3 = window.setTimeout(() => setTick(1), tick1At);
+    const t4 = window.setTimeout(() => {
+      setPhase("reveal");
+      onDwellChange?.(true);
+    }, revealAt);
+    const t5 = window.setTimeout(() => {
+      setRevealReady(true);
+      onDwellChange?.(false);
+    }, dwellEndsAt);
+    // Tick the visible per-second countdown that shows on the Next button.
+    // Starts the moment we enter `reveal` and counts down to 0; once the
+    // dwell ends, t5 above flips revealReady=true and the button label
+    // becomes the regular "Next" again.
+    let interval: number | null = null;
+    const tStartCountdown = window.setTimeout(() => {
+      let remaining = totalDwellSec;
+      setSecondsLeft(remaining);
+      interval = window.setInterval(() => {
+        remaining -= 1;
+        if (remaining <= 0) {
+          if (interval !== null) {
+            window.clearInterval(interval);
+            interval = null;
+          }
+          setSecondsLeft(0);
+        } else {
+          setSecondsLeft(remaining);
+        }
+      }, countdownStepMs);
+    }, revealAt);
     return () => {
       window.clearTimeout(t1);
       window.clearTimeout(t2);
       window.clearTimeout(t3);
       window.clearTimeout(t4);
+      window.clearTimeout(t5);
+      window.clearTimeout(tStartCountdown);
+      if (interval !== null) window.clearInterval(interval);
+      // Stage was unmounted (advanced/ended) — release the parent's Skip
+      // gate so re-entering an award panel doesn't get stuck disabled.
+      onDwellChange?.(false);
     };
+    // `onDwellChange` intentionally omitted from deps: it changes identity
+    // every render of the parent which would re-run this effect every tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kind]);
 
-  // Allow tap-anywhere to skip ahead in the cinematic — useful for impatient
-  // players, while OB / spectators tend to let it play.
+  // Allow tap-anywhere to skip ahead through the drumroll — useful for impatient
+  // players. Tapping during `reveal` no longer collapses the dwell gate; viewers
+  // still have to wait `revealDwellMs` (or hit Next once it un-disables) so the
+  // winner's name is visible long enough to read.
   const skipToReveal = useCallback(() => {
     if (phase !== "reveal") setPhase("reveal");
   }, [phase]);
@@ -397,9 +584,16 @@ function AwardPanel({
           type="button"
           className="primary"
           onClick={(e) => { e.stopPropagation(); onNext(); }}
-          disabled={phase !== "reveal"}
+          disabled={phase !== "reveal" || !revealReady}
         >
-          {t.endGameNext}
+          {/* Visible per-second countdown while Next is locked. Disabled +
+              labelled grey buttons read as "broken" on phones, so we show
+              the actual seconds remaining ("Next · 6s") so the user knows
+              the screen is intentionally holding. Once the dwell elapses
+              the label collapses back to plain `endGameNext`. */}
+          {phase === "reveal" && !revealReady && secondsLeft > 0
+            ? `${t.endGameNext} · ${secondsLeft}s`
+            : t.endGameNext}
         </button>
       </div>
     </div>
@@ -536,13 +730,25 @@ async function encodeGroupPhotoAsGif(
     players.map(async (p): Promise<Cell> => {
       const h = p.highlights;
       const burst = h?.mouth?.[0] ?? h?.blink?.[0] ?? h?.shake?.[0] ?? null;
+      // Same fallback chain as the on-screen class photo: prefer a real
+      // burst, then the server's rolling fallback-burst buffer, then a
+      // single still — so the saved group GIF cycles every face that has
+      // any motion data, instead of rendering most of the grid as
+      // identical stills.
+      const fallbackArr = (p.fallbackBurst ?? []).filter(
+        (s) => typeof s === "string" && s.length > 0
+      );
       const sources: string[] = burst && burst.length > 0
         ? burst
-        : p.lastFrame
-          ? [p.lastFrame]
-          : p.avatarUrl
-            ? [p.avatarUrl]
-            : [];
+        : fallbackArr.length >= 2
+          ? fallbackArr
+          : p.lastFrame
+            ? [p.lastFrame]
+            : fallbackArr.length === 1
+              ? fallbackArr
+              : p.avatarUrl
+                ? [p.avatarUrl]
+                : [];
       const imgs = await Promise.all(
         sources.map(
           (src) =>
@@ -714,11 +920,24 @@ function collageTiles(
     const bursts = (hl?.[kind] ?? []).slice(0, 3);
     const isWinner = !!winnerId && p.id === winnerId;
     const initial = p.name.charAt(0).toUpperCase();
+    // Fallback chain prefers ANY multi-frame burst for this award kind →
+    // then the rolling fallback-burst (last few camera frames sampled with
+    // temporal spread on the server, ≥2 frames means a real GIF) → then a
+    // single still (lastFrame / avatarUrl) → then the initials letter.
+    // Without the fallback-burst step every player without a highlight
+    // event in the round rendered as a frozen image, which is why a
+    // 2-player test where only one face triggered events showed
+    // "second player is a static image".
+    const fallback = (p.fallbackBurst ?? []).filter((s) => typeof s === "string" && s.length > 0);
     let primaryFrames: HighlightBurst | null = null;
     if (bursts.length > 0) {
       primaryFrames = bursts[0];
+    } else if (fallback.length >= 2) {
+      primaryFrames = fallback;
     } else if (p.lastFrame) {
       primaryFrames = [p.lastFrame];
+    } else if (fallback.length === 1) {
+      primaryFrames = fallback;
     } else if (p.avatarUrl) {
       primaryFrames = [p.avatarUrl];
     }
@@ -997,14 +1216,25 @@ function GroupPhoto({
       players.map((p) => {
         const h = p.highlights;
         const burst = h?.mouth?.[0] ?? h?.blink?.[0] ?? h?.shake?.[0] ?? null;
-        const frames =
+        // Fallback chain mirrors `collageTiles` — prefer a real multi-frame
+        // highlight burst, fall back to the server's rolling 3-frame
+        // camera buffer (so every player gets a GIF tile), then a single
+        // still, finally the initials letter rendered by the empty case.
+        const fallbackArr = (p.fallbackBurst ?? []).filter(
+          (s) => typeof s === "string" && s.length > 0
+        );
+        const frames: string[] =
           burst && burst.length > 0
             ? burst
-            : p.lastFrame
-              ? [p.lastFrame]
-              : p.avatarUrl
-                ? [p.avatarUrl]
-                : [];
+            : fallbackArr.length >= 2
+              ? fallbackArr
+              : p.lastFrame
+                ? [p.lastFrame]
+                : fallbackArr.length === 1
+                  ? fallbackArr
+                  : p.avatarUrl
+                    ? [p.avatarUrl]
+                    : [];
         return {
           id: p.id,
           name: p.name,

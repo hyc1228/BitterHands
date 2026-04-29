@@ -24,6 +24,16 @@ const MAX_ROOM_PLAYERS = 20;
 const MAX_AI_BOTS = 20;
 /** End-game ceremony: how many action-edge stills the server keeps per kind, per player. */
 const HIGHLIGHTS_MAX_PER_KIND = 3;
+/** End-game ceremony: how many recent camera frames to keep as a fallback
+ *  burst for each player. Used when a player triggered no mouth/shake/blink
+ *  highlights this round, so their class-photo / collage tile still cycles
+ *  multiple frames instead of being a still image. 3 is enough to read as a
+ *  GIF and small enough to fit comfortably in the GAME_ENDED payload. */
+const RECENT_FRAMES_MAX = 3;
+/** Minimum spacing between saved fallback-burst frames. CAMERA_FRAME arrives
+ *  ~5 fps; without this gap we'd save 3 adjacent stills and the tile would
+ *  look static. ~900ms gives a visible "the head moved" pulse between frames. */
+const RECENT_FRAMES_MIN_GAP_MS = 900;
 
 /** Must match `main scene/index.html` MAP_W / MAP_H and `state.items` ids/positions. */
 const MAP_W_MS = 1080;
@@ -33,8 +43,29 @@ const CY_MS = MAP_H_MS / 2;
 /** Mirror of iframe constants used by the Monitor AI tick. */
 const MAP_BORDER = 110;
 const MON_SPEED = 110;
-const CONE_LEN = 260;
-const CONE_HALF = Math.PI / 6;
+/** Max range of the flashlight cone for server-side detection. Tuned a hair
+ *  longer than the rendered `light range.svg` (~324 units) so the rule
+ *  "if you can see the flashlight on you, the Monitor sees you" actually
+ *  holds — previous 260 left a sliver where the visual cone landed on the
+ *  player but the server didn't react, which is what made the Monitor
+ *  feel "blind" up close. */
+const CONE_LEN = 330;
+/** Half-angle of the cone in radians (~35°). Slightly wider than the
+ *  visual SVG (~33°) to forgive minor pose drift. */
+const CONE_HALF = 0.62;
+/** Proximity detection: if any alive player is within this many units of
+ *  the Monitor, regardless of cone direction, the Monitor instantly turns
+ *  to face them and locks. Stops the "I'm hugging the rabbit, why won't
+ *  he see me" failure mode. */
+const NEAR_RADIUS = 95;
+/** How fast the Monitor sweeps its head when patrolling, in rad/s. Up
+ *  from 1.0 → 1.6 (~92°/s) so the cone passes over the same spot every
+ *  ~4 s instead of every ~6 s. */
+const SWEEP_RATE = 1.6;
+/** How fast the Monitor's aim snaps to a freshly-noticed nearby player.
+ *  Higher than the locked-chase rate (8 rad/s) because "you walked next
+ *  to the rabbit" should read as "INSTANT spot, not gradual rotate." */
+const NEAR_TURN_RATE = 12;
 const CHAL_MAX = 8;
 const MONITOR_TICK_MS = 100;
 /** Scaling rule: 1 monitor per N humans, minimum 1.  GDD: "every 5 players,
@@ -113,6 +144,16 @@ export default class Server {
 
     /** @type {Map<string, {dataUrl: string, ts: number}>} */
     this.lastCameraFrameByPlayerId = new Map();
+
+    /** Small ring buffer of recent camera frames per player, used by the
+     *  end-game ceremony as a "fallback burst" so every player tile
+     *  cycles SOMETHING even when they triggered zero highlight events
+     *  (mouth/shake/blink) during the round.  Sampled every
+     *  `RECENT_FRAMES_MIN_GAP_MS` so the saved frames have temporal
+     *  spread instead of three near-identical adjacent stills. Capped at
+     *  `RECENT_FRAMES_MAX` per player to bound memory + GAME_ENDED size.
+     *  @type {Map<string, Array<{dataUrl: string, ts: number}>>} */
+    this.recentCameraFramesByPlayerId = new Map();
 
     /** @type {Map<string, number>} */
     this._lastMainSceneAt = new Map();
@@ -337,6 +378,7 @@ export default class Server {
     this.players.delete(id);
     this._playerPositions.delete(id);
     this.lastCameraFrameByPlayerId.delete(id);
+    this.recentCameraFramesByPlayerId.delete(id);
     this._broadcast(ServerEventTypes.SYSTEM, {
       code: "PLAYER_LEFT",
       params: { name: id }
@@ -473,6 +515,19 @@ export default class Server {
         }
         const lang = msg?.lang === "zh" ? "zh" : "en";
 
+        // Try to reclaim a stale slot owned by the SAME name before reaping.
+        // Mobile clients reconnect with a fresh conn.id every time the WS
+        // drops (background tab, lock screen, network blip), so without
+        // this, the server treats every reconnect as a brand-new player —
+        // erasing the assigned animal / verdict / lives / ready flag and
+        // making other phones render the player with the wrong sprite.
+        // We skip this for OB / AI: OB tabs are name-collision-prone (often
+        // all literally "ob") and AI ids never collide with human conns.
+        const isObConn = name.toLowerCase() === "ob";
+        if (!isObConn && !this.players.get(conn.id)) {
+          this._reclaimStaleSlotByName(name, conn.id);
+        }
+
         // Reap dead slots (CF/PartyKit may not always fire `onClose` if a tab is killed,
         // a phone backgrounds the page, or the network drops without a TCP FIN). Without
         // this, MAX_ROOM_PLAYERS gets exhausted and new joiners see `room_full` until the
@@ -480,14 +535,23 @@ export default class Server {
         this._reapStaleSlots();
 
         const existing = this.players.get(conn.id);
-        // OB observer tabs always join — they don't consume a player slot,
-        // they're just spectators.  This lets multiple OBs watch a full room
-        // of 20 humans without any of them being kicked as `room_full`.
-        const isObConn = name.toLowerCase() === "ob";
         if (existing) {
           existing.name = name;
           existing.lang = lang;
           this._broadcast(ServerEventTypes.PLAYER_UPDATED, this._publicPlayer(existing));
+          // If this came from `_reclaimStaleSlotByName` the player already
+          // has an animal + rules card; resend it so the freshly-reconnected
+          // tab restores the role HUD without redoing onboarding.
+          if (existing.animal) {
+            try {
+              conn.send(JSON.stringify({
+                type: ServerEventTypes.PRIVATE_RULES_CARD,
+                data: this._rulesCardFor(existing)
+              }));
+            } catch {
+              /* ignore — best-effort restore */
+            }
+          }
         } else if (!isObConn && this._humanPlayerCount() >= MAX_ROOM_PLAYERS) {
           conn.send(
             JSON.stringify({
@@ -534,6 +598,9 @@ export default class Server {
         }
 
         this._sendRoomSnapshot();
+        // A new human joining bumps the participant total — if the round
+        // is already live, scale the rabbit pack to match.
+        this._syncLiveMonitorCount();
         return;
       }
 
@@ -790,6 +857,18 @@ export default class Server {
 
         const ts = Date.now();
         this.lastCameraFrameByPlayerId.set(conn.id, { dataUrl, ts });
+        // Also append to the rolling fallback-burst buffer used by the
+        // end-game ceremony so even players with zero highlight events get
+        // an animated class-photo tile instead of a single still image.
+        // We sample at most 1 frame per RECENT_FRAMES_MIN_GAP_MS to keep
+        // the burst visually distinct (≈3 frames spread over ~3 s).
+        const buf = this.recentCameraFramesByPlayerId.get(conn.id) ?? [];
+        const lastSample = buf[buf.length - 1];
+        if (!lastSample || ts - lastSample.ts >= RECENT_FRAMES_MIN_GAP_MS) {
+          buf.push({ dataUrl, ts });
+          if (buf.length > RECENT_FRAMES_MAX) buf.shift();
+          this.recentCameraFramesByPlayerId.set(conn.id, buf);
+        }
         // Don't echo the frame back to the sender — they don't render their own
         // tile in the OB face wall, and at 5 fps × N players this saves a lot of
         // pointless WS bytes on each client's downlink.
@@ -834,6 +913,10 @@ export default class Server {
         }
         this._ensureAiTick();
         this._sendRoomSnapshot();
+        // AI counts toward monitor scaling, so a mid-round "spawn AI" call
+        // (or even a pre-round one if the host spawns bots after Start) has
+        // to re-evaluate the rabbit pack. No-op when not started.
+        this._syncLiveMonitorCount();
         return;
       }
 
@@ -847,6 +930,7 @@ export default class Server {
           this._aiTick = null;
         }
         this._sendRoomSnapshot();
+        this._syncLiveMonitorCount();
         return;
       }
 
@@ -870,6 +954,7 @@ export default class Server {
         });
         this.players.delete(targetId);
         this.lastCameraFrameByPlayerId.delete(targetId);
+        this.recentCameraFramesByPlayerId.delete(targetId);
         this._lastMainSceneAt.delete(targetId);
         this._avatarByPlayerId.delete(targetId);
         // Hint the kicked WS to close itself; PartyKit lets us address a
@@ -1157,6 +1242,7 @@ export default class Server {
     this.players.delete(conn.id);
     this.owlGuessesByPlayerId.delete(conn.id);
     this.lastCameraFrameByPlayerId.delete(conn.id);
+    this.recentCameraFramesByPlayerId.delete(conn.id);
     this._lastMainSceneAt.delete(conn.id);
     this._avatarByPlayerId.delete(conn.id);
     if (this._gateProgressLastTs) this._gateProgressLastTs.delete(conn.id);
@@ -1218,6 +1304,68 @@ export default class Server {
   }
 
   /**
+   * Look for a player slot whose `name` matches `name` (exact, case-sensitive)
+   * but whose conn.id is NOT in active connections. If found, re-key it to
+   * `newConnId` so the reconnecting client picks up exactly where they left
+   * off — animal, rules, lives, ready flag, even highlight bursts. Side
+   * maps (avatar bytes, last camera frame, last main-scene ts, owl guesses,
+   * monitor lock-time, AI motion, _aiBots, _gateProgressLastTs, player
+   * positions) are all migrated atomically.
+   *
+   * Returns true when a reclaim happened.
+   */
+  _reclaimStaleSlotByName(name, newConnId) {
+    if (typeof this.party.getConnections !== "function") return false;
+    const live = new Set();
+    for (const c of this.party.getConnections()) live.add(c.id);
+    let staleId = null;
+    for (const [pid, p] of this.players.entries()) {
+      if (this._aiBots.has(pid)) continue;
+      if (p.name !== name) continue;
+      if (live.has(pid)) continue; // someone else is genuinely connected with this id
+      staleId = pid;
+      break;
+    }
+    if (!staleId) return false;
+    if (staleId === newConnId) return false;
+
+    // Re-key the player object itself.
+    const player = this.players.get(staleId);
+    this.players.delete(staleId);
+    player.id = newConnId;
+    this.players.set(newConnId, player);
+
+    // Move every per-player side map keyed by id. Anything missing the key
+    // is silently a no-op (the .get just returns undefined).
+    const moveOnMap = (m) => {
+      if (!m || typeof m.get !== "function" || typeof m.set !== "function") return;
+      const v = m.get(staleId);
+      if (v === undefined) return;
+      m.delete(staleId);
+      m.set(newConnId, v);
+    };
+    moveOnMap(this.owlGuessesByPlayerId);
+    moveOnMap(this.lastCameraFrameByPlayerId);
+    moveOnMap(this.recentCameraFramesByPlayerId);
+    moveOnMap(this._lastMainSceneAt);
+    moveOnMap(this._avatarByPlayerId);
+    moveOnMap(this._monitorLastLockAt);
+    moveOnMap(this._playerPositions);
+    if (this._gateProgressLastTs) moveOnMap(this._gateProgressLastTs);
+
+    // Avatar URL was minted with the OLD conn.id baked in; rewrite it so
+    // the restored client can keep loading the portrait.
+    if (player.avatarUrl && typeof player.avatarUrl === "string") {
+      const oldFrag = `id=${encodeURIComponent(staleId)}`;
+      const newFrag = `id=${encodeURIComponent(newConnId)}`;
+      if (player.avatarUrl.includes(oldFrag)) {
+        player.avatarUrl = player.avatarUrl.replace(oldFrag, newFrag);
+      }
+    }
+    return true;
+  }
+
+  /**
    * Clears `players` entries whose connection is no longer in `getConnections()`.
    * Called on every JOIN as a fallback when `onClose` was missed (mobile background,
    * tab kill, network drop, etc.). Cheap — O(players + connections).
@@ -1236,6 +1384,7 @@ export default class Server {
       this.players.delete(pid);
       this.owlGuessesByPlayerId.delete(pid);
       this.lastCameraFrameByPlayerId.delete(pid);
+      this.recentCameraFramesByPlayerId.delete(pid);
       this._lastMainSceneAt.delete(pid);
       this._avatarByPlayerId.delete(pid);
       if (p) {
@@ -1380,6 +1529,78 @@ export default class Server {
       this._monitorTick = null;
     }
   }
+  /** Total participants for monitor scaling: every real human + every AI
+   *  bot. OB observer tabs are excluded (they don't take a player slot). */
+  _participantCountForMonitors() {
+    let n = 0;
+    for (const p of this.players.values()) {
+      if (typeof p.name === "string" && p.name.toLowerCase() === "ob") continue;
+      n++;
+    }
+    return n;
+  }
+
+  /** Desired Monitor count given current participants. 1 per
+   *  `PLAYERS_PER_MONITOR` total players, but never less than 1 (the
+   *  primary ZooKeeper is always present so empty / tiny rooms still get
+   *  the supervision flavor). Rabbit count = this minus 1, capped. */
+  _desiredMonitorCount() {
+    const total = this._participantCountForMonitors();
+    const ratio = Math.floor(total / PLAYERS_PER_MONITOR);
+    const want = Math.max(1, ratio);
+    return Math.min(1 + MAX_EXTRA_MONITORS, want);
+  }
+
+  /** Refresh the monitor roster at game-start. Always keeps a primary
+   *  ZooKeeper at index 0; appends rabbit Monitors based on
+   *  `_desiredMonitorCount()`. */
+  _resetMonitorsForRound() {
+    const want = this._desiredMonitorCount();
+    const extras = Math.max(0, want - 1);
+    this.monitors = [this._initialMonitorState({ id: "main", kind: "main", spawnSlot: 0 })];
+    for (let i = 0; i < extras; i++) {
+      this.monitors.push(
+        this._initialMonitorState({
+          id: `rabbit_${i + 1}`,
+          kind: "rabbit",
+          spawnSlot: i + 1
+        })
+      );
+    }
+  }
+
+  /** Adjust the live monitor roster mid-round to match `_desiredMonitorCount()`.
+   *  Adds new rabbits at the back of the list, drops the rightmost rabbits
+   *  when the headcount falls. The primary ZooKeeper is never touched.
+   *  No-op when not started — `_resetMonitorsForRound()` already handles
+   *  the pre-game / start-of-round case. */
+  _syncLiveMonitorCount() {
+    if (!this.started) return;
+    const want = this._desiredMonitorCount();
+    const have = this.monitors.length;
+    if (have === want) return;
+    if (have < want) {
+      for (let i = have; i < want; i++) {
+        // Pick a fresh id; reuse the next free `rabbit_N` slot so OB / clients
+        // can dedupe by id across reconciliations.
+        let n = i;
+        let id = `rabbit_${n}`;
+        while (this.monitors.some((m) => m.id === id)) {
+          n++;
+          id = `rabbit_${n}`;
+        }
+        this.monitors.push(
+          this._initialMonitorState({ id, kind: "rabbit", spawnSlot: i })
+        );
+      }
+    } else {
+      // Drop trailing rabbits, never the primary at index 0.
+      this.monitors = this.monitors.slice(0, Math.max(1, want));
+    }
+    // Push an immediate broadcast so clients re-render flashlights
+    // without waiting for the next ~100ms tick.
+    this._broadcastMonitorState();
+  }
   _broadcastMonitorState() {
     this._broadcast(ServerEventTypes.MONITOR_STATE, {
       monitors: this.monitors.map((m) => ({
@@ -1410,17 +1631,53 @@ export default class Server {
     const inCone = (mx, my, ang, px, py) => {
       const dx = px - mx, dy = py - my;
       const d = Math.hypot(dx, dy);
-      if (d > CONE_LEN || d < 1) return false;
+      if (d > CONE_LEN || d < 0.5) return false;
       let bear = Math.atan2(dy, dx) - ang;
       bear = ((bear + Math.PI) % (2 * Math.PI)) - Math.PI;
       return Math.abs(bear) <= CONE_HALF;
     };
 
-    // ----- Alarm lure: tilt toward lure for retargetIn seconds, then resume sweep.
-    // Slowed turn rate: 4 rad/s used to feel like a teleport ("AI immediately
-    // looks over there"); 1.2 rad/s ≈ 70°/s gives the keeper a deliberate
-    // ~1.3 s head turn that reads as "noticing" instead of "snapping".
+    // Build the alive-player roster once per tick — used by every detection
+    // path below (cone, proximity, lure-passthrough). Skips dead players
+    // and any cached positions whose owner already left the room.
+    const alivePlayers = [];
+    for (const [pid, pos] of this._playerPositions.entries()) {
+      const player = this.players.get(pid);
+      if (!player || !player.alive) continue;
+      alivePlayers.push({ id: pid, x: pos.x, y: pos.y });
+    }
+    const nearestPlayer = (mx, my, radius) => {
+      let best = null;
+      let bestD = radius;
+      for (const p of alivePlayers) {
+        const d = Math.hypot(p.x - mx, p.y - my);
+        if (d < bestD) {
+          bestD = d;
+          best = p;
+        }
+      }
+      return best;
+    };
+
+    // ----- Alarm lure: tilt toward lure for retargetIn seconds, then resume
+    // sweep. Slowed turn rate: 4 rad/s used to feel like a teleport ("AI
+    // immediately looks over there"); 1.2 rad/s ≈ 70°/s gives the keeper a
+    // deliberate ~1.3 s head turn that reads as "noticing" instead of
+    // "snapping". BUT — even while distracted, a player literally hugging
+    // the keeper should break the lure and trigger a chase, otherwise the
+    // monitor reads as "deaf and blind" while a violator stands next to him.
     if (m.lured) {
+      const intruder = nearestPlayer(m.x, m.y, NEAR_RADIUS);
+      if (intruder) {
+        m.lured = null;
+        const desired = Math.atan2(intruder.y - m.y, intruder.x - m.x);
+        m.aimAngle += clamp(wrap(desired - m.aimAngle), -NEAR_TURN_RATE * dt, NEAR_TURN_RATE * dt);
+        m.targetId = intruder.id;
+        m.mode = "locked";
+        m.lockTimer = CHAL_MAX;
+        this._monitorLastLockAt.set(intruder.id, Date.now());
+        return;
+      }
       const desired = Math.atan2(m.lured.y - m.y, m.lured.x - m.x);
       m.aimAngle += clamp(wrap(desired - m.aimAngle), -1.2 * dt, 1.2 * dt);
       m.retargetIn -= dt;
@@ -1433,7 +1690,24 @@ export default class Server {
     }
 
     if (m.mode === "sweep") {
-      m.aimAngle += m.sweepDir * 1.0 * dt;
+      // Proximity check FIRST, every tick: if anyone is within NEAR_RADIUS
+      // (regardless of where the cone is pointing), the keeper instantly
+      // pivots to face them and locks. This is the single biggest fix to
+      // the "monitor doesn't even notice me when I'm right next to him"
+      // bug — the original logic only locked on cone hits, so walking up
+      // from behind / the side was a free pass.
+      const intruder = nearestPlayer(m.x, m.y, NEAR_RADIUS);
+      if (intruder) {
+        const desired = Math.atan2(intruder.y - m.y, intruder.x - m.x);
+        m.aimAngle += clamp(wrap(desired - m.aimAngle), -NEAR_TURN_RATE * dt, NEAR_TURN_RATE * dt);
+        m.targetId = intruder.id;
+        m.mode = "locked";
+        m.lockTimer = CHAL_MAX;
+        this._monitorLastLockAt.set(intruder.id, Date.now());
+        return;
+      }
+
+      m.aimAngle += m.sweepDir * SWEEP_RATE * dt;
       m.sweepTimer -= dt;
       if (m.sweepTimer <= 0) {
         m.sweepTimer = 2 + Math.random() * 3;
@@ -1457,17 +1731,13 @@ export default class Server {
       const pd = Math.hypot(pdx, pdy);
       m.moving = pd > 10;
       if (m.moving) {
-        m.x = clamp(m.x + (pdx / pd) * MON_SPEED * 0.55 * dt, MAP_BORDER, MAP_W_MS - MAP_BORDER);
-        m.y = clamp(m.y + (pdy / pd) * MON_SPEED * 0.55 * dt, MAP_BORDER, MAP_H_MS - MAP_BORDER);
+        // Bumped from 0.55x → 0.70x of MON_SPEED so the keeper covers more
+        // ground between sweeps and isn't trivially out-walked by a player.
+        m.x = clamp(m.x + (pdx / pd) * MON_SPEED * 0.7 * dt, MAP_BORDER, MAP_W_MS - MAP_BORDER);
+        m.y = clamp(m.y + (pdy / pd) * MON_SPEED * 0.7 * dt, MAP_BORDER, MAP_H_MS - MAP_BORDER);
       }
-      // Cone detect against alive players
-      const candidates = [];
-      for (const [pid, pos] of this._playerPositions.entries()) {
-        const player = this.players.get(pid);
-        if (!player || !player.alive) continue;
-        candidates.push({ id: pid, x: pos.x, y: pos.y });
-      }
-      const eligible = candidates.filter((p) =>
+      // Cone detect against alive players (already filtered above).
+      const eligible = alivePlayers.filter((p) =>
         inCone(m.x, m.y, m.aimAngle, p.x, p.y)
       );
       if (eligible.length > 0) {
@@ -1513,8 +1783,22 @@ export default class Server {
     const dx = target.x - m.x;
     const dy = target.y - m.y;
     const dist = Math.hypot(dx, dy);
-    const COMFORT = 150;
-    const RAMP = 70;
+    // While the target is within sight (cone OR proximity), keep refreshing
+    // the lock timer so a player who fails to break line-of-sight can't just
+    // wait out the chase. The lockTimer only really decays when the target
+    // has slipped away, giving the keeper a believable "I lost him" timeout.
+    const stillSeen =
+      dist <= NEAR_RADIUS ||
+      inCone(m.x, m.y, m.aimAngle, target.x, target.y);
+    if (stillSeen) {
+      m.lockTimer = Math.min(CHAL_MAX, m.lockTimer + dt * 1.5);
+    }
+    // Tighter chase: smaller comfort gap (140) and faster ramp (50) so the
+    // keeper actually closes the distance instead of "loitering" 150 units
+    // behind a moving target. Speed factor saturates at 1.0 within 50 units
+    // of the comfort radius, so the keeper is at full sprint while pursuing.
+    const COMFORT = 140;
+    const RAMP = 50;
     m.moving = dist > COMFORT;
     if (m.moving) {
       const speedFactor = Math.min(1, (dist - COMFORT) / RAMP);
@@ -1566,29 +1850,24 @@ export default class Server {
       this._endTimer = null;
     }
 
-    const revealList = Array.from(this.players.values()).map((p) => {
-      // Last live camera frame this player sent in. Used by the ceremony as a
-      // fallback portrait so the collage can still show every player's face
-      // even if their highlight bursts are sparse / empty.
-      const lastFrame = this.lastCameraFrameByPlayerId.get(p.id);
-      return {
-        id: p.id,
-        name: p.name,
-        animal: p.animal,
-        verdict: p.verdict,
-        alive: p.alive,
-        lives: p.lives,
-        violations: p.violations,
-        faceCounts: { ...p.faceCounts },
-        highlights: {
-          mouth: p.highlights.mouth.slice(),
-          shake: p.highlights.shake.slice(),
-          blink: p.highlights.blink.slice()
-        },
-        avatarUrl: p.avatarUrl ?? null,
-        lastFrame: lastFrame ? lastFrame.dataUrl : null
-      };
-    });
+    // Build a metadata-only reveal list for the headline GAME_ENDED.
+    // Heavy media (highlight bursts, fallback frames, avatar) ships in
+    // separate per-player GAME_ENDED_MEDIA broadcasts below — splitting
+    // keeps every WS frame well under PartyKit's ~1 MiB cap even at 20
+    // webcam-active players.  A single combined message at that scale
+    // would silently fail to broadcast and the ceremony would never
+    // appear on clients (the very bug this method now avoids).
+    const playerEntries = Array.from(this.players.values());
+    const revealList = playerEntries.map((p) => ({
+      id: p.id,
+      name: p.name,
+      animal: p.animal,
+      verdict: p.verdict,
+      alive: p.alive,
+      lives: p.lives,
+      violations: p.violations,
+      faceCounts: { ...p.faceCounts }
+    }));
     // Mario Party–style awards: highest count per face-action (only among players who
     // actually scored ≥1, ties broken by joined-order). OB renders a dedicated podium.
     const realPlayers = revealList.filter((p) => p.name.toLowerCase() !== "ob");
@@ -1616,6 +1895,12 @@ export default class Server {
     // Push a fresh snapshot too so `started=false` propagates to clients that route on snapshot
     // (Lobby / Onboard auto-redirect listeners).
     this._sendRoomSnapshot();
+    // Stream per-player media as separate broadcasts — each one carries
+    // ONE player's highlight bursts + fallback frames + avatar URL, sized
+    // to stay safely under the per-message limit.  Clients merge these
+    // into the ceremony tiles as they arrive (progressive enhancement;
+    // tiles render with letter fallbacks until their media lands).
+    this._broadcastEndGameMedia(playerEntries);
 
     const survivors = Array.from(this.players.values()).filter((p) => p.alive);
     const winner = survivors.length
@@ -1631,6 +1916,91 @@ export default class Server {
     } else {
       void this._dispatchMonitorLine({ kind: "game_ended", priority: 8, ttlMs: 9000 });
     }
+  }
+
+  /**
+   * Emit one GAME_ENDED_MEDIA broadcast per player, carrying highlight
+   * bursts + fallback frames + portrait sources.  Each message is sized
+   * via `_pruneMediaToFit` to stay under `MEDIA_SOFT_CAP_BYTES` so even
+   * a player with the maximum permitted bursts won't push a single WS
+   * frame past PartyKit's per-message limit.  Order isn't significant —
+   * clients accumulate them keyed by `playerId` and merge with the
+   * already-sent GAME_ENDED reveal entry.
+   *
+   * @param {Array<Player & { highlights: { mouth: string[][], shake: string[][], blink: string[][] } }>} playerEntries
+   */
+  _broadcastEndGameMedia(playerEntries) {
+    for (const p of playerEntries) {
+      const lastFrame = this.lastCameraFrameByPlayerId.get(p.id);
+      const recentBuf = this.recentCameraFramesByPlayerId.get(p.id) ?? [];
+      const fallbackBurst = recentBuf.map((f) => f.dataUrl);
+      const media = {
+        playerId: p.id,
+        highlights: {
+          mouth: p.highlights.mouth.map((b) => b.slice()),
+          shake: p.highlights.shake.map((b) => b.slice()),
+          blink: p.highlights.blink.map((b) => b.slice())
+        },
+        avatarUrl: p.avatarUrl ?? null,
+        lastFrame: lastFrame ? lastFrame.dataUrl : null,
+        fallbackBurst
+      };
+      const safeMedia = this._pruneMediaToFit(media);
+      this._broadcast(ServerEventTypes.GAME_ENDED_MEDIA, safeMedia);
+    }
+  }
+
+  /**
+   * Progressive media sizer: if the JSON-serialized payload is over
+   * MEDIA_SOFT_CAP_BYTES (≈ 800 KiB, leaves ~200 KiB headroom under the
+   * 1 MiB per-message limit), strip the heaviest contributions in priority
+   * order until it fits.  We keep the cheapest "always show something"
+   * portrait sources (lastFrame, then avatarUrl) and degrade the bursts
+   * first because the ceremony tolerates fewer/smaller bursts gracefully.
+   *
+   * Strip order:
+   *   1. Drop fallbackBurst entirely (least-loved tile fallback)
+   *   2. Trim each highlight kind to 1 burst
+   *   3. Trim each remaining burst to 1 frame
+   *   4. Drop avatarUrl (lastFrame remains as portrait)
+   *   5. Drop lastFrame (final degraded mode: letter tile)
+   *
+   * Returns the original `media` object reference if it already fits.
+   */
+  _pruneMediaToFit(media) {
+    const SOFT_CAP = 800 * 1024;
+    const sizeOf = (obj) => {
+      try {
+        return JSON.stringify(obj).length;
+      } catch {
+        return Number.POSITIVE_INFINITY;
+      }
+    };
+    if (sizeOf(media) <= SOFT_CAP) return media;
+    let pruned = { ...media, fallbackBurst: [] };
+    if (sizeOf(pruned) <= SOFT_CAP) return pruned;
+    pruned = {
+      ...pruned,
+      highlights: {
+        mouth: pruned.highlights.mouth.slice(0, 1),
+        shake: pruned.highlights.shake.slice(0, 1),
+        blink: pruned.highlights.blink.slice(0, 1)
+      }
+    };
+    if (sizeOf(pruned) <= SOFT_CAP) return pruned;
+    pruned = {
+      ...pruned,
+      highlights: {
+        mouth: pruned.highlights.mouth.map((b) => b.slice(0, 1)),
+        shake: pruned.highlights.shake.map((b) => b.slice(0, 1)),
+        blink: pruned.highlights.blink.map((b) => b.slice(0, 1))
+      }
+    };
+    if (sizeOf(pruned) <= SOFT_CAP) return pruned;
+    pruned = { ...pruned, avatarUrl: null };
+    if (sizeOf(pruned) <= SOFT_CAP) return pruned;
+    pruned = { ...pruned, lastFrame: null };
+    return pruned;
   }
 
   _sendRoomSnapshot() {

@@ -13,6 +13,16 @@ export const ServerEventTypes = /** @type {const} */ ({
   VIOLATION_NARRATIVE: "violation_narrative",
   GAME_STARTED: "game_started",
   GAME_ENDED: "game_ended",
+  /**
+   * Per-player follow-up to GAME_ENDED carrying the heavy media payload
+   * (highlight bursts, fallback frames, last camera still, avatar URL) for
+   * one player at a time. The server splits the ceremony payload across one
+   * GAME_ENDED (metadata only) + N GAME_ENDED_MEDIA messages so each WS
+   * frame stays comfortably under PartyKit's 1 MiB per-message limit even
+   * with 20 webcam-active players. Clients merge media into the reveal as
+   * each message lands; tiles fall back to letter portraits while waiting.
+   */
+  GAME_ENDED_MEDIA: "game_ended_media",
   CAMERA_FRAME: "camera_frame",
   PRIVATE_RULES_CARD: "private_rules_card",
   PRIVATE_OWL_ROSTER: "private_owl_roster",

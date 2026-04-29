@@ -49,6 +49,13 @@ const CameraCircle = forwardRef<CameraCircleHandle, Props>(function CameraCircle
   // Callback ref: every time React assigns a new <video> element, immediately
   // rewire srcObject. This is more robust than a useEffect with [stream] deps
   // because it survives unmount/remount of the element.
+  //
+  // Android resilience (mirrors the same pattern as ExpressionGate's video
+  // handler): wire `loadedmetadata` / `canplay` / track `unmute` listeners
+  // and re-call `play()` from each one.  Without this some Android builds
+  // hand back a stream whose video track is initially muted (no frames),
+  // ignore the synchronous `play()` call, and never recover — leaving the
+  // <video> stuck on a black frame even though the camera light is on.
   const setVideoEl = useCallback(
     (el: HTMLVideoElement | null) => {
       videoRef.current = el;
@@ -58,13 +65,38 @@ const CameraCircle = forwardRef<CameraCircleHandle, Props>(function CameraCircle
         if (el.srcObject !== stream) el.srcObject = stream;
         el.muted = true;
         el.playsInline = true;
-        const p = el.play();
-        if (p && typeof p.catch === "function") {
-          p.catch(() => {
-            /* autoplay rejected; first user tap will resume */
-          });
-        }
+        const tryPlay = () => {
+          const p = el.play();
+          if (p && typeof p.catch === "function") {
+            p.catch(() => {
+              /* autoplay rejected; first user tap will resume */
+            });
+          }
+        };
+        const onLoaded = () => tryPlay();
+        const onCanPlay = () => tryPlay();
+        el.addEventListener("loadedmetadata", onLoaded, { once: true });
+        el.addEventListener("canplay", onCanPlay, { once: true });
+        const tracks = stream.getVideoTracks();
+        const onUnmute = () => tryPlay();
+        for (const tr of tracks) tr.addEventListener("unmute", onUnmute);
+        tryPlay();
+        // Stash a one-shot teardown on the element so the next setVideoEl
+        // call (or unmount) can detach the per-stream listeners without
+        // leaking handles.  Same-element reuse with a fresh stream falls
+        // through this branch which re-attaches a new closure.
+        const teardown = () => {
+          el.removeEventListener("loadedmetadata", onLoaded);
+          el.removeEventListener("canplay", onCanPlay);
+          for (const tr of tracks) tr.removeEventListener("unmute", onUnmute);
+        };
+        type ElWithTeardown = HTMLVideoElement & { __nzPlayTeardown?: () => void };
+        const elWith = el as ElWithTeardown;
+        elWith.__nzPlayTeardown?.();
+        elWith.__nzPlayTeardown = teardown;
       } else {
+        type ElWithTeardown = HTMLVideoElement & { __nzPlayTeardown?: () => void };
+        (el as ElWithTeardown).__nzPlayTeardown?.();
         el.srcObject = null;
       }
     },

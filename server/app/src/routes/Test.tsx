@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { readStoredRoomId } from "../constants";
 import { ClientMessageTypes } from "../party/protocol";
@@ -18,6 +18,19 @@ import { usePartyStore } from "../party/store";
  *      bypasses the OB-only START gate and starts the round for everyone in
  *      the room. While the panel is open, additional /test tabs can join the
  *      same room for ad-hoc multiplayer testing.
+ *
+ * Mobile resilience:
+ *   - Mobile browsers (especially iOS Safari) suspend WebSockets when the tab
+ *     loses focus or the device sleeps. The connection silently flips to
+ *     CLOSED but the user sees a still-rendered "Start now" button. Clicking
+ *     it would no-op because `send` returns false. We now:
+ *       a) Auto-reconnect whenever the store's `conn` flips to closed/error
+ *          while we're on /test, replaying photo/answers/ready as needed.
+ *       b) On click, if the socket isn't open, kick a reconnect immediately
+ *          and surface a visible error so the user knows we're retrying.
+ *       c) If TEST_FORCE_START doesn't produce a started snapshot within a
+ *          few seconds, we resend instead of leaving the button stuck on
+ *          "Starting…" forever.
  *
  * After the game starts, MainScene mounts an "End now" overlay (gated by the
  * `nz.testMode` sessionStorage key set here) so testers can jump to the award
@@ -59,6 +72,13 @@ export default function Test() {
   const sentPhoto = useRef(false);
   const sentAnswers = useRef(false);
   const sentReady = useRef(false);
+  // Stable T_xxx name across reconnects so the server's `players` map sees
+  // the same logical player even if the WS bounces while the tab is in the
+  // background.
+  const stableNameRef = useRef<string | null>(null);
+  // Last time we sent TEST_FORCE_START — used by the watchdog effect below
+  // to retry if the snapshot doesn't flip to `started`.
+  const lastStartSentAt = useRef<number>(0);
 
   const room = readStoredRoomId("nz.roomId");
 
@@ -67,16 +87,33 @@ export default function Test() {
     try { sessionStorage.setItem("nz.testMode", "1"); } catch { /* ignore */ }
   }, []);
 
-  // Connect (or reuse open conn) with a random T_ name.
+  // Connect (or reconnect) whenever we don't have an open socket. Re-runs on
+  // every `conn` transition, which is critical for mobile: when iOS Safari
+  // backgrounds the tab the socket flips to "closed" and we'd otherwise be
+  // stuck. Resetting the sentXxx refs lets the photo/answers/ready chain
+  // replay automatically against the freshly-joined player slot.
   useEffect(() => {
+    if (conn === "open" || conn === "connecting") return;
     const s = usePartyStore.getState();
-    if (s.conn === "open" && s.myName) return;
-    const name = s.myName && s.myName.startsWith("T_") ? s.myName : randomTestName();
+    // Pick a stable T_ name for the lifetime of this /test session; only fall
+    // back to the existing store name if it's already a T_ slot (i.e. this
+    // is a refresh on /test, not a transition from /lobby with a Visitor name).
+    let name = stableNameRef.current;
+    if (!name) {
+      name = s.myName && s.myName.startsWith("T_") ? s.myName : randomTestName();
+      stableNameRef.current = name;
+    }
+    // Replay the setup chain after a reconnect — server lost our previous
+    // photo/answer/ready state when the socket dropped.
+    sentPhoto.current = false;
+    sentAnswers.current = false;
+    sentReady.current = false;
+    setStage("connecting");
     s.setName(name);
     s.connect({ roomId: room, name, lang, mode: "player" }).catch((err) =>
       setError(String(err?.message || err))
     );
-  }, [lang, room]);
+  }, [conn, lang, room]);
 
   // Step 1 → 2: photo as soon as ws is open.
   useEffect(() => {
@@ -102,13 +139,14 @@ export default function Test() {
 
   // Step 3 → 4: server replied with our rules card → READY → ready stage.
   useEffect(() => {
+    if (conn !== "open") return;
     if (!rulesCard) return;
     if (sentReady.current) return;
     if (send(ClientMessageTypes.READY)) {
       sentReady.current = true;
       setStage("ready");
     }
-  }, [rulesCard, send]);
+  }, [conn, rulesCard, send]);
 
   // When the round actually starts (server flipped `started`), jump to the scene.
   useEffect(() => {
@@ -118,15 +156,57 @@ export default function Test() {
     }
   }, [snapshot?.started, nav]);
 
-  function handleStart() {
-    if (stage !== "ready") return;
-    if (send(ClientMessageTypes.TEST_FORCE_START)) {
-      setStage("starting");
+  // Watchdog: if we've sent TEST_FORCE_START but the server hasn't echoed a
+  // started snapshot within ~2.5s, the message likely never made it (Safari
+  // queued it on a half-closed socket). Re-send so the user doesn't have to
+  // tap again.
+  useEffect(() => {
+    if (stage !== "starting") return;
+    const t = window.setTimeout(() => {
+      if (usePartyStore.getState().snapshot?.started) return;
+      if (conn !== "open") {
+        setError("Lost connection. Reconnecting…");
+        setStage("ready");
+        return;
+      }
+      if (send(ClientMessageTypes.TEST_FORCE_START)) {
+        lastStartSentAt.current = Date.now();
+      }
+    }, 2500);
+    return () => window.clearTimeout(t);
+  }, [stage, conn, send]);
+
+  const handleStart = useCallback(() => {
+    setError(null);
+    // If the socket is closed/connecting, the auto-reconnect effect above is
+    // already replaying photo/answers/ready. Surface a clear inline message
+    // so the user understands the click was received but we have to wait.
+    if (conn !== "open") {
+      setError("Reconnecting… try again in a moment.");
+      return;
     }
-  }
+    if (!sentReady.current) {
+      // Stuck somewhere in the setup chain. Retry whatever's missing.
+      setError("Setup not finished — retrying.");
+      return;
+    }
+    if (send(ClientMessageTypes.TEST_FORCE_START)) {
+      lastStartSentAt.current = Date.now();
+      setStage("starting");
+    } else {
+      // ws.send threw / socket flipped between the React render and the tap.
+      setError("Lost connection. Reconnecting…");
+    }
+  }, [conn, send]);
 
   const players = snapshot?.players ?? [];
   const ready = players.filter((p) => p.ready).length;
+
+  // Allow tapping while "starting" too — the watchdog re-sends, but the user
+  // may want to force a manual retry. Only fully disable while we're already
+  // navigating (`started`) or before the setup chain has finished.
+  const startBtnDisabled =
+    stage === "started" || (stage !== "ready" && stage !== "starting");
 
   return (
     <div className="test-wrap">
@@ -183,13 +263,15 @@ export default function Test() {
           <button
             className="primary"
             onClick={handleStart}
-            disabled={stage !== "ready"}
+            disabled={startBtnDisabled}
           >
-            {stage === "starting" || stage === "started"
+            {stage === "started"
               ? "Starting…"
-              : stage === "ready"
-                ? "Start now"
-                : "Preparing…"}
+              : stage === "starting"
+                ? "Starting… (tap to retry)"
+                : stage === "ready"
+                  ? "Start now"
+                  : "Preparing…"}
           </button>
         </div>
 

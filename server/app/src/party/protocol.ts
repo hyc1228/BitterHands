@@ -18,6 +18,10 @@ export const ServerEventTypes = {
   VIOLATION_NARRATIVE: "violation_narrative",
   GAME_STARTED: "game_started",
   GAME_ENDED: "game_ended",
+  /** Heavy per-player media (highlights / fallback frames / avatar) split
+   *  off from GAME_ENDED so each WS frame stays under the 1 MiB limit. One
+   *  message per player, arriving immediately after GAME_ENDED. */
+  GAME_ENDED_MEDIA: "game_ended_media",
   CAMERA_FRAME: "camera_frame",
   PRIVATE_RULES_CARD: "private_rules_card",
   PRIVATE_OWL_ROSTER: "private_owl_roster",
@@ -168,24 +172,28 @@ export interface PlayerHighlights {
   blink: HighlightBurst[];
 }
 
+export interface GameEndedRevealEntry {
+  id: string;
+  name: string;
+  animal: AnimalCode | null;
+  verdict: string | null;
+  alive?: boolean;
+  lives?: number;
+  violations?: number;
+  faceCounts?: FaceCounts;
+  /** Legacy: pre-split servers embedded media here. Modern servers send
+   *  these via separate GAME_ENDED_MEDIA broadcasts (see GameEndedMedia)
+   *  so the headline GAME_ENDED message stays small.  Kept optional so
+   *  fresh clients keep working against an older server build. */
+  highlights?: PlayerHighlights;
+  avatarUrl?: string | null;
+  lastFrame?: string | null;
+  fallbackBurst?: string[];
+}
+
 export interface GameEnded {
   endedAt: number;
-  reveal: {
-    id: string;
-    name: string;
-    animal: AnimalCode | null;
-    verdict: string | null;
-    alive?: boolean;
-    lives?: number;
-    violations?: number;
-    faceCounts?: FaceCounts;
-    highlights?: PlayerHighlights;
-    /** Static profile photo (stored avatar) — used as fallback portrait. */
-    avatarUrl?: string | null;
-    /** Last live camera frame the server saw — used as fallback portrait when
-     *  a player has no highlight bursts (e.g. they just held still all round). */
-    lastFrame?: string | null;
-  }[];
+  reveal: GameEndedRevealEntry[];
   /** Mario Party–style "best at" winners per face action, OB end screen. */
   awards?: {
     mouthOpens: GameEndedAward | null;
@@ -193,6 +201,22 @@ export interface GameEnded {
     blinks: GameEndedAward | null;
   };
   owlGuesses: Record<string, unknown>;
+}
+
+/**
+ * Per-player media follow-up to GAME_ENDED. The server emits one of these
+ * for each player immediately after GAME_ENDED so the heavy payload stays
+ * within the WebSocket per-message limit. Clients accumulate them keyed by
+ * `playerId` and merge with the matching `GameEnded.reveal` entry to fill
+ * in tile portraits / highlight bursts. Any field can be absent if the
+ * server dropped it under the size guard.
+ */
+export interface GameEndedMedia {
+  playerId: string;
+  highlights?: PlayerHighlights;
+  avatarUrl?: string | null;
+  lastFrame?: string | null;
+  fallbackBurst?: string[];
 }
 
 /** Relayed to all clients (players + OB) for the shared playfield. */
@@ -295,6 +319,7 @@ export type ServerEnvelope =
   | { type: typeof ServerEventTypes.VIOLATION_NARRATIVE; data: ViolationNarrative }
   | { type: typeof ServerEventTypes.GAME_STARTED; data: GameStarted }
   | { type: typeof ServerEventTypes.GAME_ENDED; data: GameEnded }
+  | { type: typeof ServerEventTypes.GAME_ENDED_MEDIA; data: GameEndedMedia }
   | { type: typeof ServerEventTypes.CAMERA_FRAME; data: CameraFrame }
   | { type: typeof ServerEventTypes.PRIVATE_RULES_CARD; data: RulesCard }
   | { type: typeof ServerEventTypes.PRIVATE_OWL_ROSTER; data: OwlRosterEntry[] }

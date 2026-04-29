@@ -51,7 +51,10 @@ export function postToMainSceneFrame(
         rulesCard: args.rulesCard,
         lang: args.lang,
         lives: matchedPlayer?.lives,
-        alive: matchedPlayer?.alive
+        alive: matchedPlayer?.alive,
+        // Pass the snapshot's id (preferred) so the animal-less fallback
+        // matches what every other client deterministically picks for me.
+        selfId: args.selfPlayerId || matchedPlayer?.id
       })
     },
     "*"

@@ -6,6 +6,7 @@ import {
   type AnimalCode,
   type CameraFrame,
   type GameEnded,
+  type GameEndedMedia,
   type GateProgress,
   type Lang,
   type OwlRosterEntry,
@@ -71,6 +72,13 @@ interface PartyStoreState {
   monitorState: MonitorStateMessage | null;
   /** Last GAME_ENDED payload — drives the settlement overlay; null between matches. */
   gameEnded: GameEnded | null;
+  /** Per-player media follow-ups that arrive after GAME_ENDED, keyed by
+   *  `playerId`.  The ceremony overlay merges these with `gameEnded.reveal`
+   *  so tiles progressively gain highlight bursts / fallback frames /
+   *  portraits as each message lands.  Cleared at the start of every new
+   *  round (snapshot transitions started=false → true) and on
+   *  `clearGameEnded()`. */
+  gameEndedMedia: Map<string, GameEndedMedia>;
   clearGameEnded: () => void;
   // Actions
   setLang: (lang: Lang) => void;
@@ -185,8 +193,9 @@ export const usePartyStore = create<PartyStoreState>((set, get) => ({
   monitorVoiceInbox: [],
   monitorState: null,
   gameEnded: null,
+  gameEndedMedia: new Map(),
 
-  clearGameEnded: () => set({ gameEnded: null }),
+  clearGameEnded: () => set({ gameEnded: null, gameEndedMedia: new Map() }),
 
   drainMainSceneItemInbox: () => {
     const q = get().mainSceneItemInbox;
@@ -325,7 +334,8 @@ export const usePartyStore = create<PartyStoreState>((set, get) => ({
       mainSceneItemInbox: [],
       monitorVoiceInbox: [],
       monitorState: null,
-      gameEnded: null
+      gameEnded: null,
+      gameEndedMedia: new Map()
     })
 }));
 
@@ -382,12 +392,15 @@ function handleServerEnvelope(
           nextGate.delete(pid);
         }
       }
-      // A new round starts → wipe last round's GAME_ENDED so the ceremony
-      // overlay (still in-state from the previous game) doesn't sit on top
-      // of the live scene.
+      // A new round starts → wipe last round's GAME_ENDED + media so the
+      // ceremony overlay (still in-state from the previous game) doesn't
+      // sit on top of the live scene, and stale per-player frames don't
+      // leak into the next round's reveal.
       const wasStarted = !!s.snapshot?.started;
       const nowStarted = !!snap.started;
-      const clearEnded = !wasStarted && nowStarted ? { gameEnded: null } : null;
+      const clearEnded = !wasStarted && nowStarted
+        ? { gameEnded: null, gameEndedMedia: new Map<string, GameEndedMedia>() }
+        : null;
       const clearGate = nowStarted && !wasStarted ? { gateProgressByPlayerId: new Map() } : null;
       return {
         snapshot: snap,
@@ -519,11 +532,55 @@ function handleServerEnvelope(
   if (t === ServerEventTypes.GAME_ENDED) {
     const lang = get().lang;
     const data = msg.data as GameEnded;
-    set({ gameEnded: data });
+    // Reset the per-player media map up-front: this is a fresh ceremony,
+    // any leftover media from a previous round (or test re-end) belongs
+    // to a different game.  Clients merge incoming GAME_ENDED_MEDIA on
+    // top of this empty map as each follow-up message lands.
+    set({ gameEnded: data, gameEndedMedia: new Map() });
+    // Diagnostic: if the ceremony ever fails to render in the field, the
+    // first thing to check is whether this log fires AND how many entries
+    // arrived.  An empty `reveal` array means the server's _endGame()
+    // ran but skipped every player (possible if `players` was somehow
+    // emptied first); no log at all means the WS message was either
+    // never sent or got dropped (e.g. exceeded the per-message size cap
+    // when running an OLD server build that hasn't picked up the
+    // GAME_ENDED_MEDIA split — in that case redeploy the PartyKit room).
+    // eslint-disable-next-line no-console
+    console.info(
+      "[ceremony] GAME_ENDED received",
+      {
+        revealCount: data?.reveal?.length ?? 0,
+        awards: data?.awards ?? null,
+        endedAt: data?.endedAt ?? null
+      }
+    );
     get().pushLog({
       kind: "system",
       text: lang === "zh" ? "游戏结束" : "Game ended"
     });
+    return;
+  }
+  if (t === ServerEventTypes.GAME_ENDED_MEDIA) {
+    const data = msg.data as GameEndedMedia;
+    if (!data?.playerId) return;
+    set((s) => {
+      const next = new Map(s.gameEndedMedia);
+      next.set(data.playerId, data);
+      return { gameEndedMedia: next };
+    });
+    // Diagnostic: each per-player media broadcast lands here.  Useful to
+    // confirm the split-message protocol is actually firing in prod (vs.
+    // a rolled-back server still bundling everything into GAME_ENDED).
+    const fbCount = data.fallbackBurst?.length ?? 0;
+    const mouthCount = data.highlights?.mouth?.length ?? 0;
+    const shakeCount = data.highlights?.shake?.length ?? 0;
+    const blinkCount = data.highlights?.blink?.length ?? 0;
+    // eslint-disable-next-line no-console
+    console.info(
+      "[ceremony] GAME_ENDED_MEDIA",
+      data.playerId,
+      { fallback: fbCount, mouth: mouthCount, shake: shakeCount, blink: blinkCount }
+    );
     return;
   }
   if (t === ServerEventTypes.CAMERA_FRAME) {

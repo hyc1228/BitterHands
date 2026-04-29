@@ -33,10 +33,42 @@ export interface NzPlayerSyncPayload {
   alive: boolean;
 }
 
-export function mapAnimalToMainScene(a: AnimalCode | string | null | undefined): NzPlayerSyncPayload["sceneAnimal"] {
+/** Animals known to the iframe sprite system. Must mirror `ANIMAL_SPEC`
+ *  in `main scene/index.html`. */
+const SCENE_ANIMALS = ["lion", "owl", "giraffe"] as const;
+
+/** Deterministic 32-bit hash of an arbitrary string — used to spread
+ *  animal-less players across the 3 sprites instead of collapsing them
+ *  all onto "owl" (the legacy fallback). FNV-1a, identical to the
+ *  server-side `fnv1a32` so a player's fallback animal is stable across
+ *  reconnects + matches what the OB/face-wall uses for the same id. */
+function hash32(s: string): number {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return h >>> 0;
+}
+
+export function mapAnimalToMainScene(
+  a: AnimalCode | string | null | undefined,
+  /** Optional stable id (player.id). When the server hasn't assigned an animal
+   *  yet (null/undefined) we fall back to a deterministic hash of `seed` so
+   *  remote players don't all default to owl on every other client. */
+  seed?: string
+): NzPlayerSyncPayload["sceneAnimal"] {
   if (a === Animals.LION) return "lion";
   if (a === Animals.GIRAFFE) return "giraffe";
   if (a === Animals.OWL) return "owl";
+  // Unknown / null animal → spread evenly across the 3 sprites. Without
+  // this the iframe collapsed every pre-onboarded / null-animal peer onto
+  // "owl", which is what other clients reported as "everyone shows up as
+  // an owl" during play. Visual variety only — server still drives the
+  // real role once the player finishes onboarding.
+  if (seed && seed.length > 0) {
+    return SCENE_ANIMALS[hash32(seed) % SCENE_ANIMALS.length];
+  }
   return "owl";
 }
 
@@ -47,6 +79,10 @@ export function buildPlayerSyncPayload(opts: {
   lang: Lang;
   lives?: number;
   alive?: boolean;
+  /** Stable id (player.id from the snapshot). Used as the deterministic seed
+   *  for `sceneAnimal` when the animal hasn't been assigned yet, so the
+   *  fallback sprite matches what other clients render for the same player. */
+  selfId?: string;
 }): NzPlayerSyncPayload {
   const ruleText = opts.rulesCard?.rule?.trim();
   const winText = opts.rulesCard?.win?.trim();
@@ -56,7 +92,7 @@ export function buildPlayerSyncPayload(opts: {
   const alive = typeof opts.alive === "boolean" ? opts.alive : lives > 0;
   return {
     playerName: opts.myName || "—",
-    sceneAnimal: mapAnimalToMainScene(opts.myAnimal),
+    sceneAnimal: mapAnimalToMainScene(opts.myAnimal, opts.selfId || opts.myName),
     lang: opts.lang,
     ruleText: ruleText || undefined,
     winText: winText || undefined,
@@ -113,7 +149,12 @@ export function buildRoomPlayersPayload(
   const players: NzRoomPlayerRow[] = roster.map((p) => ({
     id: p.id,
     name: p.name,
-    sceneAnimal: mapAnimalToMainScene(p.animal),
+    // Pass `p.id` so animal-less peers fall back to a deterministic
+    // sprite (lion / owl / giraffe) keyed off id — fixes the bug where
+    // every other client rendered the entire roster as owls until the
+    // animal field arrived. Each player still gets the same fallback on
+    // every viewer (id is identical), so it's not visually inconsistent.
+    sceneAnimal: mapAnimalToMainScene(p.animal, p.id),
     alive: p.alive !== false
   }));
   return {

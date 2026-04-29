@@ -183,6 +183,10 @@ interface Dict {
   gateEnable: string;
   gateRetry: string;
   gateLoading: string;
+  /** Watchdog overlay copy: shown when the camera stream opened but no
+   *  frames flowed within ~3s (Android `track.muted=true` failure mode). */
+  gateFramesStuck: string;
+  gateFramesStuckBtn: string;
   gatePassed: string;
   gateLocked: string;
   gateTaskShake: string;
@@ -350,6 +354,8 @@ const en: Dict = {
   gateEnable: "Start face check",
   gateRetry: "Try again",
   gateLoading: "Loading face mesh…",
+  gateFramesStuck: "Camera looks stuck — tap to start.",
+  gateFramesStuckBtn: "Tap to enable camera",
   gatePassed: "All checks passed.",
   gateLocked: "Complete the checks to unlock.",
   gateTaskShake: "Shake your head",
@@ -516,6 +522,8 @@ const zh: Dict = {
   gateEnable: "开启自检",
   gateRetry: "再来一次",
   gateLoading: "正在加载面部网格…",
+  gateFramesStuck: "摄像头似乎卡住了 · 轻点开启",
+  gateFramesStuckBtn: "轻点开启摄像头",
   gatePassed: "全部通过！",
   gateLocked: "完成所有测试后才能进入。",
   gateTaskShake: "摇摇头",

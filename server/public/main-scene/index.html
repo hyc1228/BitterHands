@@ -675,6 +675,22 @@
         0%, 100% { transform: translateY(0); }
         50%      { transform: translateY(-3px); }
       }
+      /* Rabbit Monitor — auto-spawned per N humans. Same body sprite, but
+         scaled down + tinted cooler so it visually reads as a sidekick
+         instead of competing with the primary ZooKeeper. */
+      .zookeeper.zk-rabbit .zk-body {
+        transform: scale(0.78);
+        transform-origin: center;
+        filter: hue-rotate(-30deg) saturate(0.85) brightness(0.92);
+      }
+      .zookeeper.zk-rabbit.locked .zk-body {
+        animation: zkShake 0.18s ease-in-out infinite;
+        transform: scale(0.78);
+      }
+      .flashlight-cone--rabbit {
+        opacity: 0.55;
+        filter: hue-rotate(-25deg);
+      }
       .alarm-shake {
         animation: shake 0.4s ease-in-out infinite;
         transform-box: fill-box;
@@ -2347,24 +2363,11 @@
           { id: "_local_p2", name: "LEO", animal: "giraffe", x: cx + 260, y: cy + 180, vx: 0, vy: 0, moving: false },
           { id: "_local_p3", name: "ZOE", animal: "owl",     x: cx - 280, y: cy + 320, vx: 0, vy: 0, moving: false },
         ],
-        monitor: {
-          // Match the server's _initialMonitorState (CX_MS, CY_MS - 200,
-          // aimAngle 0) so the iframe doesn't render at a different spot
-          // for the ~100ms before the first MONITOR_STATE arrives.
-          x: cx,
-          y: cy - 200,
-          aimAngle: 0,
-          mode: "sweep",    // 'sweep' | 'locked'
-          sweepDir: 1,
-          sweepTimer: 2,
-          targetId: null,
-          lockTimer: 0,
-          retargetIn: 0,
-          lured: null,
-          patrolTarget: null,
-          patrolTimer: 0,
-          moving: false,
-        },
+        // Supervisor roster — keyed by id ("m0".."mN-1" from server, "local0"
+        // for the standalone-no-server bootstrap).  Server's MONITOR_STATE
+        // upserts entries; render() iterates this map every frame.  Count
+        // scales with humans on the server (1 per 5, capped at 6).
+        monitors: new Map(),
         items: [
           { id: "h1", type: "heart", x: cx - 80, y: cy - 340 },
           { id: "h2", type: "heart", x: cx - 320, y: cy - 60 },
@@ -2386,13 +2389,121 @@
         cam: { x: 0, y: 0 },
         nodes: {
           me: null,
-          monitor: null,
-          cone: null,
-          torch: null,
+          // Per-monitor SVG groups: each entry is { body, cone, torch }.
+          // Spawned/dropped together as the server roster changes.
+          monitors: new Map(),
           others: new Map(),
           items: new Map(),
+          // Extra "rabbit" Monitors auto-spawned by the server based on
+          // human player count (one per N humans). Each entry mirrors the
+          // primary `nodes.monitor` shape — its own body group and cone
+          // group, transformed every frame from `state.extraMonitors[i]`.
+          extraMonitors: [],
         },
+        // Server-authoritative extra Monitor agents. Mirrors the shape of
+        // `state.monitor` but kept as a list because more humans = more
+        // rabbits. Synced from the `monitors[]` payload field on every
+        // MONITOR_STATE; freshly populated DOM nodes are created on demand.
+        extraMonitors: [],
       };
+
+      // -----------------------------------------------------------------
+      // Monitor roster helpers
+      //
+      // The iframe holds a Map<id, monitor> in state.monitors plus a parallel
+      // Map<id, {body, cone, torch}> in state.nodes.monitors.  The server's
+      // MONITOR_STATE upserts records by id; `applyServerMonitorList` adds
+      // missing ones (and creates SVG nodes for them) and drops any local
+      // entry that no longer appears in the server list.
+      //
+      // For standalone playtest of this file (no server attached), we seed
+      // a single "local0" entry up-front so the local AI sim has something
+      // to drive — `applyServerMonitorList` will replace it the moment the
+      // first NZ_MONITOR_STATE arrives.
+      // -----------------------------------------------------------------
+      function ensureMonitorEntry(id, init) {
+        let m = state.monitors.get(id);
+        if (m) return m;
+        const seed = init || {};
+        m = {
+          id,
+          x: typeof seed.x === "number" ? seed.x : MAP_W / 2,
+          y: typeof seed.y === "number" ? seed.y : MAP_H / 2 - 200,
+          aimAngle: typeof seed.aimAngle === "number" ? seed.aimAngle : 0,
+          mode: "sweep",
+          sweepDir: 1,
+          sweepTimer: 2,
+          targetId: null,
+          lockTimer: 0,
+          retargetIn: 0,
+          lured: null,
+          patrolTarget: null,
+          patrolTimer: 0,
+          moving: false,
+        };
+        state.monitors.set(id, m);
+        return m;
+      }
+      function ensureMonitorNodes(id) {
+        let nodes = state.nodes.monitors.get(id);
+        if (nodes) return nodes;
+        const body  = makeMonitor();
+        const cone  = makeCone();
+        const torch = makeTorch();
+        layers.monitor.appendChild(body);
+        layers.cone.appendChild(cone);
+        layers.torch.appendChild(torch);
+        nodes = { body, cone, torch };
+        state.nodes.monitors.set(id, nodes);
+        return nodes;
+      }
+      function dropMonitorEntry(id) {
+        const nodes = state.nodes.monitors.get(id);
+        if (nodes) {
+          for (const n of [nodes.body, nodes.cone, nodes.torch]) {
+            if (n && n.parentNode) n.parentNode.removeChild(n);
+          }
+          state.nodes.monitors.delete(id);
+        }
+        state.monitors.delete(id);
+      }
+      // Used by alarm pickup (solo path) and as a generic helper. Picks the
+      // monitor whose current pose is closest to (x, y) and switches it into
+      // a 4-second lure; returns true if a monitor was nudged.
+      function lureNearestMonitor(x, y) {
+        let nearest = null;
+        let bestD = Infinity;
+        for (const m of state.monitors.values()) {
+          const d = Math.hypot(m.x - x, m.y - y);
+          if (d < bestD) { bestD = d; nearest = m; }
+        }
+        if (!nearest) return false;
+        nearest.mode = "sweep";
+        nearest.targetId = null;
+        nearest.lured = { x, y };
+        nearest.retargetIn = 4;
+        return true;
+      }
+      // Death / challenge-end paths call this so any monitor that was locked
+      // onto the local player releases simultaneously — otherwise the freed
+      // flashlight keeps chasing a corpse / ghost.
+      function releaseAllLockOnMe() {
+        for (const m of state.monitors.values()) {
+          if (m.targetId === "me") {
+            m.mode = "sweep";
+            m.targetId = null;
+            m.sweepTimer = 1;
+          }
+        }
+      }
+      // True when ANY monitor currently has the local player as its lock
+      // target — used to decide if we should keep the challenge bar up.
+      function anyMonitorLockingMe() {
+        for (const m of state.monitors.values()) {
+          if (m.targetId === "me") return true;
+        }
+        return false;
+      }
 
       function defaultItemsLayout() {
         const cxi = MAP_W / 2;
@@ -2483,11 +2594,6 @@
         placeFenceRow(rightG, 0, MAP_H, 0);
         layers.fence.appendChild(rightG);
 
-        // ---- Cone (drawn behind everything except background) ----------
-        const cone = makeCone();
-        layers.cone.appendChild(cone);
-        state.nodes.cone = cone;
-
         // ---- Items -----------------------------------------------------
         for (const it of state.items) {
           const node = it.type === "heart" ? makeHeart() : makeAlarm();
@@ -2507,15 +2613,14 @@
           state.nodes.others.set(p.id, node);
         }
 
-        // ---- Monitor ---------------------------------------------------
-        const mon = makeMonitor();
-        layers.monitor.appendChild(mon);
-        state.nodes.monitor = mon;
-
-        // ---- Torch (rendered ABOVE monitor body so it looks held) -----
-        const torch = makeTorch();
-        layers.torch.appendChild(torch);
-        state.nodes.torch = torch;
+        // ---- Monitor(s) ------------------------------------------------
+        // Standalone-no-server bootstrap: seed a single "local0" supervisor
+        // so the local AI fallback has something to drive when this file is
+        // opened directly (no PartyKit room).  Once NZ_MONITOR_STATE starts
+        // flowing, `applyServerMonitorList` replaces it with the server's
+        // m0..mN-1 roster.
+        ensureMonitorEntry("local0", { x: MAP_W / 2, y: MAP_H / 2 - 200, aimAngle: 0 });
+        ensureMonitorNodes("local0");
 
         // ---- Me --------------------------------------------------------
         const me = makeAnimalAvatar({
@@ -2823,12 +2928,6 @@
           node.setAttribute("data-anim", ak);
           node.classList.toggle("walking", p.moving || ak === "walk");
         }
-        // monitor body stays upright (no rotation) — only flashlight rotates.
-        state.nodes.monitor.setAttribute(
-          "transform",
-          `translate(${state.monitor.x} ${state.monitor.y})`
-        );
-        state.nodes.monitor.classList.toggle("walking", state.monitor.moving);
         // Position state.nodes.me every frame regardless of spectator —
         // a dead player's ghost still needs a transform so it renders at
         // the death location instead of (0, 0). Only the walking anim is
@@ -2845,34 +2944,39 @@
           }
         }
 
+        // ---- Per-supervisor render -----------------------------------
+        // monitor body stays upright (no rotation) — only flashlight rotates.
         // Cone + torch share the same world transform: they rotate around
         // the monitor's center and always point along the aim angle.
-        const angDeg = (state.monitor.aimAngle * 180) / Math.PI;
-        const tf = `translate(${state.monitor.x} ${state.monitor.y}) rotate(${angDeg})`;
-        if (state.nodes.cone) state.nodes.cone.setAttribute("transform", tf);
-        if (state.nodes.torch) state.nodes.torch.setAttribute("transform", tf);
-
-        // Pupils: shift inside the eye toward the current target. Update
-        // BOTH the sweep pupils (red on white) and the locked pupils
-        // (white on red) so when the monitor flips between modes the
-        // visible pupil is already in the right spot.
-        const ux = Math.cos(state.monitor.aimAngle);
-        const uy = Math.sin(state.monitor.aimAngle);
+        // Pupils: shift inside each eye toward the current aim. Update BOTH
+        // the sweep pupils (red on white) and the locked pupils (white on
+        // red) so when the monitor flips between modes the visible pupil is
+        // already in the right spot.
         const PUPIL_OFFSET = 2.6;
-        const m = state.nodes.monitor;
-        if (m) {
-          const lcx = -m._eyeX + ux * PUPIL_OFFSET;
-          const rcx =  m._eyeX + ux * PUPIL_OFFSET;
-          const cy  =  m._eyeY + uy * PUPIL_OFFSET;
-          for (const p of [m._sweepPupilL, m._lockedPupilL]) {
-            if (p) { p.setAttribute("cx", lcx); p.setAttribute("cy", cy); }
+        for (const mon of state.monitors.values()) {
+          const nodes = state.nodes.monitors.get(mon.id);
+          if (!nodes) continue;
+          nodes.body.setAttribute("transform", `translate(${mon.x} ${mon.y})`);
+          nodes.body.classList.toggle("walking", mon.moving);
+          const angDeg = (mon.aimAngle * 180) / Math.PI;
+          const tf = `translate(${mon.x} ${mon.y}) rotate(${angDeg})`;
+          nodes.cone.setAttribute("transform", tf);
+          nodes.torch.setAttribute("transform", tf);
+          const ux = Math.cos(mon.aimAngle);
+          const uy = Math.sin(mon.aimAngle);
+          const b = nodes.body;
+          const lcx = -b._eyeX + ux * PUPIL_OFFSET;
+          const rcx =  b._eyeX + ux * PUPIL_OFFSET;
+          const ey  =  b._eyeY + uy * PUPIL_OFFSET;
+          for (const p of [b._sweepPupilL, b._lockedPupilL]) {
+            if (p) { p.setAttribute("cx", lcx); p.setAttribute("cy", ey); }
           }
-          for (const p of [m._sweepPupilR, m._lockedPupilR]) {
-            if (p) { p.setAttribute("cx", rcx); p.setAttribute("cy", cy); }
+          for (const p of [b._sweepPupilR, b._lockedPupilR]) {
+            if (p) { p.setAttribute("cx", rcx); p.setAttribute("cy", ey); }
           }
           // Toggle "locked" appearance (red glowing eyes + body shake)
-          // based on the monitor's current AI mode.
-          m.classList.toggle("locked", state.monitor.mode === "locked");
+          // per-monitor based on its own AI mode.
+          b.classList.toggle("locked", mon.mode === "locked");
         }
       }
 
@@ -3019,10 +3123,11 @@
           playAlarmSound();
           nzHaptic("alarm");
           if (challenge.active) endChallenge(false);
-          state.monitor.mode = "sweep";
-          state.monitor.targetId = null;
-          state.monitor.lured = { x: it.x, y: it.y };
-          state.monitor.retargetIn = 4;
+          // Solo path: no server, lure the closest local supervisor.  In a
+          // real room the server's NZ_MONITOR_STATE will carry the lure on
+          // whichever supervisor it picked, and this local nudge just keeps
+          // the visual snappy until the next server frame arrives (~100ms).
+          lureNearestMonitor(it.x, it.y);
         }
         stripItemNode(it, idx);
       }
@@ -3048,14 +3153,13 @@
           // clients don't need their phones buzzing for someone else's pickup.
           if (e.byPlayerId === state.netSelfId) nzHaptic("alarm");
           if (challenge.active) endChallenge(false);
-          state.monitor.mode = "sweep";
-          state.monitor.targetId = null;
-          if (e.alarmLured) {
-            state.monitor.lured = { x: e.alarmLured.x, y: e.alarmLured.y };
-          } else {
-            state.monitor.lured = { x: it.x, y: it.y };
-          }
-          state.monitor.retargetIn = 4;
+          // Mirror the server's "nearest supervisor gets lured" pick on the
+          // client — the next NZ_MONITOR_STATE frame (~100ms away) will
+          // overwrite this with the authoritative lure target, but we set it
+          // optimistically so the local visual doesn't sit idle for a tick.
+          const lx = e.alarmLured ? e.alarmLured.x : it.x;
+          const ly = e.alarmLured ? e.alarmLured.y : it.y;
+          lureNearestMonitor(lx, ly);
         }
         stripItemNode(it, idx);
       }
@@ -3132,54 +3236,137 @@
         }
       }
 
-      // Returns true if (playerX, playerY) falls inside the flashlight cone.
-      // Cone half-angle ~22 deg, max reach 300 map units.
+      // Returns true if (playerX, playerY) falls inside the flashlight cone,
+      // OR if the player is within close-range proximity (NEAR_RADIUS) of
+      // the keeper — mirrors server-side detection so the local fallback
+      // sim and the OB view light up the same target the server is locking
+      // onto. Cone half-angle ~35°, max reach 330 units, near radius 95.
       function isInCone(monX, monY, aimAngle, playerX, playerY) {
         const dx   = playerX - monX;
         const dy   = playerY - monY;
         const dist = Math.hypot(dx, dy);
-        if (dist < 50 || dist > 300) return false;
-        return Math.abs(wrapAngle(Math.atan2(dy, dx) - aimAngle)) < 0.50;
+        if (dist < 0.5) return false;
+        if (dist <= 95) return true;
+        if (dist > 330) return false;
+        return Math.abs(wrapAngle(Math.atan2(dy, dx) - aimAngle)) < 0.62;
+      }
+
+      // Reconcile the rabbit Monitor list (kind !== "main") with the
+      // server-authoritative array. Creates fresh body+cone nodes for new
+      // entries, removes nodes for departed rabbits, and updates the
+      // remaining ones' state in-place so render() can transform them.
+      // The PRIMARY Monitor (kind === "main") is handled by the existing
+      // single-monitor pipeline at the top of applyServerMonitorState
+      // and is intentionally excluded from this list.
+      function syncExtraMonitorsFromServer(monitors) {
+        const rabbits = monitors.filter(function (m) {
+          return m && m.kind !== "main" && m.id;
+        });
+        // Drop nodes for rabbits that vanished (e.g. game ended, room reset).
+        const liveIds = new Set(rabbits.map(function (m) { return m.id; }));
+        for (let i = state.extraMonitors.length - 1; i >= 0; i--) {
+          const ex = state.extraMonitors[i];
+          if (!liveIds.has(ex.id)) {
+            if (ex.bodyNode && ex.bodyNode.parentNode) ex.bodyNode.parentNode.removeChild(ex.bodyNode);
+            if (ex.coneNode && ex.coneNode.parentNode) ex.coneNode.parentNode.removeChild(ex.coneNode);
+            state.extraMonitors.splice(i, 1);
+          }
+        }
+        // Add / update.
+        for (const m of rabbits) {
+          let cur = state.extraMonitors.find(function (e) { return e.id === m.id; });
+          if (!cur) {
+            const body = makeMonitor();
+            // Tag rabbit nodes so CSS can give them a distinct tint
+            // (keeps the primary ZooKeeper visually special).
+            body.classList.add("zk-rabbit");
+            const cone = makeCone();
+            cone.classList.add("flashlight-cone--rabbit");
+            layers.monitor.appendChild(body);
+            layers.cone.appendChild(cone);
+            cur = {
+              id: m.id,
+              kind: m.kind,
+              x: m.x, y: m.y,
+              aimAngle: m.aimAngle,
+              mode: m.mode,
+              moving: !!m.moving,
+              targetId: m.targetId || null,
+              lured: m.lured ? { x: m.lured.x, y: m.lured.y } : null,
+              bodyNode: body,
+              coneNode: cone
+            };
+            state.extraMonitors.push(cur);
+          } else {
+            if (typeof m.x === "number") cur.x = m.x;
+            if (typeof m.y === "number") cur.y = m.y;
+            if (typeof m.aimAngle === "number") cur.aimAngle = m.aimAngle;
+            if (m.mode === "sweep" || m.mode === "locked") cur.mode = m.mode;
+            if (typeof m.moving === "boolean") cur.moving = m.moving;
+            cur.targetId = m.targetId || null;
+            cur.lured = m.lured ? { x: m.lured.x, y: m.lured.y } : null;
+          }
+        }
       }
 
       // When the server is broadcasting authoritative Monitor state via
       // NZ_MONITOR_STATE, skip the local AI sim — every client must see the
-      // same flashlight / lock target. Local sim is preserved for solo /
+      // same flashlights / lock targets. Local sim is preserved for solo /
       // pre-network playtest (no server frame yet).
-      function applyServerMonitorState(p) {
-        if (!p || typeof p !== "object") return;
-        const m = state.monitor;
-        if (typeof p.x === "number") m.x = p.x;
-        if (typeof p.y === "number") m.y = p.y;
-        if (typeof p.aimAngle === "number") m.aimAngle = p.aimAngle;
-        if (p.mode === "sweep" || p.mode === "locked") m.mode = p.mode;
-        if (typeof p.moving === "boolean") m.moving = p.moving;
-        if (p.lured && typeof p.lured.x === "number") {
-          m.lured = { x: p.lured.x, y: p.lured.y };
-        } else if (p.lured === null) {
-          m.lured = null;
+      //
+      // Payload shape: { monitors: [{id, x, y, aimAngle, mode, moving, targetId, lured}], ts }.
+      // Number of supervisors scales with humans (server enforces 1 per 5,
+      // capped at 6); this function upserts each entry by id and removes any
+      // local monitor whose id is no longer in the broadcast — that's how the
+      // bootstrap "local0" gets replaced on the first server frame, and how
+      // mid-round join/leave shrinks/grows the visible roster.
+      function applyServerMonitorList(p) {
+        if (!p || typeof p !== "object" || !Array.isArray(p.monitors)) return;
+        const seen = new Set();
+        let anyTargetMe = false;
+        for (const sm of p.monitors) {
+          if (!sm || typeof sm.id !== "string") continue;
+          seen.add(sm.id);
+          const m = ensureMonitorEntry(sm.id, { x: sm.x, y: sm.y, aimAngle: sm.aimAngle });
+          ensureMonitorNodes(sm.id);
+          if (typeof sm.x === "number") m.x = sm.x;
+          if (typeof sm.y === "number") m.y = sm.y;
+          if (typeof sm.aimAngle === "number") m.aimAngle = sm.aimAngle;
+          if (sm.mode === "sweep" || sm.mode === "locked") m.mode = sm.mode;
+          if (typeof sm.moving === "boolean") m.moving = sm.moving;
+          if (sm.lured && typeof sm.lured.x === "number") {
+            m.lured = { x: sm.lured.x, y: sm.lured.y };
+          } else if (sm.lured === null) {
+            m.lured = null;
+          }
+          const targetIsMe = sm.targetId === state.netSelfId;
+          m.targetId = targetIsMe ? "me" : (sm.targetId || null);
+          if (targetIsMe && sm.mode === "locked") anyTargetMe = true;
         }
-        // Track lock-on-me edge so the local challenge bar fires exactly once
-        // per server lock event (server is the only place that decides who
-        // gets locked; the iframe just reacts).
-        const newTargetIsMe = p.targetId === state.netSelfId;
-        const wasTargetMe = m.targetId === "me";
-        m.targetId = newTargetIsMe ? "me" : (p.targetId || null);
+        // Drop any local monitor not in the server list (including the
+        // bootstrap "local0" on the first server frame, or supervisors
+        // despawned mid-round when humans leave).
+        for (const id of Array.from(state.monitors.keys())) {
+          if (!seen.has(id)) dropMonitorEntry(id);
+        }
         state._serverMonitorAt = (typeof performance !== "undefined" ? performance.now() : Date.now());
         // Reset the "fell back to local" warning so it can fire again on the
         // next stutter rather than only the first time per session.
         state._localMonitorWarned = false;
-        if (m.mode === "locked" && newTargetIsMe && !wasTargetMe) {
-          // Server says we're now the lock target — start the local
-          // challenge bar so the action prompt shows up.
+        // Lock-on-me edge: any single supervisor locked on us means we get
+        // the challenge bar.  Track the prior frame so we only fire start /
+        // end once per transition (the underlying state lives on each
+        // monitor's targetId, but that's per-entry — this flag is the
+        // collective "is at least one of them on me?" snapshot).
+        const wasTargetMe = state._lockedOnMe === true;
+        if (anyTargetMe && !wasTargetMe) {
           if (!challenge.active && !state.spectator && !state.me.dead) {
             startChallenge();
           }
-        }
-        if ((m.mode === "sweep" || !newTargetIsMe) && wasTargetMe && challenge.active) {
-          // Server released the lock on us — close out the challenge bar.
+        } else if (!anyTargetMe && wasTargetMe && challenge.active) {
           endChallenge(false);
         }
+        state._lockedOnMe = anyTargetMe;
       }
 
       function updateMonitor(dt) {
@@ -3205,8 +3392,15 @@
               { lastServerAt: state._serverMonitorAt, age: _nowMs - (state._serverMonitorAt || 0) });
           }
         }
-        const m = state.monitor;
+        for (const m of state.monitors.values()) {
+          tickLocalMonitor(dt, m);
+        }
+      }
 
+      // Per-supervisor local AI tick.  Used only when the server frame is
+      // stale (>600ms) or this file is opened standalone — every authoritative
+      // path overwrites these fields from `applyServerMonitorList`.
+      function tickLocalMonitor(dt, m) {
         // --- Alarm lure: point toward lure position, then resume sweep ---
         // Mirror server-side turn rate — keep the keeper's "noticing" pace
         // identical between authoritative and local-fallback paths.
@@ -3266,7 +3460,7 @@
           );
           // Skip:
           //  - any dead player (locking a corpse used to freeze the Monitor in place)
-          //  - "me" while challenge is on cooldown
+          //  - "me" while challenge is on cooldown or already locked by another monitor
           const eligible = inCone.filter((p) => {
             if (!p.alive) return false;
             if (p.id === "me" && (challenge.cooldown > 0 || state.me.dead)) return false;
@@ -3278,7 +3472,7 @@
             m.mode      = "locked";
             m.lockTimer = challenge.MAX_TIME; // lock lasts as long as the challenge window
             if (pick.id === "me") {
-              startChallenge();
+              if (!challenge.active) startChallenge();
             } else {
               const name = state.others.find((p) => p.id === pick.id)?.name ?? pick.id;
               addLog(t("logSpotLight", name));
@@ -3288,10 +3482,13 @@
           // Count down lock duration; release when expired
           m.lockTimer -= dt;
           if (m.lockTimer <= 0) {
-            if (challenge.active && m.targetId === "me") endChallenge(false);
+            const wasOnMe = m.targetId === "me";
             m.mode       = "sweep";
             m.targetId   = null;
             m.sweepTimer = 1;
+            if (wasOnMe && challenge.active && !anyMonitorLockingMe()) {
+              endChallenge(false);
+            }
             return;
           }
           // Track locked target until challenge resolves
@@ -3307,10 +3504,13 @@
               ? !state.me.dead
               : !!(target && target.alive !== false);
           if (!target || !targetAlive) {
-            if (challenge.active && m.targetId === "me") endChallenge(false);
+            const wasOnMe = m.targetId === "me";
             m.mode = "sweep";
             m.targetId = null;
             m.sweepTimer = 1;
+            if (wasOnMe && challenge.active && !anyMonitorLockingMe()) {
+              endChallenge(false);
+            }
             return;
           }
 
@@ -3385,13 +3585,9 @@
         state.nodes.me = ghost;
         // Freeze movement so the ghost just hovers in place.
         state.me.moving = false;
-        // If the monitor was already locked onto us, release immediately
-        // so the flashlight stops chasing a corpse / ghost.
-        if (state.monitor.targetId === "me") {
-          state.monitor.mode = "sweep";
-          state.monitor.targetId = null;
-          state.monitor.sweepTimer = 1;
-        }
+        // If any supervisor was already locked onto us, release them all
+        // immediately so no flashlight keeps chasing a corpse / ghost.
+        releaseAllLockOnMe();
         // Hide hearts / challenge bars / etc. (player has nothing to do anymore).
         if (typeof document !== "undefined" && document.body) {
           document.body.classList.add("is-spectator");
@@ -3869,12 +4065,10 @@
         if (!challenge.active) return;
         challenge.active   = false;
         challenge.cooldown = 3;
-        // Release monitor back to sweep mode
-        if (state.monitor.targetId === "me") {
-          state.monitor.mode       = "sweep";
-          state.monitor.targetId   = null;
-          state.monitor.sweepTimer = 1;
-        }
+        // Release every supervisor that was locked on us back to sweep
+        // (with multi-supervisor rooms two flashlights can pile onto the
+        // same player; both should drop together when the challenge ends).
+        releaseAllLockOnMe();
         if (success) {
           chalStatus.textContent = t("statusSuccess");
           chalBarFill.style.width = "100%"; // green snaps full
@@ -4766,6 +4960,16 @@
             nzHaptic("gameStart");
           }
         }
+        // Round reset → clear leftover rabbit Monitors so they don't linger
+        // between games. The next MONITOR_STATE from the server will re-add
+        // them based on the new round's player count.
+        if (!state.roomStarted && wasStarted && state.extraMonitors.length) {
+          for (const ex of state.extraMonitors) {
+            if (ex.bodyNode && ex.bodyNode.parentNode) ex.bodyNode.parentNode.removeChild(ex.bodyNode);
+            if (ex.coneNode && ex.coneNode.parentNode) ex.coneNode.parentNode.removeChild(ex.coneNode);
+          }
+          state.extraMonitors.length = 0;
+        }
         if (raw.spectator != null) state.spectator = Boolean(raw.spectator);
         var toRem = raw.itemsRemoved;
         if (Array.isArray(toRem) && toRem.length) {
@@ -4852,7 +5056,7 @@
         } else if (d.type === "NZ_OB_CAMERA") {
           applyObCamera(d.payload);
         } else if (d.type === "NZ_MONITOR_STATE") {
-          applyServerMonitorState(d.payload);
+          applyServerMonitorList(d.payload);
         }
       });
     </script>

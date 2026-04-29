@@ -37,25 +37,108 @@ export default function ExpressionGate({ onPassed }: Props) {
   const lang = usePartyStore((s) => s.lang);
   const t = dict(lang);
 
+  // No explicit width/height: many Android front cameras don't natively
+  // support 480x360 and silently negotiate to a `track.muted = true` state
+  // (stream looks live, but no frames ever flow → black <video>).  Letting
+  // the browser pick its own resolution + treating facingMode as a soft
+  // preference (rather than an exact requirement) is the most permissive
+  // setup and the closest match to PermissionGate's `video: true` call,
+  // which works reliably on the same devices in the photo step.  FaceMesh
+  // downsamples internally so input resolution doesn't matter for accuracy.
   const { stream, error: camError, start, stop } = useCameraStream({
-    video: { width: { ideal: 480 }, height: { ideal: 360 }, facingMode: "user" },
+    video: { facingMode: { ideal: "user" } },
     audio: false
   });
   const [videoEl, setVideoEl] = useState<HTMLVideoElement | null>(null);
   const [enabled, setEnabled] = useState(false);
   /** Bumps to force a UI re-render at most ~12 fps while detectors progress. */
   const [, setUiTick] = useState(0);
+  /** True once the <video> has actually started painting frames.  Used
+   *  alongside the watchdog below to detect the Android-specific "stream
+   *  looks live but track.muted=true → no frames" failure mode and surface
+   *  a manual recovery button. */
+  const [framesLive, setFramesLive] = useState(false);
+  /** Set when the watchdog timer expires without `framesLive` flipping
+   *  true — surfaces a "tap to start camera" overlay that re-runs play()
+   *  inside a user gesture, getting around mobile autoplay policies and
+   *  triggering the unmute path for muted tracks on some Android builds. */
+  const [framesStuck, setFramesStuck] = useState(false);
 
   const shakeRef = useRef(createShakeState());
   const mouthRef = useRef(createMouthState());
   const noBlinkRef = useRef(createBlinkHoldState());
 
-  // Keep video element wired up to the stream (mirrors selfie).
+  // Keep video element wired up to the stream and resiliently retry play().
+  // Mobile (esp. Android) gotchas this handles:
+  //   • `play()` rejected silently before metadata is loaded → re-call on
+  //     `loadedmetadata` and `canplay`.
+  //   • Track starts with `muted = true` (Android negotiates this when the
+  //     constraint mismatches the camera's native modes) → re-call on the
+  //     `unmute` event so frames flow as soon as the camera actually
+  //     produces them.
+  //   • Backgrounded / re-foregrounded tab pauses the element → `playing`
+  //     edge flips framesLive=true to dismiss the watchdog overlay.
   useEffect(() => {
     if (!videoEl) return;
     videoEl.srcObject = stream;
-    if (stream) void videoEl.play().catch(() => undefined);
+    setFramesLive(false);
+    setFramesStuck(false);
+    if (!stream) return;
+
+    const tryPlay = () => {
+      if (!videoEl) return;
+      const p = videoEl.play();
+      if (p && typeof p.catch === "function") p.catch(() => undefined);
+    };
+
+    const onLoaded = () => tryPlay();
+    const onCanPlay = () => tryPlay();
+    const onPlaying = () => {
+      setFramesLive(true);
+      setFramesStuck(false);
+    };
+    videoEl.addEventListener("loadedmetadata", onLoaded);
+    videoEl.addEventListener("canplay", onCanPlay);
+    videoEl.addEventListener("playing", onPlaying);
+
+    // Per-track unmute: Android Chrome / WebView frequently hand back a
+    // track with `muted = true` initially.  When the camera actually
+    // starts producing frames the track fires `unmute` — kick play()
+    // again so the <video> consumes those frames instead of staying
+    // paused on the muted source.
+    const tracks = stream.getVideoTracks();
+    const onUnmute = () => tryPlay();
+    for (const tr of tracks) tr.addEventListener("unmute", onUnmute);
+
+    tryPlay();
+    return () => {
+      videoEl.removeEventListener("loadedmetadata", onLoaded);
+      videoEl.removeEventListener("canplay", onCanPlay);
+      videoEl.removeEventListener("playing", onPlaying);
+      for (const tr of tracks) tr.removeEventListener("unmute", onUnmute);
+    };
   }, [stream, videoEl]);
+
+  // Watchdog: if no frames are flowing 3s after the stream opens, surface
+  // a "tap to start camera" button.  Tapping that button re-runs play()
+  // inside a real user gesture, which gets around any remaining autoplay
+  // restrictions and forces the muted track to unmute on some Android
+  // builds.  Cleared the moment `framesLive` flips true.
+  useEffect(() => {
+    if (!stream || framesLive) {
+      setFramesStuck(false);
+      return;
+    }
+    const id = window.setTimeout(() => setFramesStuck(true), 3000);
+    return () => window.clearTimeout(id);
+  }, [stream, framesLive]);
+
+  const handleManualKick = useCallback(() => {
+    setFramesStuck(false);
+    if (!videoEl) return;
+    const p = videoEl.play();
+    if (p && typeof p.catch === "function") p.catch(() => undefined);
+  }, [videoEl]);
 
   const onLandmarks = useCallback((lm: { x: number; y: number; z?: number }[]) => {
     const now = performance.now();
@@ -334,6 +417,26 @@ export default function ExpressionGate({ onPassed }: Props) {
           </div>
         ) : null}
         {meshErr ? <div className="gate-overlay gate-overlay--err">⚠ {meshErr}</div> : null}
+        {/* Watchdog: stream opened but no frames flowed within 3 s.  This
+            is the Android-specific "track muted, autoplay blocked, or
+            both" recovery path — the button calls play() inside a real
+            user gesture which both satisfies mobile autoplay policies
+            and nudges some Android builds into actually unmuting the
+            video track.  Suppressed when there's already a camErr /
+            meshErr (those cases get their own overlay) and once frames
+            actually start flowing. */}
+        {framesStuck && !camErr && !meshErr && !framesLive ? (
+          <div className="gate-overlay gate-overlay--err">
+            <span>📷 {t.gateFramesStuck}</span>
+            <button
+              type="button"
+              className="primary gate-overlay__retry"
+              onClick={handleManualKick}
+            >
+              {t.gateFramesStuckBtn}
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className="gate-tasks">

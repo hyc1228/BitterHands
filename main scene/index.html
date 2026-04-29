@@ -675,6 +675,22 @@
         0%, 100% { transform: translateY(0); }
         50%      { transform: translateY(-3px); }
       }
+      /* Rabbit Monitor — auto-spawned per N humans. Same body sprite, but
+         scaled down + tinted cooler so it visually reads as a sidekick
+         instead of competing with the primary ZooKeeper. */
+      .zookeeper.zk-rabbit .zk-body {
+        transform: scale(0.78);
+        transform-origin: center;
+        filter: hue-rotate(-30deg) saturate(0.85) brightness(0.92);
+      }
+      .zookeeper.zk-rabbit.locked .zk-body {
+        animation: zkShake 0.18s ease-in-out infinite;
+        transform: scale(0.78);
+      }
+      .flashlight-cone--rabbit {
+        opacity: 0.55;
+        filter: hue-rotate(-25deg);
+      }
       .alarm-shake {
         animation: shake 0.4s ease-in-out infinite;
         transform-box: fill-box;
@@ -2378,7 +2394,17 @@
           monitors: new Map(),
           others: new Map(),
           items: new Map(),
+          // Extra "rabbit" Monitors auto-spawned by the server based on
+          // human player count (one per N humans). Each entry mirrors the
+          // primary `nodes.monitor` shape — its own body group and cone
+          // group, transformed every frame from `state.extraMonitors[i]`.
+          extraMonitors: [],
         },
+        // Server-authoritative extra Monitor agents. Mirrors the shape of
+        // `state.monitor` but kept as a list because more humans = more
+        // rabbits. Synced from the `monitors[]` payload field on every
+        // MONITOR_STATE; freshly populated DOM nodes are created on demand.
+        extraMonitors: [],
       };
 
       // -----------------------------------------------------------------
@@ -3210,14 +3236,77 @@
         }
       }
 
-      // Returns true if (playerX, playerY) falls inside the flashlight cone.
-      // Cone half-angle ~22 deg, max reach 300 map units.
+      // Returns true if (playerX, playerY) falls inside the flashlight cone,
+      // OR if the player is within close-range proximity (NEAR_RADIUS) of
+      // the keeper — mirrors server-side detection so the local fallback
+      // sim and the OB view light up the same target the server is locking
+      // onto. Cone half-angle ~35°, max reach 330 units, near radius 95.
       function isInCone(monX, monY, aimAngle, playerX, playerY) {
         const dx   = playerX - monX;
         const dy   = playerY - monY;
         const dist = Math.hypot(dx, dy);
-        if (dist < 50 || dist > 300) return false;
-        return Math.abs(wrapAngle(Math.atan2(dy, dx) - aimAngle)) < 0.50;
+        if (dist < 0.5) return false;
+        if (dist <= 95) return true;
+        if (dist > 330) return false;
+        return Math.abs(wrapAngle(Math.atan2(dy, dx) - aimAngle)) < 0.62;
+      }
+
+      // Reconcile the rabbit Monitor list (kind !== "main") with the
+      // server-authoritative array. Creates fresh body+cone nodes for new
+      // entries, removes nodes for departed rabbits, and updates the
+      // remaining ones' state in-place so render() can transform them.
+      // The PRIMARY Monitor (kind === "main") is handled by the existing
+      // single-monitor pipeline at the top of applyServerMonitorState
+      // and is intentionally excluded from this list.
+      function syncExtraMonitorsFromServer(monitors) {
+        const rabbits = monitors.filter(function (m) {
+          return m && m.kind !== "main" && m.id;
+        });
+        // Drop nodes for rabbits that vanished (e.g. game ended, room reset).
+        const liveIds = new Set(rabbits.map(function (m) { return m.id; }));
+        for (let i = state.extraMonitors.length - 1; i >= 0; i--) {
+          const ex = state.extraMonitors[i];
+          if (!liveIds.has(ex.id)) {
+            if (ex.bodyNode && ex.bodyNode.parentNode) ex.bodyNode.parentNode.removeChild(ex.bodyNode);
+            if (ex.coneNode && ex.coneNode.parentNode) ex.coneNode.parentNode.removeChild(ex.coneNode);
+            state.extraMonitors.splice(i, 1);
+          }
+        }
+        // Add / update.
+        for (const m of rabbits) {
+          let cur = state.extraMonitors.find(function (e) { return e.id === m.id; });
+          if (!cur) {
+            const body = makeMonitor();
+            // Tag rabbit nodes so CSS can give them a distinct tint
+            // (keeps the primary ZooKeeper visually special).
+            body.classList.add("zk-rabbit");
+            const cone = makeCone();
+            cone.classList.add("flashlight-cone--rabbit");
+            layers.monitor.appendChild(body);
+            layers.cone.appendChild(cone);
+            cur = {
+              id: m.id,
+              kind: m.kind,
+              x: m.x, y: m.y,
+              aimAngle: m.aimAngle,
+              mode: m.mode,
+              moving: !!m.moving,
+              targetId: m.targetId || null,
+              lured: m.lured ? { x: m.lured.x, y: m.lured.y } : null,
+              bodyNode: body,
+              coneNode: cone
+            };
+            state.extraMonitors.push(cur);
+          } else {
+            if (typeof m.x === "number") cur.x = m.x;
+            if (typeof m.y === "number") cur.y = m.y;
+            if (typeof m.aimAngle === "number") cur.aimAngle = m.aimAngle;
+            if (m.mode === "sweep" || m.mode === "locked") cur.mode = m.mode;
+            if (typeof m.moving === "boolean") cur.moving = m.moving;
+            cur.targetId = m.targetId || null;
+            cur.lured = m.lured ? { x: m.lured.x, y: m.lured.y } : null;
+          }
+        }
       }
 
       // When the server is broadcasting authoritative Monitor state via
@@ -4870,6 +4959,16 @@
             flashOverlay("startFlash", 360);
             nzHaptic("gameStart");
           }
+        }
+        // Round reset → clear leftover rabbit Monitors so they don't linger
+        // between games. The next MONITOR_STATE from the server will re-add
+        // them based on the new round's player count.
+        if (!state.roomStarted && wasStarted && state.extraMonitors.length) {
+          for (const ex of state.extraMonitors) {
+            if (ex.bodyNode && ex.bodyNode.parentNode) ex.bodyNode.parentNode.removeChild(ex.bodyNode);
+            if (ex.coneNode && ex.coneNode.parentNode) ex.coneNode.parentNode.removeChild(ex.coneNode);
+          }
+          state.extraMonitors.length = 0;
         }
         if (raw.spectator != null) state.spectator = Boolean(raw.spectator);
         var toRem = raw.itemsRemoved;
