@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import EndGameOverlay from "../components/EndGameOverlay";
 import { usePartyStore } from "../party/store";
 import { Animals } from "../party/protocol";
 import type {
@@ -13,12 +12,11 @@ import type {
 /**
  * /#/dev/ceremony — local-only sandbox for the end-game ceremony.
  *
- * Mounts `EndGameOverlay` directly with a fully-formed mock `GameEnded` +
- * per-player `GameEndedMedia` payload pre-loaded into the Zustand store.
- * No PartyKit connection, no live game required.  This is the fastest
- * way to verify the ceremony actually renders end-to-end on a fresh
- * device — if the page is blank here, the bug is in the React tree, not
- * the WS protocol.  Switches let you flip viewer role (player / OB),
+ * Loads a fully-formed mock `GameEnded` + per-player `GameEndedMedia`
+ * payload into the Zustand store; the EndGameOverlay mount lives at the
+ * App level (see `App.tsx`'s `GlobalCeremony`) so the same code path
+ * that runs for real games handles the sandbox too.  No PartyKit
+ * connection required.  Switches flip viewer role (player / OB),
  * simulate the "metadata first, media trickling in" progressive render,
  * and exercise the empty-reveal fallback path.
  */
@@ -104,11 +102,14 @@ export default function DevCeremony() {
       owlGuesses: {}
     };
     // Drive the store the same way the real WS handlers do so the overlay
-    // sees the same shape it would in production.
+    // sees the same shape it would in production.  Setting `mode` here
+    // is what tells the App-level GlobalCeremony to render the OB-side
+    // headline instead of the player-side one.
     usePartyStore.setState({
       gameEnded,
       gameEndedMedia: new Map(),
       myName: viewer === "ob" ? "ob" : reveal[0]?.name ?? "guest",
+      mode: viewer === "ob" ? "ob" : "player",
       lang: "en"
     });
     if (mode === "full") {
@@ -180,7 +181,9 @@ export default function DevCeremony() {
         </Link>
       </div>
 
-      {armed ? <EndGameOverlay viewerRole={viewer} homePath="/dev/ceremony" /> : null}
+      {/* The ceremony overlay itself is mounted globally in App.tsx —
+          we just populate the store above and the GlobalCeremony picks
+          it up. */}
     </div>
   );
 }

@@ -156,6 +156,20 @@ export default function EndGameOverlay({ viewerRole = "player", homePath }: Prop
   const isPlayer = viewerRole !== "ob";
   const youLived = isPlayer && viewerEntry ? viewerEntry.alive !== false : false;
 
+  // True while an award stage is in its locked reveal-dwell — the parent uses
+  // this to disable the Skip button so a stray tap on "Skip" can't blast
+  // past the gold winner the moment they appear. AwardPanel owns the
+  // dwell-timer; it pulses this up via callback below.
+  //
+  // Declared up here (not after the `if (!gameEnded) return null` early
+  // exit below) because this overlay is now mounted at the App level
+  // and must obey the rules of hooks: every render must call the same
+  // hooks in the same order, regardless of whether `gameEnded` is null
+  // or not.  Putting the useState after the early return triggered
+  // React error #310 (`Rendered more hooks than during the previous
+  // render`) on the very first GAME_ENDED transition.
+  const [awardDwellActive, setAwardDwellActive] = useState(false);
+
   // Diagnostic: surface ceremony render counts so a "background but empty"
   // failure in the field points at the right layer immediately. If this
   // never fires, the overlay isn't even mounting (no GAME_ENDED received).
@@ -195,12 +209,6 @@ export default function EndGameOverlay({ viewerRole = "player", homePath }: Prop
   // this a tester can immediately see "ceremony fired but had 0 players"
   // in big text rather than a silent black overlay.
   const ceremonyEmpty = realPlayers.length === 0;
-
-  // True while an award stage is in its locked reveal-dwell — the parent uses
-  // this to disable the Skip button so a stray tap on "Skip" can't blast
-  // past the gold winner the moment they appear. AwardPanel owns the
-  // dwell-timer; it pulses this up via callback below.
-  const [awardDwellActive, setAwardDwellActive] = useState(false);
 
   const stageClass =
     "endgame-stage" + (viewerRole === "ob" ? " endgame-stage--ob" : "");

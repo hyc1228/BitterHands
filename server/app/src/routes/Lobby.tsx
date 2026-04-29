@@ -78,11 +78,23 @@ export default function Lobby() {
   const lastConnectedRoomRef = useRef<string | null>(null);
   useEffect(() => {
     const prevMode = usePartyStore.getState().mode;
+    const storeRoom = usePartyStore.getState().roomId;
     setMode("player");
     if (!roomId) return;
-    const sameRoom = lastConnectedRoomRef.current === roomId;
-    const playerAlready = sameRoom && prevMode === "player" && (conn === "open" || conn === "connecting");
-    if (playerAlready) return;
+    // Skip the reconnect when we arrived here from /onboard with the same
+    // socket already open as a player in this room. Otherwise the new WS
+    // races the old one in the server's connection list — the JOIN handler
+    // can't reclaim by name (old conn is still "live"), so it mints a fresh
+    // player slot with `animal: null` and the OB animal-leaderboard count
+    // for this player drops by one until the round actually starts.
+    const sameRoom =
+      lastConnectedRoomRef.current === roomId || storeRoom === roomId;
+    const playerAlready =
+      sameRoom && prevMode === "player" && (conn === "open" || conn === "connecting");
+    if (playerAlready) {
+      lastConnectedRoomRef.current = roomId;
+      return;
+    }
     setMyName(draftName);
     connect({ roomId, name: draftName, lang, mode: "player" }).catch(() => {
       /* surfaced via connectError in store; we render it below */

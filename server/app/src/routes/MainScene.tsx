@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import CameraFrameUploader from "../components/CameraFrameUploader";
-import EndGameOverlay from "../components/EndGameOverlay";
 import { getMainSceneFrameSrc } from "../constants";
 import { useMainSceneIframeBridge } from "../hooks/useMainSceneIframeBridge";
 import { postToMainSceneFrame, postItemInboxToFrame, postMainSceneNetToFrame, postMonitorStateToFrame } from "../mainSync/postToMainSceneFrame";
@@ -85,11 +84,8 @@ export default function MainScene() {
           without sitting through the full timer. Also rebounces "back home" to
           /test so a single click loops a fresh round. */}
       <TestModeFab />
-      {/* Settlement overlay (escaped / lost). Renders only when GAME_ENDED arrived. */}
-      <EndGameOverlay
-        viewerRole="player"
-        homePath={isTestMode() ? "/test" : "/"}
-      />
+      {/* EndGameOverlay is mounted globally in App.tsx so the ceremony
+          survives any route-level unmount during GAME_ENDED. */}
     </>
   );
 }

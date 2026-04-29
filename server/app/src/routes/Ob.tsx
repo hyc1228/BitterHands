@@ -1,6 +1,5 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import EndGameOverlay from "../components/EndGameOverlay";
 import Toast from "../components/Toast";
 import { getMainSceneFrameSrc, OB_FACE_SLOTS, readStoredRoomId } from "../constants";
 import { animalLocalized, dict } from "../i18n";
@@ -614,7 +613,8 @@ function ObInner() {
         )}
       </section>
     </div>
-    <EndGameOverlay viewerRole="ob" homePath="/ob" />
+    {/* EndGameOverlay is mounted globally in App.tsx so the ceremony
+        survives any route-level unmount during GAME_ENDED. */}
     </>
   );
 }
