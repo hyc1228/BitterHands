@@ -3708,7 +3708,11 @@
   border: 1.5px solid rgba(242, 239, 233, 0.18);
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.04), rgba(0, 0, 0, 0.32));
   opacity: 0;
-  animation: nz-stamp-in 600ms cubic-bezier(0.2, 1.4, 0.3, 1) both;
+  /* Calm fade + slight lift so the name lands once and stays put. The
+     previous nz-stamp-in scaled down from 2.4× with a 14° rotation —
+     readable in slo-mo, but on a phone it just felt like the name
+     "jumped" and you couldn't lock onto it before the next row arrived. */
+  animation: nz-rise 540ms cubic-bezier(0.2, 0.8, 0.3, 1) both;
   animation-delay: var(--podium-delay, 0ms);
 }
 .endgame-award-stage__podium-medal {
@@ -3786,7 +3790,7 @@
 .endgame-award-stage__podium-row--gold.is-self {
   border-color: rgba(255, 220, 90, 1);
   box-shadow: 0 0 0 2px rgba(255, 220, 90, 0.6), 0 0 24px rgba(255, 220, 90, 0.45);
-  animation: nz-stamp-in 600ms cubic-bezier(0.2, 1.4, 0.3, 1) both,
+  animation: nz-rise 540ms cubic-bezier(0.2, 0.8, 0.3, 1) both,
              nz-self-heartbeat 1.8s ease-in-out 1200ms infinite;
   animation-delay: var(--podium-delay, 0ms), 1200ms;
 }
@@ -3803,7 +3807,7 @@
 @media (prefers-reduced-motion: reduce) {
   .endgame-award-stage__podium-row--gold::after { animation: none; opacity: 0; }
   .endgame-award-stage__podium-row--gold .endgame-award-stage__podium-medal { animation: none; }
-  .endgame-award-stage__podium-row--gold.is-self { animation: nz-stamp-in 600ms cubic-bezier(0.2, 1.4, 0.3, 1) both; }
+  .endgame-award-stage__podium-row--gold.is-self { animation: nz-rise 540ms cubic-bezier(0.2, 0.8, 0.3, 1) both; }
 }
 .endgame-award-stage__podium-row--silver {
   border-color: rgba(220, 224, 232, 0.5);

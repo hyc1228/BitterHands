@@ -442,20 +442,19 @@ type AwardPhase = "collage" | "countdown" | "reveal";
 
 /** Award stage timing — tuned so phone viewers can actually read the gold
  *  winner's name before tapping Next. Drumroll is noticeably slower
- *  (≈3.6 s with bigger between-tick beats) and the reveal forces a long
+ *  (≈3 s with bigger between-tick beats) and the reveal forces a short
  *  dwell where Next stays disabled AND visibly counts down, so a stray
- *  double-tap (or accidental Skip tap) can't blink past the podium.
- *  6 s feels long when you're calmly reading; on a phone with a 5-name
- *  podium it's actually about right. */
+ *  double-tap (or accidental Skip tap) can't blink past the podium —
+ *  but the gate is short enough that an attentive viewer never feels
+ *  stuck. The card still stays open after the timer — only the auto-
+ *  advance gate lifts. */
 const AWARD_TIMINGS = {
   /** How long the collage breathes before the countdown overlay starts. */
-  collageMs: 1200,
+  collageMs: 1000,
   /** Between-tick interval inside the 3 → 2 → 1 drumroll. */
-  tickMs: 950,
-  /** Forced dwell on the reveal phase before the Next button is enabled.
-   *  Long enough to read 3 podium rows + winner animal. The card still
-   *  stays open after the timer — only the auto-advance gate lifts. */
-  revealDwellMs: 6000,
+  tickMs: 900,
+  /** Forced dwell on the reveal phase before the Next button is enabled. */
+  revealDwellMs: 2500,
   /** Step size for the visible Next-button countdown (e.g. "Next (3…)"). */
   countdownStepMs: 1000
 };
@@ -632,7 +631,7 @@ function AwardPanel({
                     (isYouRow ? " is-self" : "")
                   }
                   style={{
-                    ["--podium-delay" as string]: `${idx * 220}ms`
+                    ["--podium-delay" as string]: `${idx * 360}ms`
                   }}
                 >
                   <span className="endgame-award-stage__podium-medal" aria-hidden>
