@@ -23,8 +23,12 @@ export const NZ_MSG_TYPE_MONITOR = "NZ_MONITOR_STATE" as const;
 /** Payload applied inside `main scene/index.html` (MainSync bridge). */
 export interface NzPlayerSyncPayload {
   playerName: string;
-  /** Main-scene sprite key — must be `lion` | `owl` | `giraffe` */
-  sceneAnimal: "lion" | "owl" | "giraffe";
+  /** Main-scene sprite key — must be `lion` | `owl` | `giraffe` for the
+   *  iframe to render a player avatar.  `null` means "the local
+   *  player's animal hasn't resolved yet" — the bridge layer will
+   *  refuse to push such a payload so we never lock in a wrong sprite.
+   *  Once `myAnimal` lands the next push uses a real value. */
+  sceneAnimal: "lion" | "owl" | "giraffe" | null;
   lang: Lang;
   ruleText?: string;
   winText?: string;
@@ -55,7 +59,15 @@ export function mapAnimalToMainScene(
   a: AnimalCode | string | null | undefined,
   /** Optional stable id (player.id). When the server hasn't assigned an animal
    *  yet (null/undefined) we fall back to a deterministic hash of `seed` so
-   *  remote players don't all default to owl on every other client. */
+   *  remote players don't all default to owl on every other client.
+   *
+   *  IMPORTANT: only pass a seed for REMOTE peers. The local player's own
+   *  scene-animal must come from `rulesCard.animal` (which arrives over
+   *  `PRIVATE_RULES_CARD` from the server). Hash-deriving the self sprite
+   *  produced the "I picked Lion but the game shows me as a Giraffe" bug:
+   *  a brief race where `myAnimal` was still null on first MainScene push
+   *  resolved to a deterministic-but-wrong sprite, and the iframe cached
+   *  it. Use `mapSelfAnimalToMainScene` (below) for the local player. */
   seed?: string
 ): NzPlayerSyncPayload["sceneAnimal"] {
   if (a === Animals.LION) return "lion";
@@ -70,6 +82,24 @@ export function mapAnimalToMainScene(
     return SCENE_ANIMALS[hash32(seed) % SCENE_ANIMALS.length];
   }
   return "owl";
+}
+
+/**
+ * Self-only variant: returns `null` when the local player's animal hasn't
+ * been assigned yet, so callers can refuse to push a misleading sprite
+ * into the iframe.  Mapping the self sprite via `mapAnimalToMainScene`'s
+ * hash fallback is what caused the "I picked Lion, the scene shows me
+ * as Giraffe" bug — the hash is stable per id, so the wrong sprite
+ * sticks even after `myAnimal` later resolves correctly because we may
+ * not re-push (the iframe already received the value).
+ */
+export function mapSelfAnimalToMainScene(
+  a: AnimalCode | string | null | undefined
+): NzPlayerSyncPayload["sceneAnimal"] | null {
+  if (a === Animals.LION) return "lion";
+  if (a === Animals.GIRAFFE) return "giraffe";
+  if (a === Animals.OWL) return "owl";
+  return null;
 }
 
 export function buildPlayerSyncPayload(opts: {
@@ -92,7 +122,11 @@ export function buildPlayerSyncPayload(opts: {
   const alive = typeof opts.alive === "boolean" ? opts.alive : lives > 0;
   return {
     playerName: opts.myName || "—",
-    sceneAnimal: mapAnimalToMainScene(opts.myAnimal, opts.selfId || opts.myName),
+    // Self-only mapping: returns null when `myAnimal` hasn't arrived yet,
+    // and the bridge skips the push.  Hash-deriving the local sprite was
+    // the cause of the "I picked Lion but the scene shows Giraffe" bug —
+    // the hash is stable per player id, so the wrong sprite stuck.
+    sceneAnimal: mapSelfAnimalToMainScene(opts.myAnimal),
     lang: opts.lang,
     ruleText: ruleText || undefined,
     winText: winText || undefined,

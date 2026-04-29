@@ -3286,6 +3286,39 @@
 .endgame-mask > .endgame-stage {
   margin: auto 0;
 }
+
+/* Always-visible "✕ Back home" pinned to the corner of the ceremony
+   mask. Sits ABOVE the award/summary cards so a user can always escape
+   even when the card subtree is mid-animation, mid-error, or empty.
+   Kept compact + low-contrast so it doesn't compete with the headline
+   during a normal ceremony, but stays clickable. */
+.endgame-escape {
+  position: fixed;
+  top: max(env(safe-area-inset-top), 12px);
+  right: max(env(safe-area-inset-right), 12px);
+  z-index: 80;
+  padding: 8px 14px;
+  font-family: var(--nz-font-display);
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--nz-cream);
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(242, 239, 233, 0.28);
+  border-radius: 999px;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+}
+.endgame-escape:hover {
+  background: rgba(0, 0, 0, 0.75);
+  border-color: rgba(242, 239, 233, 0.55);
+}
+.endgame-escape:active {
+  transform: scale(0.97);
+}
+
 @keyframes nz-endgame-mask {
   0% { opacity: 0; }
   100% { opacity: 1; }

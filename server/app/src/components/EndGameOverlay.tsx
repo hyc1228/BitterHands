@@ -1,10 +1,41 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Component, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { ErrorInfo, ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 import GIF from "gif.js";
 import gifWorkerUrl from "gif.js/dist/gif.worker.js?url";
 import { animalLocalized, dict } from "../i18n";
 import { usePartyStore } from "../party/store";
 import { Animals, animalEmoji } from "../party/protocol";
+
+/**
+ * Hard-isolation boundary around each ceremony stage panel.  The end-game
+ * overlay sometimes lights up against a server payload it doesn't fully
+ * understand — most often when a phone is running a stale JS bundle
+ * cached during an earlier deploy.  Without this wrapper, a render-time
+ * crash inside `IntroPanel` / `AwardPanel` / `SummaryPanel` unmounts the
+ * entire ceremony tree but leaves the dark `endgame-mask` backdrop on
+ * screen, producing the "ceremony is just a black screen" failure mode
+ * we keep getting bug reports for.  With it, the boundary catches the
+ * throw, renders a small fallback card with explicit "reload / back
+ * home" actions, and the user always has a way out.
+ */
+class StageErrorBoundary extends Component<
+  { fallback: ReactNode; children: ReactNode },
+  { error: Error | null }
+> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    // eslint-disable-next-line no-console
+    console.error("[ceremony] stage panel crashed", error, info?.componentStack);
+  }
+  render() {
+    if (this.state.error) return this.props.fallback;
+    return this.props.children;
+  }
+}
 import type {
   GameEnded,
   GameEndedAward,
@@ -174,8 +205,48 @@ export default function EndGameOverlay({ viewerRole = "player", homePath }: Prop
   const stageClass =
     "endgame-stage" + (viewerRole === "ob" ? " endgame-stage--ob" : "");
 
+  // Render once for every stage's fallback card so a panel-level crash
+  // never collapses to a blank `endgame-mask`.  The fallback is the same
+  // visible shape as the Summary "back home" footer so the user always
+  // has a way out, no matter which panel exploded.
+  const renderStageFallback = (label: string) => (
+    <div className="endgame-card" role="alert">
+      <div className="endgame-eyebrow">{t.endGameTitle}</div>
+      <h1 id="endgameTitle" className="endgame-headline">
+        {lang === "zh" ? "颁奖典礼出错" : "Ceremony hit an error"}
+      </h1>
+      <p className="endgame-sub muted">
+        {lang === "zh"
+          ? `内部页面（${label}）渲染失败。可能是浏览器缓存了旧版本的脚本——刷新一次通常就能修复。`
+          : `Internal page (${label}) failed to render. Most often a stale cached script — a hard refresh fixes it.`}
+      </p>
+      <div className="endgame-actions">
+        <button className="primary" onClick={() => window.location.reload()}>
+          {lang === "zh" ? "刷新页面" : "Hard refresh"}
+        </button>
+        <button className="ghost" onClick={handleHome}>
+          {t.endGameBackHome}
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="endgame-mask" role="dialog" aria-modal="true" aria-labelledby="endgameTitle">
+      {/* Always-visible escape hatch.  Even if every panel below crashes
+          during render, this button stays in the DOM so a user never sees
+          a "permanent black screen" with no way back to the lobby.  Sits
+          in the corner with high z-index so it floats above any animated
+          award/summary content. */}
+      <button
+        type="button"
+        className="endgame-escape"
+        onClick={handleHome}
+        aria-label={t.endGameBackHome}
+        title={t.endGameBackHome}
+      >
+        ✕ {t.endGameBackHome}
+      </button>
       <div className={stageClass} key={stageKey(stage)}>
         {ceremonyEmpty ? (
           <div className="endgame-card endgame-intro" role="alert">
@@ -196,40 +267,46 @@ export default function EndGameOverlay({ viewerRole = "player", homePath }: Prop
           </div>
         ) : null}
         {!ceremonyEmpty && stage.kind === "intro" ? (
-          <IntroPanel
-            t={t}
-            survivors={survivors.length}
-            total={realPlayers.length}
-            onNext={advance}
-          />
+          <StageErrorBoundary fallback={renderStageFallback("Intro")}>
+            <IntroPanel
+              t={t}
+              survivors={survivors.length}
+              total={realPlayers.length}
+              onNext={advance}
+            />
+          </StageErrorBoundary>
         ) : null}
         {!ceremonyEmpty && stage.kind === "award" ? (
-          <AwardPanel
-            t={t}
-            kind={stage.key}
-            award={awardFor(gameEnded, stage.key)}
-            players={realPlayers}
-            youName={myName}
-            lang={lang}
-            viewerRole={viewerRole}
-            onNext={advance}
-            onDwellChange={setAwardDwellActive}
-          />
+          <StageErrorBoundary fallback={renderStageFallback(`Award · ${stage.key}`)}>
+            <AwardPanel
+              t={t}
+              kind={stage.key}
+              award={awardFor(gameEnded, stage.key)}
+              players={realPlayers}
+              youName={myName}
+              lang={lang}
+              viewerRole={viewerRole}
+              onNext={advance}
+              onDwellChange={setAwardDwellActive}
+            />
+          </StageErrorBoundary>
         ) : null}
         {!ceremonyEmpty && stage.kind === "summary" ? (
-          <SummaryPanel
-            t={t}
-            lang={lang}
-            survivors={survivors}
-            eliminated={eliminated}
-            viewerEntry={viewerEntry}
-            isPlayer={isPlayer}
-            youLived={youLived}
-            youName={myName}
-            gameEnded={gameEnded}
-            onHome={handleHome}
-            onClose={() => clearGameEnded()}
-          />
+          <StageErrorBoundary fallback={renderStageFallback("Summary")}>
+            <SummaryPanel
+              t={t}
+              lang={lang}
+              survivors={survivors}
+              eliminated={eliminated}
+              viewerEntry={viewerEntry}
+              isPlayer={isPlayer}
+              youLived={youLived}
+              youName={myName}
+              gameEnded={gameEnded}
+              onHome={handleHome}
+              onClose={() => clearGameEnded()}
+            />
+          </StageErrorBoundary>
         ) : null}
       </div>
 

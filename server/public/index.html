@@ -26,8 +26,44 @@
       rel="stylesheet"
       href="https://fonts.googleapis.com/css2?family=Permanent+Marker&family=Patrick+Hand&display=swap"
     />
-    <script type="module" crossorigin src="./assets/index-ByBvR_w2.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index--1FX26qb.css">
+    <!--
+      Belt-and-braces cache buster.  We've never registered a service worker
+      from the app, but earlier prototypes (and some browser-installed page
+      tools — Microsoft Edge "PWA" mode, mobile WeChat in-app browser) keep
+      pinning a stale SW that intercepts asset requests and serves an old
+      JS bundle.  When that happens the new server's split GAME_ENDED
+      protocol meets the old client renderer and the ceremony renders to a
+      black mask.  This block runs unconditionally on every page load and
+      unregisters anything we find, then clears Cache Storage too so the
+      next reload picks up the fresh `index-*.js` hash from the network.
+      Idempotent + cheap (no-op when there's nothing to clean up).
+    -->
+    <script>
+      (function nocturneClearStaleCaches() {
+        try {
+          if ("serviceWorker" in navigator) {
+            navigator.serviceWorker.getRegistrations &&
+              navigator.serviceWorker
+                .getRegistrations()
+                .then(function (regs) {
+                  regs.forEach(function (r) {
+                    try { r.unregister(); } catch (e) {}
+                  });
+                })
+                .catch(function () {});
+          }
+          if ("caches" in window && typeof caches.keys === "function") {
+            caches.keys().then(function (keys) {
+              keys.forEach(function (k) {
+                try { caches.delete(k); } catch (e) {}
+              });
+            }).catch(function () {});
+          }
+        } catch (e) { /* ignore — best-effort */ }
+      })();
+    </script>
+    <script type="module" crossorigin src="./assets/index-DDpSA2Wr.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BekmxzkN.css">
   </head>
   <body>
     <div id="root"></div>

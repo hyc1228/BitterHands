@@ -41,24 +41,32 @@ export function postToMainSceneFrame(
     "*"
   );
   const matchedPlayer = args.snapshot?.players.find((p) => p.name === args.myName);
-  w.postMessage(
-    {
-      type: NZ_MSG_TYPE_SYNC,
-      source: NZ_MSG_SOURCE,
-      payload: buildPlayerSyncPayload({
-        myName: args.myName,
-        myAnimal: args.myAnimal,
-        rulesCard: args.rulesCard,
-        lang: args.lang,
-        lives: matchedPlayer?.lives,
-        alive: matchedPlayer?.alive,
-        // Pass the snapshot's id (preferred) so the animal-less fallback
-        // matches what every other client deterministically picks for me.
-        selfId: args.selfPlayerId || matchedPlayer?.id
-      })
-    },
-    "*"
-  );
+  const playerSync = buildPlayerSyncPayload({
+    myName: args.myName,
+    myAnimal: args.myAnimal,
+    rulesCard: args.rulesCard,
+    lang: args.lang,
+    lives: matchedPlayer?.lives,
+    alive: matchedPlayer?.alive,
+    selfId: args.selfPlayerId || matchedPlayer?.id
+  });
+  // Skip the SYNC push when we don't yet know the local player's animal —
+  // it's nullable on purpose (see `mapSelfAnimalToMainScene`).  Pushing a
+  // hash-derived placeholder is what caused "I picked Lion but the scene
+  // shows Giraffe": once the iframe applied the wrong sprite it stuck
+  // because subsequent re-pushes weren't always triggered.  Spectators
+  // (OB) never have a self-animal so the legacy spectator path remains —
+  // for them `sceneAnimal` doesn't drive the local avatar anyway.
+  if (playerSync.sceneAnimal !== null || args.spectator) {
+    w.postMessage(
+      {
+        type: NZ_MSG_TYPE_SYNC,
+        source: NZ_MSG_SOURCE,
+        payload: playerSync
+      },
+      "*"
+    );
+  }
   const roomPayload = buildRoomPlayersPayload(args.snapshot, args.myName, {
     spectator: args.spectator
   });
